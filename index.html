@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>FLEET EYE | タクシー・ハイヤー向け通信型ドライブレコーダー</title>
-<meta name="description" content="タクシー・ハイヤー事業者向けの通信型ドライブレコーダー。前方・車内・後方の3カメラ録画、乗客トラブル対策、クラウドでの映像確認と運行管理をひとつに。">
+<title>ドラレコ取付ワークス | タクシー・ハイヤーのドライブレコーダー取り付け</title>
+<meta name="description" content="タクシー・ハイヤー専門のドライブレコーダー取り付けサービス。営業所への出張施工、夜間・早朝対応で稼働を止めません。持ち込み機器・通信型・3カメラ・載せ替えにも対応。">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
 <style>
@@ -90,34 +90,6 @@
   .hero-points span::before { content: "✓"; color: var(--yellow); font-weight: 900; margin-right: 6px; }
 
   .hero-visual { position: relative; }
-  .device {
-    background: #111a24; border-radius: 22px; padding: 18px; box-shadow: 0 30px 60px rgba(0,0,0,.45);
-    border: 1px solid rgba(255,255,255,.08);
-  }
-  .screens { display: grid; grid-template-columns: 2fr 1fr; grid-template-rows: 1fr 1fr; gap: 8px; aspect-ratio: 16/10; }
-  .screen {
-    border-radius: 10px; position: relative; overflow: hidden;
-    background: linear-gradient(180deg, #2c4058, #18263a);
-  }
-  .screen.front { grid-row: span 2; background: linear-gradient(180deg, #31506f 0%, #22374f 55%, #3a3f46 55%, #2a2e33 100%); }
-  .screen.front::after {
-    content: ""; position: absolute; left: 50%; bottom: 0; width: 4px; height: 45%;
-    background: repeating-linear-gradient(to top, var(--yellow) 0 14px, transparent 14px 28px);
-    transform: translateX(-50%) perspective(80px) rotateX(40deg); transform-origin: bottom;
-  }
-  .screen.cabin { background: linear-gradient(180deg, #3b3346, #221d2b); }
-  .screen.rear { background: linear-gradient(180deg, #2f4a4a, #1c2c2c); }
-  .screen-tag {
-    position: absolute; top: 8px; left: 8px; font-size: 10px; font-weight: 700; background: rgba(0,0,0,.55);
-    padding: 2px 8px; border-radius: 4px; letter-spacing: .05em; z-index: 1;
-  }
-  .rec {
-    position: absolute; top: 8px; right: 8px; font-size: 10px; font-weight: 700; color: #ff5a5a; z-index: 1;
-    display: flex; align-items: center; gap: 4px;
-  }
-  .rec::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #ff3b3b; animation: blink 1.2s infinite; }
-  @keyframes blink { 50% { opacity: .2; } }
-  .device-bar { display: flex; justify-content: space-between; font-size: 11px; color: rgba(255,255,255,.6); margin-top: 12px; padding: 0 4px; }
   .float-card {
     position: absolute; background: #fff; color: var(--text); border-radius: 12px; padding: 12px 16px;
     box-shadow: 0 14px 30px rgba(0,0,0,.25); font-size: 13px; display: flex; align-items: center; gap: 10px;
@@ -272,6 +244,52 @@
     form { padding: 24px 20px; }
     .float-card { font-size: 12px; padding: 10px 12px; }
   }
+
+  /* Install-service specific */
+  .hero-visual { padding: 56px 0; }
+  .hero-visual .fc-1 { left: -16px; bottom: 0; }
+  .hero-visual .fc-2 { right: -16px; top: 0; }
+  @media (max-width: 900px) { .hero-visual .fc-1 { left: 0; } .hero-visual .fc-2 { right: 0; } }
+  .car-visual {
+    background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.1); border-radius: 22px; padding: 24px;
+  }
+  .car-visual figcaption { font-size: 12px; color: rgba(255,255,255,.6); text-align: center; margin-top: 8px; }
+  .pulse { animation: pulse 1.8s ease-in-out infinite; transform-origin: center; transform-box: fill-box; }
+  @keyframes pulse { 50% { opacity: .35; } }
+
+  .devices-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 48px; }
+  .device-card { border: 1px solid var(--line); border-radius: var(--radius); padding: 24px 20px; text-align: left; background: #fff; }
+  .device-card .ic { width: 44px; height: 44px; border-radius: 10px; background: #fff6d1; color: var(--navy); display: grid; place-items: center; margin-bottom: 12px; }
+  .device-card h3 { font-size: 16px; margin-bottom: 6px; }
+  .device-card p { font-size: 13px; color: var(--muted); }
+
+  .price-table { width: 100%; max-width: 860px; margin: 48px auto 0; border-collapse: collapse; text-align: left; background: #fff; border-radius: var(--radius); overflow: hidden; box-shadow: 0 0 0 1px var(--line); }
+  .price-table th, .price-table td { padding: 18px 20px; border-bottom: 1px solid var(--line); font-size: 15px; }
+  .price-table thead th { background: var(--navy); color: #fff; font-size: 13px; font-weight: 700; }
+  .price-table td:last-child, .price-table th:last-child { text-align: right; white-space: nowrap; }
+  .price-table td small { display: block; color: var(--muted); font-size: 12px; }
+  .price-table .yen { font-weight: 900; font-size: 18px; }
+  .price-table tr:last-child td { border-bottom: none; }
+  .volume {
+    max-width: 860px; margin: 20px auto 0; padding: 18px 24px; border-radius: var(--radius);
+    background: #fff6d1; border: 1px solid #f1df8f; font-weight: 700; display: flex; gap: 12px; align-items: center; text-align: left;
+  }
+  .volume b { color: #b58900; font-size: 20px; }
+
+  .area-box { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center; margin-top: 48px; text-align: left; }
+  .area-box > svg { max-width: 260px; margin: 0 auto; }
+  .area-list { display: flex; flex-wrap: wrap; gap: 10px; }
+  .area-list span { background: #fff; border: 1px solid var(--line); padding: 8px 16px; border-radius: 999px; font-weight: 700; font-size: 14px; }
+  .area-box p { color: var(--muted); font-size: 14px; margin-top: 16px; }
+
+  @media (max-width: 900px) {
+    .devices-grid { grid-template-columns: repeat(2, 1fr); }
+    .area-box { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 520px) {
+    .devices-grid { grid-template-columns: 1fr; }
+    .price-table th, .price-table td { padding: 14px 12px; font-size: 14px; }
+  }
 </style>
 </head>
 <body>
@@ -280,20 +298,20 @@
   <div class="container header-inner">
     <a href="#" class="logo">
       <span class="logo-mark">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/></svg>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/></svg>
       </span>
-      FLEET EYE
+      ドラレコ取付ワークス
     </a>
     <nav>
       <ul>
-        <li><a href="#features">特長</a></li>
-        <li><a href="#specs">仕様</a></li>
-        <li><a href="#plans">料金</a></li>
-        <li><a href="#flow">導入の流れ</a></li>
+        <li><a href="#reasons">選ばれる理由</a></li>
+        <li><a href="#devices">対応機器</a></li>
+        <li><a href="#price">料金</a></li>
+        <li><a href="#flow">施工の流れ</a></li>
         <li><a href="#faq">よくある質問</a></li>
       </ul>
     </nav>
-    <a href="#contact" class="btn btn-primary header-cta">資料請求・お見積り</a>
+    <a href="#contact" class="btn btn-primary header-cta">無料見積り</a>
   </div>
 </header>
 
@@ -301,35 +319,54 @@
 <section class="hero">
   <div class="container hero-grid">
     <div>
-      <span class="hero-badge">タクシー・ハイヤー事業者さま専用</span>
-      <h1>乗務員と乗客を、<br><em>3つの目</em>で守る。</h1>
-      <p>前方・車内・後方を同時録画する通信型ドライブレコーダー。<br>事故やトラブルの映像を、営業所からすぐに確認できます。</p>
+      <span class="hero-badge">タクシー・ハイヤー専門の取り付けサービス</span>
+      <h1>ドラレコの取り付け、<br><em>営業所まで伺います。</em></h1>
+      <p>車両を止めずに、まとめて施工。<br>夜間・早朝の出張対応で、営業への影響を最小限に抑えます。</p>
       <div class="hero-actions">
-        <a href="#contact" class="btn btn-primary">無料で資料請求する</a>
-        <a href="#features" class="btn btn-ghost">特長を見る</a>
+        <a href="#contact" class="btn btn-primary">無料で見積りを依頼</a>
+        <a href="#price" class="btn btn-ghost">料金を見る</a>
       </div>
       <div class="hero-points">
-        <span>1台から導入OK</span>
-        <span>取付工事込み</span>
-        <span>デモ機の貸出あり</span>
+        <span>機器の持ち込みOK</span>
+        <span>1台から出張可</span>
+        <span>施工保証つき</span>
       </div>
     </div>
     <div class="hero-visual">
-      <div class="device">
-        <div class="screens">
-          <div class="screen front"><span class="screen-tag">FRONT</span><span class="rec">REC</span></div>
-          <div class="screen cabin"><span class="screen-tag">CABIN</span></div>
-          <div class="screen rear"><span class="screen-tag">REAR</span></div>
-        </div>
-        <div class="device-bar"><span>車両 No.1024 ・ 実車中</span><span>GPS ● LTE ●</span></div>
-      </div>
+      <figure class="car-visual">
+        <svg viewBox="0 0 400 260" fill="none" aria-label="取り付け箇所の図">
+          <!-- car top view -->
+          <rect x="70" y="60" width="260" height="140" rx="56" fill="#22374f" stroke="#3b5675" stroke-width="2"/>
+          <rect x="140" y="72" width="120" height="116" rx="18" fill="#2c4562"/>
+          <path d="M140 80 Q120 130 140 180" stroke="#5e7d9e" stroke-width="6" fill="none" stroke-linecap="round"/>
+          <path d="M260 80 Q282 130 260 180" stroke="#5e7d9e" stroke-width="6" fill="none" stroke-linecap="round"/>
+          <rect x="168" y="44" width="64" height="18" rx="4" fill="#f5c518"/>
+          <text x="200" y="57" font-size="11" font-weight="900" fill="#0d1b2a" text-anchor="middle">TAXI</text>
+          <!-- wiring -->
+          <path d="M268 130 H200 V112 M200 130 H132 M200 130 V150 H160" stroke="#f5c518" stroke-width="2" stroke-dasharray="5 4" opacity=".7"/>
+          <!-- points -->
+          <circle class="pulse" cx="268" cy="130" r="14" fill="#f5c518" opacity=".3"/><circle cx="268" cy="130" r="7" fill="#f5c518"/>
+          <circle class="pulse" cx="200" cy="112" r="14" fill="#f5c518" opacity=".3"/><circle cx="200" cy="112" r="7" fill="#f5c518"/>
+          <circle class="pulse" cx="132" cy="130" r="14" fill="#f5c518" opacity=".3"/><circle cx="132" cy="130" r="7" fill="#f5c518"/>
+          <circle cx="160" cy="150" r="6" fill="#fff"/>
+          <!-- labels -->
+          <g font-size="12" font-weight="700" fill="#fff">
+            <line x1="268" y1="130" x2="340" y2="30" stroke="#fff" stroke-opacity=".4"/><text x="300" y="24">前方カメラ</text>
+            <line x1="200" y1="112" x2="200" y2="240" stroke="#fff" stroke-opacity=".0"/>
+            <line x1="200" y1="112" x2="250" y2="236" stroke="#fff" stroke-opacity=".4"/><text x="226" y="252">車内カメラ</text>
+            <line x1="132" y1="130" x2="60" y2="30" stroke="#fff" stroke-opacity=".4"/><text x="16" y="24">後方カメラ</text>
+            <line x1="160" y1="150" x2="90" y2="236" stroke="#fff" stroke-opacity=".4"/><text x="30" y="252">本体・電源</text>
+          </g>
+        </svg>
+        <figcaption>配線は内装の内側へ。メーター・無線・決済端末とも干渉させません。</figcaption>
+      </figure>
       <div class="float-card fc-1">
-        <span class="ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg></span>
-        <div><strong>急ブレーキを検知</strong><small>映像を自動でクラウドへ送信</small></div>
+        <span class="ico" style="background:#fff6d1;color:#0d1b2a"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></span>
+        <div><strong>夜間・早朝もOK</strong><small>車庫に入っている時間に施工</small></div>
       </div>
       <div class="float-card fc-2">
-        <span class="ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6 9 17l-5-5"/></svg></span>
-        <div><strong>全車両 稼働中</strong><small>営業所でリアルタイム把握</small></div>
+        <span class="ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+        <div><strong>1台 約60〜90分</strong><small>複数名でまとめて施工</small></div>
       </div>
     </div>
   </div>
@@ -339,183 +376,162 @@
 <section class="problems">
   <div class="container center">
     <span class="section-label">PROBLEMS</span>
-    <h2 class="section-title">こんなお悩み、ありませんか？</h2>
+    <h2 class="section-title">ドラレコの取り付けで、<br>こんなお困りごとはありませんか？</h2>
     <div class="problem-grid">
       <div class="problem">
-        <div class="q">😠</div>
-        <h3>乗客とのトラブルが心配</h3>
-        <p>料金をめぐる口論や暴言・暴力。「言った・言わない」になると、乗務員を守りきれない。</p>
+        <div class="q">⏱️</div>
+        <h3>車両を何日も止められない</h3>
+        <p>カー用品店や整備工場に預けると、その間は営業できない。台数が多いとなおさら。</p>
       </div>
       <div class="problem">
-        <div class="q">🚗</div>
-        <h3>事故の状況がわからない</h3>
-        <p>事故発生時、営業所に詳しい状況が届くまで時間がかかり、初動対応が遅れてしまう。</p>
+        <div class="q">🔌</div>
+        <h3>配線や機器の干渉が不安</h3>
+        <p>メーター・無線・配車タブレット・決済端末…。業務用の機器が多く、一般の業者だと心配。</p>
       </div>
       <div class="problem">
-        <div class="q">📼</div>
-        <h3>映像の回収・確認が手間</h3>
-        <p>SDカードを抜いて事務所のPCで再生…。台数が増えるほど管理者の負担が大きくなる。</p>
+        <div class="q">📦</div>
+        <h3>機器は買ったが付ける人がいない</h3>
+        <p>本部やメーカーから機器は届いたものの、自社に取り付けできる人手がない。</p>
       </div>
     </div>
-    <p class="arrow-down"><span>FLEET EYE なら、まとめて解決できます。</span></p>
+    <p class="arrow-down"><span>タクシー・ハイヤー専門の私たちにお任せください。</span></p>
   </div>
 </section>
 
-<!-- Features -->
-<section id="features">
+<!-- Reasons -->
+<section id="reasons">
   <div class="container">
     <div class="center">
-      <span class="section-label">FEATURES</span>
-      <h2 class="section-title">タクシー・ハイヤーのために設計した<br>4つの特長</h2>
+      <span class="section-label">REASONS</span>
+      <h2 class="section-title">ドラレコ取付ワークスが<br>選ばれる4つの理由</h2>
     </div>
     <div class="feature-list">
       <div class="feature">
         <div class="feature-img">
           <svg width="70%" viewBox="0 0 300 180" fill="none">
-            <rect x="40" y="50" width="220" height="80" rx="30" fill="#0d1b2a"/>
-            <rect x="85" y="30" width="130" height="45" rx="14" fill="#1b2b40"/>
-            <rect x="128" y="18" width="44" height="14" rx="3" fill="#f5c518"/>
-            <circle cx="90" cy="132" r="18" fill="#333"/><circle cx="210" cy="132" r="18" fill="#333"/>
-            <path d="M260 85 L300 60 L300 110 Z" fill="#f5c518" opacity=".5"/>
-            <path d="M150 52 L120 90 L180 90 Z" fill="#f5c518" opacity=".4"/>
-            <path d="M40 85 L0 60 L0 110 Z" fill="#f5c518" opacity=".5"/>
-            <circle cx="255" cy="85" r="6" fill="#f5c518"/><circle cx="150" cy="56" r="6" fill="#f5c518"/><circle cx="45" cy="85" r="6" fill="#f5c518"/>
+            <rect x="20" y="110" width="260" height="8" rx="4" fill="#d8e3ee"/>
+            <rect x="30" y="66" width="120" height="44" rx="16" fill="#0d1b2a"/>
+            <rect x="56" y="50" width="64" height="24" rx="8" fill="#1b2b40"/>
+            <circle cx="56" cy="112" r="12" fill="#333"/><circle cx="124" cy="112" r="12" fill="#333"/>
+            <rect x="160" y="56" width="110" height="54" rx="8" fill="#f5c518"/>
+            <rect x="160" y="40" width="70" height="20" rx="6" fill="#f5c518"/>
+            <circle cx="186" cy="112" r="12" fill="#333"/><circle cx="246" cy="112" r="12" fill="#333"/>
+            <text x="215" y="90" font-size="16" font-weight="900" fill="#0d1b2a" text-anchor="middle">出張</text>
+            <path d="M160 140 Q120 160 80 140" stroke="#0d1b2a" stroke-width="3" fill="none" marker-end="url(#a)"/>
+            <defs><marker id="a" markerWidth="10" markerHeight="10" refX="5" refY="5" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="#0d1b2a"/></marker></defs>
           </svg>
         </div>
         <div>
           <div class="feature-num">01</div>
-          <h3>前方・車内・後方の<br>3カメラで死角なく記録</h3>
-          <p>前方の事故だけでなく、車内の乗客とのやりとりや後方からの追突・あおり運転まで記録。赤外線LED搭載で、夜間の暗い車内もくっきり映します。</p>
-          <div class="tags"><span class="tag">フルHD録画</span><span class="tag">赤外線暗視</span><span class="tag">音声録音</span></div>
+          <h3>営業所・車庫へ出張施工。<br>車両の移動はいりません</h3>
+          <p>施工スタッフが営業所へ伺い、その場で取り付けます。洗車場や車庫の一角があれば作業可能。車両を工場へ回送する手間も、待ち時間もかかりません。</p>
+          <div class="tags"><span class="tag">出張費込みプランあり</span><span class="tag">屋内・屋外どちらも可</span></div>
+        </div>
+      </div>
+
+      <div class="feature">
+        <div class="feature-img">
+          <svg width="62%" viewBox="0 0 200 200" fill="none">
+            <circle cx="100" cy="100" r="80" fill="#0d1b2a"/>
+            <path d="M128 52A56 56 0 1 0 152 120 44 44 0 0 1 128 52z" fill="#f5c518"/>
+            <circle cx="60" cy="60" r="3" fill="#fff"/><circle cx="76" cy="150" r="2" fill="#fff"/><circle cx="150" cy="70" r="2.5" fill="#fff"/>
+          </svg>
+        </div>
+        <div>
+          <div class="feature-num">02</div>
+          <h3>夜間・早朝・休車日に施工。<br>営業を止めません</h3>
+          <p>シフトの合間や車庫に入っている時間帯を狙って作業します。複数名のチームで並行して施工するため、数十台規模でも短期間で完了。運行計画に合わせてスケジュールを組みます。</p>
+          <div class="tags"><span class="tag">24時間対応</span><span class="tag">大量台数の一斉施工</span><span class="tag">分割施工OK</span></div>
+        </div>
+      </div>
+
+      <div class="feature">
+        <div class="feature-img">
+          <svg width="72%" viewBox="0 0 300 200" fill="none">
+            <rect x="30" y="40" width="240" height="120" rx="14" fill="#1b2b40"/>
+            <rect x="48" y="58" width="70" height="40" rx="6" fill="#0d1b2a"/><text x="83" y="84" font-size="13" font-weight="900" fill="#f5c518" text-anchor="middle">¥ 730</text>
+            <rect x="130" y="58" width="56" height="40" rx="6" fill="#0d1b2a"/><circle cx="158" cy="78" r="10" stroke="#5e7d9e" stroke-width="3"/>
+            <rect x="198" y="58" width="56" height="84" rx="6" fill="#2c4562"/><rect x="206" y="66" width="40" height="56" rx="3" fill="#d8e3ee"/>
+            <path d="M48 120 C90 140 120 110 160 130 S 220 120 250 150" stroke="#f5c518" stroke-width="3" stroke-dasharray="6 5"/>
+          </svg>
+        </div>
+        <div>
+          <div class="feature-num">03</div>
+          <h3>業務車両を知り尽くした<br>きれいで確実な配線</h3>
+          <p>料金メーター、無線機、配車タブレット、決済端末、防犯灯など、タクシー特有の装備を熟知。電源の取り回しやノイズ干渉に配慮し、配線は内装の内側へ隠して見た目もすっきり仕上げます。</p>
+          <div class="tags"><span class="tag">JPN TAXI・クラウン対応</span><span class="tag">ノイズ対策</span><span class="tag">内装を傷つけない施工</span></div>
         </div>
       </div>
 
       <div class="feature">
         <div class="feature-img">
           <svg width="60%" viewBox="0 0 200 200" fill="none">
-            <circle cx="100" cy="100" r="80" fill="#fff" stroke="#e1e6ec" stroke-width="2"/>
-            <path d="M100 40 L150 60 V100 C150 130 128 152 100 162 C72 152 50 130 50 100 V60 Z" fill="#0d1b2a"/>
-            <path d="M78 102 L94 118 L124 86" stroke="#f5c518" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </div>
-        <div>
-          <div class="feature-num">02</div>
-          <h3>乗客トラブルから<br>乗務員を守る</h3>
-          <p>車内カメラの存在そのものが迷惑行為の抑止に。万が一の際は運転席の「緊急ボタン」を押すだけで、前後の映像と位置情報を営業所へ即時通知します。</p>
-          <div class="tags"><span class="tag">緊急通報ボタン</span><span class="tag">録画中ステッカー付属</span><span class="tag">警察への映像提供</span></div>
-        </div>
-      </div>
-
-      <div class="feature">
-        <div class="feature-img">
-          <svg width="75%" viewBox="0 0 300 200" fill="none">
-            <rect x="20" y="20" width="260" height="160" rx="12" fill="#fff" stroke="#e1e6ec" stroke-width="2"/>
-            <rect x="20" y="20" width="260" height="28" rx="12" fill="#0d1b2a"/>
-            <rect x="36" y="64" width="140" height="100" rx="6" fill="#d8e3ee"/>
-            <path d="M60 140 L90 110 L110 125 L140 90 L160 108" stroke="#0d1b2a" stroke-width="3" fill="none"/>
-            <circle cx="140" cy="90" r="6" fill="#f5c518"/>
-            <rect x="190" y="64" width="74" height="18" rx="4" fill="#f4f6f9"/>
-            <rect x="190" y="90" width="74" height="18" rx="4" fill="#fff3c4"/>
-            <rect x="190" y="116" width="74" height="18" rx="4" fill="#f4f6f9"/>
-            <rect x="190" y="142" width="74" height="18" rx="4" fill="#f4f6f9"/>
-          </svg>
-        </div>
-        <div>
-          <div class="feature-num">03</div>
-          <h3>映像はクラウドへ。<br>営業所からすぐ確認</h3>
-          <p>LTE通信で衝撃検知時の映像を自動アップロード。SDカードの回収は不要です。管理画面から車両の現在地や走行ルート、イベント映像をブラウザで確認できます。</p>
-          <div class="tags"><span class="tag">リアルタイム位置表示</span><span class="tag">遠隔で映像取得</span><span class="tag">スマホ対応</span></div>
-        </div>
-      </div>
-
-      <div class="feature">
-        <div class="feature-img">
-          <svg width="65%" viewBox="0 0 240 200" fill="none">
-            <rect x="30" y="140" width="34" height="40" rx="4" fill="#d8e3ee"/>
-            <rect x="80" y="110" width="34" height="70" rx="4" fill="#b8c9dc"/>
-            <rect x="130" y="80" width="34" height="100" rx="4" fill="#1b2b40"/>
-            <rect x="180" y="40" width="34" height="140" rx="4" fill="#f5c518"/>
-            <path d="M40 120 L95 92 L145 62 L200 24" stroke="#0d1b2a" stroke-width="3" stroke-dasharray="6 6"/>
+            <rect x="40" y="30" width="120" height="150" rx="10" fill="#fff" stroke="#e1e6ec" stroke-width="3"/>
+            <rect x="70" y="20" width="60" height="22" rx="6" fill="#0d1b2a"/>
+            <path d="M62 80 L74 92 L94 72" stroke="#f5c518" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+            <rect x="104" y="76" width="40" height="8" rx="4" fill="#d8e3ee"/>
+            <path d="M62 120 L74 132 L94 112" stroke="#f5c518" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+            <rect x="104" y="116" width="40" height="8" rx="4" fill="#d8e3ee"/>
+            <rect x="62" y="150" width="82" height="8" rx="4" fill="#d8e3ee"/>
           </svg>
         </div>
         <div>
           <div class="feature-num">04</div>
-          <h3>安全運転指導と<br>事故削減をサポート</h3>
-          <p>急加速・急ブレーキ・速度超過などを自動で検知し、乗務員ごとの運転傾向をレポート化。日々の点呼や安全教育にそのまま活用できます。</p>
-          <div class="tags"><span class="tag">運転診断レポート</span><span class="tag">ヒヤリハット集</span><span class="tag">CSV出力</span></div>
+          <h3>動作確認まで責任施工。<br>施工後の保証つき</h3>
+          <p>取り付け後は録画・画角・GPS・通信状態まで1台ずつ確認し、チェックシートをお渡しします。施工が原因の不具合は保証期間内なら無償で再対応します。</p>
+          <div class="tags"><span class="tag">動作チェックシート</span><span class="tag">施工保証1年</span><span class="tag">台帳作成代行</span></div>
         </div>
       </div>
     </div>
   </div>
 </section>
 
-<!-- Specs -->
-<section id="specs" class="specs">
+<!-- Devices -->
+<section id="devices" class="flow">
   <div class="container center">
-    <span class="section-label">SPECIFICATIONS</span>
-    <h2 class="section-title">主な仕様</h2>
-    <p class="section-lead">業務車両の長時間稼働を前提に、耐久性と使いやすさを重視しました。</p>
-    <div class="spec-grid">
-      <div class="spec"><div class="v">3ch</div><div class="k">前方・車内・後方カメラ</div></div>
-      <div class="spec"><div class="v">Full HD</div><div class="k">前方カメラ解像度</div></div>
-      <div class="spec"><div class="v">LTE</div><div class="k">通信方式（通信費込み）</div></div>
-      <div class="spec"><div class="v">24h</div><div class="k">駐車監視モード</div></div>
+    <span class="section-label">SERVICES</span>
+    <h2 class="section-title">対応している作業</h2>
+    <p class="section-lead">メーカー・機種を問わず対応します。機器のお持ち込みも、こちらでの手配も可能です。</p>
+    <div class="devices-grid">
+      <div class="device-card">
+        <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="15" height="10" rx="2"/><path d="m17 10 5-3v10l-5-3"/></svg></div>
+        <h3>前後2カメラ</h3><p>一般的な前方・後方の2カメラタイプの取り付け。</p>
+      </div>
+      <div class="device-card">
+        <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg></div>
+        <h3>車内カメラ・3カメラ</h3><p>乗客トラブル対策の車内向けカメラ追加。</p>
+      </div>
+      <div class="device-card">
+        <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0M12 19.5h.01"/></svg></div>
+        <h3>通信型ドラレコ</h3><p>LTE通信型・クラウド型の取り付けと開通確認。</p>
+      </div>
+      <div class="device-card">
+        <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 1l4 4-4 4M3 11V9a4 4 0 0 1 4-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 0 1-4 4H3"/></svg></div>
+        <h3>取り外し・載せ替え</h3><p>車両入れ替えや廃車時の取り外し、新車への移設。</p>
+      </div>
     </div>
-    <p class="note" style="color:rgba(255,255,255,.5)">※ 掲載の仕様はサンプルです。実際の製品仕様に差し替えてください。</p>
   </div>
 </section>
 
-<!-- Plans -->
-<section id="plans">
+<!-- Price -->
+<section id="price">
   <div class="container center">
     <span class="section-label">PRICE</span>
-    <h2 class="section-title">料金プラン</h2>
-    <p class="section-lead">車両台数や運用に合わせてお選びいただけます。</p>
-    <div class="plan-grid">
-      <div class="plan">
-        <h3>ライト</h3>
-        <p class="for">個人タクシー・小規模事業者向け</p>
-        <div class="price">¥2,980<small> /台・月</small></div>
-        <p class="price-note">税抜・別途初期費用</p>
-        <ul>
-          <li>前方＋車内 2カメラ</li>
-          <li>衝撃検知映像のクラウド保存</li>
-          <li>位置情報表示</li>
-          <li class="off">緊急通報ボタン</li>
-          <li class="off">運転診断レポート</li>
-        </ul>
-        <a href="#contact" class="btn btn-outline">相談する</a>
-      </div>
-      <div class="plan recommend">
-        <h3>スタンダード</h3>
-        <p class="for">法人タクシー事業者向け</p>
-        <div class="price">¥3,980<small> /台・月</small></div>
-        <p class="price-note">税抜・別途初期費用</p>
-        <ul>
-          <li>前方・車内・後方 3カメラ</li>
-          <li>衝撃検知映像のクラウド保存</li>
-          <li>リアルタイム位置表示</li>
-          <li>緊急通報ボタン</li>
-          <li>運転診断レポート</li>
-        </ul>
-        <a href="#contact" class="btn btn-primary">見積りを依頼する</a>
-      </div>
-      <div class="plan">
-        <h3>ハイヤー</h3>
-        <p class="for">ハイヤー・VIP送迎向け</p>
-        <div class="price">個別見積り</div>
-        <p class="price-note">車両・運用に合わせてご提案</p>
-        <ul>
-          <li>スタンダードの全機能</li>
-          <li>車内カメラの映像非公開設定</li>
-          <li>目立たない小型カメラ</li>
-          <li>配車・運行システム連携</li>
-          <li>専任サポート担当</li>
-        </ul>
-        <a href="#contact" class="btn btn-outline">相談する</a>
-      </div>
-    </div>
-    <p class="note">※ 価格はサンプルです。10台以上のご導入はボリュームディスカウントをご用意しています。</p>
+    <h2 class="section-title">取り付け料金の目安</h2>
+    <p class="section-lead">車種・機器・台数によって変わりますので、まずはお気軽にお見積りください。</p>
+    <table class="price-table">
+      <thead><tr><th>作業内容</th><th>工賃（1台・税抜）</th></tr></thead>
+      <tbody>
+        <tr><td>前後2カメラ取り付け<small>電源配線・リアカメラ配線込み</small></td><td><span class="yen">¥12,000〜</span></td></tr>
+        <tr><td>3カメラ（前方・車内・後方）取り付け</td><td><span class="yen">¥16,000〜</span></td></tr>
+        <tr><td>通信型ドラレコ取り付け<small>開通・管理画面での動作確認込み</small></td><td><span class="yen">¥18,000〜</span></td></tr>
+        <tr><td>取り外し</td><td><span class="yen">¥5,000〜</span></td></tr>
+        <tr><td>載せ替え（取り外し＋取り付け）</td><td><span class="yen">¥15,000〜</span></td></tr>
+        <tr><td>出張費<small>対応エリア内・5台以上のご依頼で無料</small></td><td><span class="yen">¥5,000</span></td></tr>
+      </tbody>
+    </table>
+    <div class="volume"><b>%</b>10台以上のまとめてご依頼で、工賃を割引いたします。夜間・早朝の割増料金もかかりません。</div>
+    <p class="note">※ 掲載料金はサンプルです。実際の料金に差し替えてください。</p>
   </div>
 </section>
 
@@ -523,19 +539,41 @@
 <section id="flow" class="flow">
   <div class="container center">
     <span class="section-label">FLOW</span>
-    <h2 class="section-title">導入の流れ</h2>
-    <p class="section-lead">お問い合わせから最短2週間で運用を開始できます。</p>
+    <h2 class="section-title">施工の流れ</h2>
+    <p class="section-lead">お問い合わせから最短1週間で施工に伺えます。</p>
     <div class="flow-steps" style="text-align:left">
-      <div class="step"><h3>お問い合わせ</h3><p>フォームまたはお電話でご連絡ください。</p></div>
-      <div class="step"><h3>ヒアリング・お見積り</h3><p>台数や車種、運用方法を伺いご提案します。</p></div>
-      <div class="step"><h3>取付工事</h3><p>営業所に伺い、稼働の少ない時間帯に施工します。</p></div>
-      <div class="step"><h3>運用開始</h3><p>管理画面の使い方をご説明。導入後もサポートします。</p></div>
+      <div class="step"><h3>お問い合わせ</h3><p>台数・車種・機器の有無をフォームかお電話でお知らせください。</p></div>
+      <div class="step"><h3>お見積り・日程調整</h3><p>運行計画を伺い、営業に支障のない施工日程をご提案します。</p></div>
+      <div class="step"><h3>出張施工</h3><p>営業所・車庫へ伺って取り付け。1台ずつ動作確認します。</p></div>
+      <div class="step"><h3>完了報告</h3><p>チェックシートと施工台帳をお渡しして完了です。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- Area -->
+<section id="area">
+  <div class="container center">
+    <span class="section-label">AREA</span>
+    <h2 class="section-title">対応エリア</h2>
+    <div class="area-box">
+      <svg viewBox="0 0 300 220" fill="none" aria-hidden="true">
+        <circle cx="150" cy="110" r="100" fill="#fff6d1"/>
+        <circle cx="150" cy="110" r="60" fill="#f5c518" opacity=".5"/>
+        <path d="M150 70c-16 0-28 12-28 28 0 22 28 50 28 50s28-28 28-50c0-16-12-28-28-28z" fill="#0d1b2a"/>
+        <circle cx="150" cy="98" r="10" fill="#f5c518"/>
+      </svg>
+      <div>
+        <div class="area-list">
+          <span>東京都</span><span>神奈川県</span><span>埼玉県</span><span>千葉県</span><span>茨城県（一部）</span>
+        </div>
+        <p>上記以外の地域も、台数によっては出張対応いたします。まずはご相談ください。<br>※ 対応エリアはサンプルです。</p>
+      </div>
     </div>
   </div>
 </section>
 
 <!-- FAQ -->
-<section id="faq">
+<section id="faq" class="problems">
   <div class="container">
     <div class="center">
       <span class="section-label">FAQ</span>
@@ -543,24 +581,24 @@
     </div>
     <div class="faq-list">
       <details>
-        <summary>1台からでも導入できますか？</summary>
-        <p>はい、個人タクシーの方など1台からご導入いただけます。</p>
+        <summary>自社で購入したドラレコの取り付けだけでもお願いできますか？</summary>
+        <p>はい、取り付けのみのご依頼が大半です。メーカー・機種を問わず対応しますので、型番をお知らせください。機器の手配から任せたい場合もご相談いただけます。</p>
       </details>
       <details>
-        <summary>今使っている配車システムやメーターと連携できますか？</summary>
-        <p>主要な配車システム・運行管理システムとの連携実績があります。対応状況は個別にお問い合わせください。</p>
+        <summary>1台だけでも出張してもらえますか？</summary>
+        <p>1台から伺います。対応エリア内で5台以上のご依頼の場合は出張費が無料になります。</p>
       </details>
       <details>
-        <summary>車内の録画について、乗客への告知は必要ですか？</summary>
-        <p>プライバシーへの配慮として、車内に録画中である旨を掲示することを推奨しています。告知用ステッカーを無料でお付けしています。</p>
+        <summary>1台あたりの作業時間はどれくらいですか？</summary>
+        <p>前後2カメラで約60分、3カメラや通信型で約90分が目安です。台数が多い場合は複数名で並行して作業します。</p>
       </details>
       <details>
-        <summary>取付工事にはどのくらい時間がかかりますか？</summary>
-        <p>1台あたり約1〜2時間が目安です。営業所での一括施工にも対応しています。</p>
+        <summary>メーターや無線、決済端末に影響はありませんか？</summary>
+        <p>業務用機器の配線やノイズ干渉に配慮して施工し、取り付け後に各機器の動作もあわせて確認します。万一施工が原因の不具合があれば保証で対応します。</p>
       </details>
       <details>
-        <summary>導入前に試すことはできますか？</summary>
-        <p>デモ機の無料貸出を行っています。実際の車両で映像の画質や管理画面の使い勝手をお試しください。</p>
+        <summary>施工場所は屋外の駐車場でも大丈夫ですか？</summary>
+        <p>可能です。ただし雨天時は屋根のある場所をご用意いただくか、日程を調整させていただく場合があります。</p>
       </details>
     </div>
   </div>
@@ -571,8 +609,8 @@
   <div class="container contact-grid">
     <div>
       <span class="section-label">CONTACT</span>
-      <h2 class="section-title">資料請求・お見積り・<br>デモ機貸出のご相談</h2>
-      <p class="section-lead">フォームに必要事項をご入力ください。担当者より1営業日以内にご連絡いたします。</p>
+      <h2 class="section-title">お見積り・ご相談は<br>無料です</h2>
+      <p class="section-lead">台数や車種が決まっていなくても大丈夫です。担当者より1営業日以内にご連絡いたします。</p>
       <div class="tel-box">
         <small>お電話でのお問い合わせ</small>
         <div class="tel">0120-000-000</div>
@@ -590,19 +628,23 @@
       </div>
       <div class="row-2">
         <div>
-          <label for="type">業種</label>
-          <select id="type"><option>法人タクシー</option><option>個人タクシー</option><option>ハイヤー</option><option>その他</option></select>
+          <label for="units">施工台数</label>
+          <select id="units"><option>1〜4台</option><option>5〜9台</option><option>10〜49台</option><option>50台以上</option></select>
         </div>
         <div>
-          <label for="units">導入予定台数</label>
-          <select id="units"><option>1〜9台</option><option>10〜49台</option><option>50〜99台</option><option>100台以上</option></select>
+          <label for="equip">ドラレコ本体</label>
+          <select id="equip"><option>手配済み（持ち込み）</option><option>手配もお願いしたい</option><option>未定・相談したい</option></select>
         </div>
+      </div>
+      <div class="row-2">
+        <div><label for="car">主な車種</label><input id="car" placeholder="JPN TAXI、クラウン など"></div>
+        <div><label for="place">施工場所（市区町村）</label><input id="place" placeholder="東京都江東区"></div>
       </div>
       <div>
         <label for="message">ご要望・ご質問</label>
-        <textarea id="message" placeholder="デモ機の貸出を希望、など"></textarea>
+        <textarea id="message" placeholder="機器の型番、希望時期、夜間施工希望 など"></textarea>
       </div>
-      <button type="submit" class="btn btn-primary">送信する</button>
+      <button type="submit" class="btn btn-primary">無料で見積りを依頼する</button>
       <p class="form-msg" id="form-msg">送信ありがとうございました。担当者よりご連絡いたします。（デモのため実際には送信されません）</p>
     </form>
   </div>
@@ -610,12 +652,12 @@
 
 <footer>
   <div class="container footer-inner">
-    <span>© 2026 FLEET EYE（サンプル）</span>
+    <span>© 2026 ドラレコ取付ワークス（サンプル）</span>
     <span>プライバシーポリシー ／ 会社概要</span>
   </div>
 </footer>
 
-<div class="sp-cta"><a href="#contact" class="btn btn-primary">無料で資料請求する</a></div>
+<div class="sp-cta"><a href="#contact" class="btn btn-primary">無料で見積りを依頼</a></div>
 
 <script>
   document.getElementById('contact-form').addEventListener('submit', function (e) {
