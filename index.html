@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FLEET EYE | タクシー・ハイヤー向け通信型ドライブレコーダー</title>
+<meta name="description" content="タクシー・ハイヤー事業者向けの通信型ドライブレコーダー。前方・車内・後方の3カメラ録画、乗客トラブル対策、クラウドでの映像確認と運行管理をひとつに。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --navy: #0d1b2a;
+    --navy-2: #1b2b40;
+    --yellow: #f5c518;
+    --yellow-dark: #d9ab00;
+    --text: #1d2733;
+    --muted: #5b6776;
+    --bg: #ffffff;
+    --bg-soft: #f4f6f9;
+    --line: #e1e6ec;
+    --radius: 14px;
+    --max: 1120px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: "Noto Sans JP", system-ui, sans-serif;
+    color: var(--text);
+    background: var(--bg);
+    line-height: 1.8;
+    -webkit-font-smoothing: antialiased;
+  }
+  img, svg { display: block; max-width: 100%; }
+  a { color: inherit; text-decoration: none; }
+  .container { width: 100%; max-width: var(--max); margin: 0 auto; padding: 0 20px; }
+  section { padding: 96px 0; }
+  .section-label {
+    display: inline-block; font-size: 13px; font-weight: 700; letter-spacing: .15em;
+    color: var(--yellow-dark); margin-bottom: 8px;
+  }
+  .section-title { font-size: clamp(24px, 3.6vw, 36px); font-weight: 900; line-height: 1.4; margin-bottom: 16px; }
+  .section-lead { color: var(--muted); max-width: 680px; }
+  .center { text-align: center; }
+  .center .section-lead { margin: 0 auto; }
+
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 16px 32px; border-radius: 999px; font-weight: 700; font-size: 16px;
+    transition: transform .15s, background .15s, box-shadow .15s; cursor: pointer; border: none;
+  }
+  .btn-primary { background: var(--yellow); color: var(--navy); box-shadow: 0 6px 20px rgba(245,197,24,.35); }
+  .btn-primary:hover { background: var(--yellow-dark); transform: translateY(-2px); }
+  .btn-ghost { border: 2px solid rgba(255,255,255,.5); color: #fff; }
+  .btn-ghost:hover { background: rgba(255,255,255,.1); }
+
+  /* Header */
+  header {
+    position: sticky; top: 0; z-index: 50; background: rgba(13,27,42,.95);
+    backdrop-filter: blur(8px); color: #fff;
+  }
+  .header-inner { display: flex; align-items: center; justify-content: space-between; height: 68px; }
+  .logo { display: flex; align-items: center; gap: 10px; font-weight: 900; font-size: 20px; letter-spacing: .05em; }
+  .logo-mark {
+    width: 34px; height: 34px; border-radius: 8px; background: var(--yellow); color: var(--navy);
+    display: grid; place-items: center;
+  }
+  nav ul { display: flex; gap: 28px; list-style: none; font-size: 14px; }
+  nav a { opacity: .85; }
+  nav a:hover { opacity: 1; color: var(--yellow); }
+  .header-cta { padding: 10px 20px; font-size: 14px; }
+
+  /* Hero */
+  .hero {
+    background:
+      radial-gradient(circle at 80% 20%, rgba(245,197,24,.18), transparent 45%),
+      linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 100%);
+    color: #fff; padding: 88px 0 104px; overflow: hidden;
+  }
+  .hero-grid { display: grid; grid-template-columns: 1.1fr 1fr; gap: 48px; align-items: center; }
+  .hero-badge {
+    display: inline-block; background: rgba(245,197,24,.15); color: var(--yellow);
+    border: 1px solid rgba(245,197,24,.4); border-radius: 999px; padding: 4px 14px;
+    font-size: 13px; font-weight: 700; margin-bottom: 20px;
+  }
+  .hero h1 { font-size: clamp(30px, 5vw, 52px); font-weight: 900; line-height: 1.35; margin-bottom: 20px; }
+  .hero h1 em { font-style: normal; color: var(--yellow); }
+  .hero p { color: rgba(255,255,255,.8); margin-bottom: 32px; font-size: 17px; }
+  .hero-actions { display: flex; gap: 14px; flex-wrap: wrap; }
+  .hero-points { display: flex; gap: 24px; margin-top: 36px; flex-wrap: wrap; font-size: 14px; color: rgba(255,255,255,.85); }
+  .hero-points span::before { content: "✓"; color: var(--yellow); font-weight: 900; margin-right: 6px; }
+
+  .hero-visual { position: relative; }
+  .device {
+    background: #111a24; border-radius: 22px; padding: 18px; box-shadow: 0 30px 60px rgba(0,0,0,.45);
+    border: 1px solid rgba(255,255,255,.08);
+  }
+  .screens { display: grid; grid-template-columns: 2fr 1fr; grid-template-rows: 1fr 1fr; gap: 8px; aspect-ratio: 16/10; }
+  .screen {
+    border-radius: 10px; position: relative; overflow: hidden;
+    background: linear-gradient(180deg, #2c4058, #18263a);
+  }
+  .screen.front { grid-row: span 2; background: linear-gradient(180deg, #31506f 0%, #22374f 55%, #3a3f46 55%, #2a2e33 100%); }
+  .screen.front::after {
+    content: ""; position: absolute; left: 50%; bottom: 0; width: 4px; height: 45%;
+    background: repeating-linear-gradient(to top, var(--yellow) 0 14px, transparent 14px 28px);
+    transform: translateX(-50%) perspective(80px) rotateX(40deg); transform-origin: bottom;
+  }
+  .screen.cabin { background: linear-gradient(180deg, #3b3346, #221d2b); }
+  .screen.rear { background: linear-gradient(180deg, #2f4a4a, #1c2c2c); }
+  .screen-tag {
+    position: absolute; top: 8px; left: 8px; font-size: 10px; font-weight: 700; background: rgba(0,0,0,.55);
+    padding: 2px 8px; border-radius: 4px; letter-spacing: .05em; z-index: 1;
+  }
+  .rec {
+    position: absolute; top: 8px; right: 8px; font-size: 10px; font-weight: 700; color: #ff5a5a; z-index: 1;
+    display: flex; align-items: center; gap: 4px;
+  }
+  .rec::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #ff3b3b; animation: blink 1.2s infinite; }
+  @keyframes blink { 50% { opacity: .2; } }
+  .device-bar { display: flex; justify-content: space-between; font-size: 11px; color: rgba(255,255,255,.6); margin-top: 12px; padding: 0 4px; }
+  .float-card {
+    position: absolute; background: #fff; color: var(--text); border-radius: 12px; padding: 12px 16px;
+    box-shadow: 0 14px 30px rgba(0,0,0,.25); font-size: 13px; display: flex; align-items: center; gap: 10px;
+  }
+  .float-card strong { display: block; font-size: 14px; }
+  .float-card small { color: var(--muted); }
+  .float-card .ico { width: 34px; height: 34px; border-radius: 8px; display: grid; place-items: center; flex-shrink: 0; }
+  .fc-1 { left: -24px; bottom: -28px; }
+  .fc-1 .ico { background: #ffe9e9; color: #e53935; }
+  .fc-2 { right: -16px; top: -24px; }
+  .fc-2 .ico { background: #e7f6ec; color: #2e9d55; }
+
+  /* Problems */
+  .problems { background: var(--bg-soft); }
+  .problem-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 48px; }
+  .problem {
+    background: #fff; border-radius: var(--radius); padding: 28px; border: 1px solid var(--line);
+  }
+  .problem .q { font-size: 32px; line-height: 1; margin-bottom: 12px; }
+  .problem h3 { font-size: 17px; margin-bottom: 8px; }
+  .problem p { font-size: 14px; color: var(--muted); }
+  .arrow-down { text-align: center; margin-top: 48px; font-weight: 900; font-size: clamp(20px, 3vw, 28px); }
+  .arrow-down::before {
+    content: ""; display: block; width: 0; height: 0; margin: 0 auto 16px;
+    border-left: 28px solid transparent; border-right: 28px solid transparent; border-top: 22px solid var(--yellow);
+  }
+  .arrow-down span { background: linear-gradient(transparent 60%, rgba(245,197,24,.5) 60%); }
+
+  /* Features */
+  .feature-list { display: grid; gap: 72px; margin-top: 64px; }
+  .feature { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: center; }
+  .feature:nth-child(even) .feature-img { order: 2; }
+  .feature-img {
+    aspect-ratio: 4/3; border-radius: 20px; background: var(--bg-soft); display: grid; place-items: center;
+    border: 1px solid var(--line); position: relative; overflow: hidden;
+  }
+  .feature-num { font-size: 56px; font-weight: 900; color: var(--yellow); line-height: 1; margin-bottom: 8px; }
+  .feature h3 { font-size: clamp(20px, 2.6vw, 26px); font-weight: 900; line-height: 1.5; margin-bottom: 16px; }
+  .feature p { color: var(--muted); margin-bottom: 16px; }
+  .tags { display: flex; flex-wrap: wrap; gap: 8px; }
+  .tag { background: var(--bg-soft); border: 1px solid var(--line); font-size: 12px; padding: 4px 12px; border-radius: 999px; font-weight: 500; }
+
+  /* Specs */
+  .specs { background: var(--navy); color: #fff; }
+  .specs .section-lead { color: rgba(255,255,255,.7); }
+  .spec-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 48px; }
+  .spec {
+    background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1); border-radius: var(--radius);
+    padding: 24px; text-align: center;
+  }
+  .spec .v { font-size: 28px; font-weight: 900; color: var(--yellow); line-height: 1.3; }
+  .spec .k { font-size: 13px; color: rgba(255,255,255,.7); margin-top: 6px; }
+
+  /* Plans */
+  .plan-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 48px; align-items: stretch; }
+  .plan {
+    border: 1px solid var(--line); border-radius: 18px; padding: 32px 28px; display: flex; flex-direction: column; background: #fff;
+  }
+  .plan.recommend { border: 2px solid var(--yellow); position: relative; box-shadow: 0 20px 40px rgba(13,27,42,.08); }
+  .plan.recommend::before {
+    content: "おすすめ"; position: absolute; top: -14px; left: 50%; transform: translateX(-50%);
+    background: var(--yellow); color: var(--navy); font-weight: 900; font-size: 13px; padding: 2px 16px; border-radius: 999px;
+  }
+  .plan h3 { font-size: 20px; margin-bottom: 4px; }
+  .plan .for { font-size: 13px; color: var(--muted); margin-bottom: 20px; }
+  .plan .price { font-size: 36px; font-weight: 900; line-height: 1.2; }
+  .plan .price small { font-size: 14px; font-weight: 500; color: var(--muted); }
+  .plan .price-note { font-size: 12px; color: var(--muted); margin-bottom: 20px; }
+  .plan ul { list-style: none; font-size: 14px; display: grid; gap: 8px; margin-bottom: 28px; flex: 1; }
+  .plan li::before { content: "✓"; color: var(--yellow-dark); font-weight: 900; margin-right: 8px; }
+  .plan li.off { color: #aab3be; }
+  .plan li.off::before { content: "—"; color: #c5ccd4; }
+  .plan .btn { width: 100%; }
+  .btn-outline { border: 2px solid var(--navy); color: var(--navy); background: #fff; }
+  .btn-outline:hover { background: var(--navy); color: #fff; }
+  .note { font-size: 12px; color: var(--muted); margin-top: 20px; text-align: center; }
+
+  /* Flow */
+  .flow { background: var(--bg-soft); }
+  .flow-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 48px; counter-reset: step; }
+  .step { background: #fff; border-radius: var(--radius); padding: 28px 22px; border: 1px solid var(--line); position: relative; }
+  .step::before {
+    counter-increment: step; content: "STEP " counter(step);
+    font-size: 12px; font-weight: 900; color: var(--yellow-dark); letter-spacing: .1em;
+  }
+  .step h3 { font-size: 17px; margin: 6px 0 8px; }
+  .step p { font-size: 14px; color: var(--muted); }
+
+  /* FAQ */
+  .faq-list { max-width: 800px; margin: 48px auto 0; display: grid; gap: 12px; }
+  details { border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+  summary {
+    cursor: pointer; list-style: none; padding: 20px 56px 20px 24px; font-weight: 700; position: relative;
+  }
+  summary::-webkit-details-marker { display: none; }
+  summary::before { content: "Q."; color: var(--yellow-dark); font-weight: 900; margin-right: 10px; }
+  summary::after {
+    content: "+"; position: absolute; right: 24px; top: 50%; transform: translateY(-50%);
+    font-size: 22px; color: var(--muted); transition: transform .2s;
+  }
+  details[open] summary::after { transform: translateY(-50%) rotate(45deg); }
+  details p { padding: 0 24px 20px; color: var(--muted); font-size: 15px; }
+
+  /* Contact */
+  .contact {
+    background: linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 100%); color: #fff;
+  }
+  .contact-grid { display: grid; grid-template-columns: 1fr 1.2fr; gap: 56px; align-items: start; }
+  .contact .section-lead { color: rgba(255,255,255,.75); }
+  .tel-box { margin-top: 32px; padding: 24px; border-radius: var(--radius); background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); }
+  .tel-box .tel { font-size: 30px; font-weight: 900; color: var(--yellow); letter-spacing: .03em; }
+  .tel-box small { color: rgba(255,255,255,.7); }
+  form { background: #fff; color: var(--text); border-radius: 18px; padding: 32px; display: grid; gap: 16px; }
+  .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  label { display: block; font-size: 13px; font-weight: 700; margin-bottom: 6px; }
+  label .req { color: #e53935; margin-left: 4px; font-size: 11px; }
+  input, select, textarea {
+    width: 100%; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; font: inherit; font-size: 15px;
+    background: var(--bg-soft);
+  }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--yellow); border-color: transparent; background: #fff; }
+  textarea { min-height: 110px; resize: vertical; }
+  .form-msg { display: none; background: #e7f6ec; color: #1f7a3f; padding: 12px 16px; border-radius: 10px; font-size: 14px; font-weight: 500; }
+
+  footer { background: #08121c; color: rgba(255,255,255,.6); padding: 32px 0; font-size: 13px; }
+  .footer-inner { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+
+  /* Mobile fixed CTA */
+  .sp-cta { display: none; }
+
+  @media (max-width: 900px) {
+    nav { display: none; }
+    section { padding: 72px 0; }
+    .hero { padding: 56px 0 88px; }
+    .hero-grid, .feature, .contact-grid { grid-template-columns: 1fr; }
+    .feature:nth-child(even) .feature-img { order: 0; }
+    .feature { gap: 28px; }
+    .problem-grid, .plan-grid { grid-template-columns: 1fr; }
+    .spec-grid, .flow-steps { grid-template-columns: repeat(2, 1fr); }
+    .fc-1 { left: 8px; bottom: -24px; }
+    .fc-2 { right: 8px; top: -20px; }
+    .sp-cta {
+      display: block; position: fixed; left: 0; right: 0; bottom: 0; z-index: 60; padding: 10px 16px;
+      background: rgba(13,27,42,.96);
+    }
+    .sp-cta .btn { width: 100%; padding: 14px; }
+    footer { padding-bottom: 96px; }
+  }
+  @media (max-width: 520px) {
+    .header-cta { display: none; }
+    .row-2, .spec-grid, .flow-steps { grid-template-columns: 1fr; }
+    form { padding: 24px 20px; }
+    .float-card { font-size: 12px; padding: 10px 12px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="container header-inner">
+    <a href="#" class="logo">
+      <span class="logo-mark">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/></svg>
+      </span>
+      FLEET EYE
+    </a>
+    <nav>
+      <ul>
+        <li><a href="#features">特長</a></li>
+        <li><a href="#specs">仕様</a></li>
+        <li><a href="#plans">料金</a></li>
+        <li><a href="#flow">導入の流れ</a></li>
+        <li><a href="#faq">よくある質問</a></li>
+      </ul>
+    </nav>
+    <a href="#contact" class="btn btn-primary header-cta">資料請求・お見積り</a>
+  </div>
+</header>
+
+<!-- Hero -->
+<section class="hero">
+  <div class="container hero-grid">
+    <div>
+      <span class="hero-badge">タクシー・ハイヤー事業者さま専用</span>
+      <h1>乗務員と乗客を、<br><em>3つの目</em>で守る。</h1>
+      <p>前方・車内・後方を同時録画する通信型ドライブレコーダー。<br>事故やトラブルの映像を、営業所からすぐに確認できます。</p>
+      <div class="hero-actions">
+        <a href="#contact" class="btn btn-primary">無料で資料請求する</a>
+        <a href="#features" class="btn btn-ghost">特長を見る</a>
+      </div>
+      <div class="hero-points">
+        <span>1台から導入OK</span>
+        <span>取付工事込み</span>
+        <span>デモ機の貸出あり</span>
+      </div>
+    </div>
+    <div class="hero-visual">
+      <div class="device">
+        <div class="screens">
+          <div class="screen front"><span class="screen-tag">FRONT</span><span class="rec">REC</span></div>
+          <div class="screen cabin"><span class="screen-tag">CABIN</span></div>
+          <div class="screen rear"><span class="screen-tag">REAR</span></div>
+        </div>
+        <div class="device-bar"><span>車両 No.1024 ・ 実車中</span><span>GPS ● LTE ●</span></div>
+      </div>
+      <div class="float-card fc-1">
+        <span class="ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg></span>
+        <div><strong>急ブレーキを検知</strong><small>映像を自動でクラウドへ送信</small></div>
+      </div>
+      <div class="float-card fc-2">
+        <span class="ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6 9 17l-5-5"/></svg></span>
+        <div><strong>全車両 稼働中</strong><small>営業所でリアルタイム把握</small></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Problems -->
+<section class="problems">
+  <div class="container center">
+    <span class="section-label">PROBLEMS</span>
+    <h2 class="section-title">こんなお悩み、ありませんか？</h2>
+    <div class="problem-grid">
+      <div class="problem">
+        <div class="q">😠</div>
+        <h3>乗客とのトラブルが心配</h3>
+        <p>料金をめぐる口論や暴言・暴力。「言った・言わない」になると、乗務員を守りきれない。</p>
+      </div>
+      <div class="problem">
+        <div class="q">🚗</div>
+        <h3>事故の状況がわからない</h3>
+        <p>事故発生時、営業所に詳しい状況が届くまで時間がかかり、初動対応が遅れてしまう。</p>
+      </div>
+      <div class="problem">
+        <div class="q">📼</div>
+        <h3>映像の回収・確認が手間</h3>
+        <p>SDカードを抜いて事務所のPCで再生…。台数が増えるほど管理者の負担が大きくなる。</p>
+      </div>
+    </div>
+    <p class="arrow-down"><span>FLEET EYE なら、まとめて解決できます。</span></p>
+  </div>
+</section>
+
+<!-- Features -->
+<section id="features">
+  <div class="container">
+    <div class="center">
+      <span class="section-label">FEATURES</span>
+      <h2 class="section-title">タクシー・ハイヤーのために設計した<br>4つの特長</h2>
+    </div>
+    <div class="feature-list">
+      <div class="feature">
+        <div class="feature-img">
+          <svg width="70%" viewBox="0 0 300 180" fill="none">
+            <rect x="40" y="50" width="220" height="80" rx="30" fill="#0d1b2a"/>
+            <rect x="85" y="30" width="130" height="45" rx="14" fill="#1b2b40"/>
+            <rect x="128" y="18" width="44" height="14" rx="3" fill="#f5c518"/>
+            <circle cx="90" cy="132" r="18" fill="#333"/><circle cx="210" cy="132" r="18" fill="#333"/>
+            <path d="M260 85 L300 60 L300 110 Z" fill="#f5c518" opacity=".5"/>
+            <path d="M150 52 L120 90 L180 90 Z" fill="#f5c518" opacity=".4"/>
+            <path d="M40 85 L0 60 L0 110 Z" fill="#f5c518" opacity=".5"/>
+            <circle cx="255" cy="85" r="6" fill="#f5c518"/><circle cx="150" cy="56" r="6" fill="#f5c518"/><circle cx="45" cy="85" r="6" fill="#f5c518"/>
+          </svg>
+        </div>
+        <div>
+          <div class="feature-num">01</div>
+          <h3>前方・車内・後方の<br>3カメラで死角なく記録</h3>
+          <p>前方の事故だけでなく、車内の乗客とのやりとりや後方からの追突・あおり運転まで記録。赤外線LED搭載で、夜間の暗い車内もくっきり映します。</p>
+          <div class="tags"><span class="tag">フルHD録画</span><span class="tag">赤外線暗視</span><span class="tag">音声録音</span></div>
+        </div>
+      </div>
+
+      <div class="feature">
+        <div class="feature-img">
+          <svg width="60%" viewBox="0 0 200 200" fill="none">
+            <circle cx="100" cy="100" r="80" fill="#fff" stroke="#e1e6ec" stroke-width="2"/>
+            <path d="M100 40 L150 60 V100 C150 130 128 152 100 162 C72 152 50 130 50 100 V60 Z" fill="#0d1b2a"/>
+            <path d="M78 102 L94 118 L124 86" stroke="#f5c518" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div>
+          <div class="feature-num">02</div>
+          <h3>乗客トラブルから<br>乗務員を守る</h3>
+          <p>車内カメラの存在そのものが迷惑行為の抑止に。万が一の際は運転席の「緊急ボタン」を押すだけで、前後の映像と位置情報を営業所へ即時通知します。</p>
+          <div class="tags"><span class="tag">緊急通報ボタン</span><span class="tag">録画中ステッカー付属</span><span class="tag">警察への映像提供</span></div>
+        </div>
+      </div>
+
+      <div class="feature">
+        <div class="feature-img">
+          <svg width="75%" viewBox="0 0 300 200" fill="none">
+            <rect x="20" y="20" width="260" height="160" rx="12" fill="#fff" stroke="#e1e6ec" stroke-width="2"/>
+            <rect x="20" y="20" width="260" height="28" rx="12" fill="#0d1b2a"/>
+            <rect x="36" y="64" width="140" height="100" rx="6" fill="#d8e3ee"/>
+            <path d="M60 140 L90 110 L110 125 L140 90 L160 108" stroke="#0d1b2a" stroke-width="3" fill="none"/>
+            <circle cx="140" cy="90" r="6" fill="#f5c518"/>
+            <rect x="190" y="64" width="74" height="18" rx="4" fill="#f4f6f9"/>
+            <rect x="190" y="90" width="74" height="18" rx="4" fill="#fff3c4"/>
+            <rect x="190" y="116" width="74" height="18" rx="4" fill="#f4f6f9"/>
+            <rect x="190" y="142" width="74" height="18" rx="4" fill="#f4f6f9"/>
+          </svg>
+        </div>
+        <div>
+          <div class="feature-num">03</div>
+          <h3>映像はクラウドへ。<br>営業所からすぐ確認</h3>
+          <p>LTE通信で衝撃検知時の映像を自動アップロード。SDカードの回収は不要です。管理画面から車両の現在地や走行ルート、イベント映像をブラウザで確認できます。</p>
+          <div class="tags"><span class="tag">リアルタイム位置表示</span><span class="tag">遠隔で映像取得</span><span class="tag">スマホ対応</span></div>
+        </div>
+      </div>
+
+      <div class="feature">
+        <div class="feature-img">
+          <svg width="65%" viewBox="0 0 240 200" fill="none">
+            <rect x="30" y="140" width="34" height="40" rx="4" fill="#d8e3ee"/>
+            <rect x="80" y="110" width="34" height="70" rx="4" fill="#b8c9dc"/>
+            <rect x="130" y="80" width="34" height="100" rx="4" fill="#1b2b40"/>
+            <rect x="180" y="40" width="34" height="140" rx="4" fill="#f5c518"/>
+            <path d="M40 120 L95 92 L145 62 L200 24" stroke="#0d1b2a" stroke-width="3" stroke-dasharray="6 6"/>
+          </svg>
+        </div>
+        <div>
+          <div class="feature-num">04</div>
+          <h3>安全運転指導と<br>事故削減をサポート</h3>
+          <p>急加速・急ブレーキ・速度超過などを自動で検知し、乗務員ごとの運転傾向をレポート化。日々の点呼や安全教育にそのまま活用できます。</p>
+          <div class="tags"><span class="tag">運転診断レポート</span><span class="tag">ヒヤリハット集</span><span class="tag">CSV出力</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Specs -->
+<section id="specs" class="specs">
+  <div class="container center">
+    <span class="section-label">SPECIFICATIONS</span>
+    <h2 class="section-title">主な仕様</h2>
+    <p class="section-lead">業務車両の長時間稼働を前提に、耐久性と使いやすさを重視しました。</p>
+    <div class="spec-grid">
+      <div class="spec"><div class="v">3ch</div><div class="k">前方・車内・後方カメラ</div></div>
+      <div class="spec"><div class="v">Full HD</div><div class="k">前方カメラ解像度</div></div>
+      <div class="spec"><div class="v">LTE</div><div class="k">通信方式（通信費込み）</div></div>
+      <div class="spec"><div class="v">24h</div><div class="k">駐車監視モード</div></div>
+    </div>
+    <p class="note" style="color:rgba(255,255,255,.5)">※ 掲載の仕様はサンプルです。実際の製品仕様に差し替えてください。</p>
+  </div>
+</section>
+
+<!-- Plans -->
+<section id="plans">
+  <div class="container center">
+    <span class="section-label">PRICE</span>
+    <h2 class="section-title">料金プラン</h2>
+    <p class="section-lead">車両台数や運用に合わせてお選びいただけます。</p>
+    <div class="plan-grid">
+      <div class="plan">
+        <h3>ライト</h3>
+        <p class="for">個人タクシー・小規模事業者向け</p>
+        <div class="price">¥2,980<small> /台・月</small></div>
+        <p class="price-note">税抜・別途初期費用</p>
+        <ul>
+          <li>前方＋車内 2カメラ</li>
+          <li>衝撃検知映像のクラウド保存</li>
+          <li>位置情報表示</li>
+          <li class="off">緊急通報ボタン</li>
+          <li class="off">運転診断レポート</li>
+        </ul>
+        <a href="#contact" class="btn btn-outline">相談する</a>
+      </div>
+      <div class="plan recommend">
+        <h3>スタンダード</h3>
+        <p class="for">法人タクシー事業者向け</p>
+        <div class="price">¥3,980<small> /台・月</small></div>
+        <p class="price-note">税抜・別途初期費用</p>
+        <ul>
+          <li>前方・車内・後方 3カメラ</li>
+          <li>衝撃検知映像のクラウド保存</li>
+          <li>リアルタイム位置表示</li>
+          <li>緊急通報ボタン</li>
+          <li>運転診断レポート</li>
+        </ul>
+        <a href="#contact" class="btn btn-primary">見積りを依頼する</a>
+      </div>
+      <div class="plan">
+        <h3>ハイヤー</h3>
+        <p class="for">ハイヤー・VIP送迎向け</p>
+        <div class="price">個別見積り</div>
+        <p class="price-note">車両・運用に合わせてご提案</p>
+        <ul>
+          <li>スタンダードの全機能</li>
+          <li>車内カメラの映像非公開設定</li>
+          <li>目立たない小型カメラ</li>
+          <li>配車・運行システム連携</li>
+          <li>専任サポート担当</li>
+        </ul>
+        <a href="#contact" class="btn btn-outline">相談する</a>
+      </div>
+    </div>
+    <p class="note">※ 価格はサンプルです。10台以上のご導入はボリュームディスカウントをご用意しています。</p>
+  </div>
+</section>
+
+<!-- Flow -->
+<section id="flow" class="flow">
+  <div class="container center">
+    <span class="section-label">FLOW</span>
+    <h2 class="section-title">導入の流れ</h2>
+    <p class="section-lead">お問い合わせから最短2週間で運用を開始できます。</p>
+    <div class="flow-steps" style="text-align:left">
+      <div class="step"><h3>お問い合わせ</h3><p>フォームまたはお電話でご連絡ください。</p></div>
+      <div class="step"><h3>ヒアリング・お見積り</h3><p>台数や車種、運用方法を伺いご提案します。</p></div>
+      <div class="step"><h3>取付工事</h3><p>営業所に伺い、稼働の少ない時間帯に施工します。</p></div>
+      <div class="step"><h3>運用開始</h3><p>管理画面の使い方をご説明。導入後もサポートします。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section id="faq">
+  <div class="container">
+    <div class="center">
+      <span class="section-label">FAQ</span>
+      <h2 class="section-title">よくある質問</h2>
+    </div>
+    <div class="faq-list">
+      <details>
+        <summary>1台からでも導入できますか？</summary>
+        <p>はい、個人タクシーの方など1台からご導入いただけます。</p>
+      </details>
+      <details>
+        <summary>今使っている配車システムやメーターと連携できますか？</summary>
+        <p>主要な配車システム・運行管理システムとの連携実績があります。対応状況は個別にお問い合わせください。</p>
+      </details>
+      <details>
+        <summary>車内の録画について、乗客への告知は必要ですか？</summary>
+        <p>プライバシーへの配慮として、車内に録画中である旨を掲示することを推奨しています。告知用ステッカーを無料でお付けしています。</p>
+      </details>
+      <details>
+        <summary>取付工事にはどのくらい時間がかかりますか？</summary>
+        <p>1台あたり約1〜2時間が目安です。営業所での一括施工にも対応しています。</p>
+      </details>
+      <details>
+        <summary>導入前に試すことはできますか？</summary>
+        <p>デモ機の無料貸出を行っています。実際の車両で映像の画質や管理画面の使い勝手をお試しください。</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- Contact -->
+<section id="contact" class="contact">
+  <div class="container contact-grid">
+    <div>
+      <span class="section-label">CONTACT</span>
+      <h2 class="section-title">資料請求・お見積り・<br>デモ機貸出のご相談</h2>
+      <p class="section-lead">フォームに必要事項をご入力ください。担当者より1営業日以内にご連絡いたします。</p>
+      <div class="tel-box">
+        <small>お電話でのお問い合わせ</small>
+        <div class="tel">0120-000-000</div>
+        <small>受付時間 平日 9:00〜18:00</small>
+      </div>
+    </div>
+    <form id="contact-form">
+      <div class="row-2">
+        <div><label for="company">会社名<span class="req">必須</span></label><input id="company" required placeholder="○○交通株式会社"></div>
+        <div><label for="name">ご担当者名<span class="req">必須</span></label><input id="name" required placeholder="山田 太郎"></div>
+      </div>
+      <div class="row-2">
+        <div><label for="email">メールアドレス<span class="req">必須</span></label><input id="email" type="email" required placeholder="example@company.jp"></div>
+        <div><label for="tel">電話番号</label><input id="tel" type="tel" placeholder="03-0000-0000"></div>
+      </div>
+      <div class="row-2">
+        <div>
+          <label for="type">業種</label>
+          <select id="type"><option>法人タクシー</option><option>個人タクシー</option><option>ハイヤー</option><option>その他</option></select>
+        </div>
+        <div>
+          <label for="units">導入予定台数</label>
+          <select id="units"><option>1〜9台</option><option>10〜49台</option><option>50〜99台</option><option>100台以上</option></select>
+        </div>
+      </div>
+      <div>
+        <label for="message">ご要望・ご質問</label>
+        <textarea id="message" placeholder="デモ機の貸出を希望、など"></textarea>
+      </div>
+      <button type="submit" class="btn btn-primary">送信する</button>
+      <p class="form-msg" id="form-msg">送信ありがとうございました。担当者よりご連絡いたします。（デモのため実際には送信されません）</p>
+    </form>
+  </div>
+</section>
+
+<footer>
+  <div class="container footer-inner">
+    <span>© 2026 FLEET EYE（サンプル）</span>
+    <span>プライバシーポリシー ／ 会社概要</span>
+  </div>
+</footer>
+
+<div class="sp-cta"><a href="#contact" class="btn btn-primary">無料で資料請求する</a></div>
+
+<script>
+  document.getElementById('contact-form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    document.getElementById('form-msg').style.display = 'block';
+    this.querySelector('button[type=submit]').disabled = true;
+  });
+</script>
+</body>
+</html>
