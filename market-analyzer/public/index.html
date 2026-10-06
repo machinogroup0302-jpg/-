@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0e1116">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="相場分析">
+  <meta name="robots" content="noindex, nofollow">
+  <title>相場分析ノート</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icon-180.png">
+  <link rel="stylesheet" href="/css/style.css">
+  <script src="/vendor/lightweight-charts.js"></script>
+</head>
+<body>
+  <div id="login" class="login" hidden>
+    <form class="card stack" id="login-form">
+      <h2>相場分析ノート</h2>
+      <p class="muted small">自分専用のサイトです。パスワードを入れてください。</p>
+      <input class="input" type="password" id="login-pass" autocomplete="current-password" placeholder="パスワード" required>
+      <button class="btn primary block" type="submit">ログイン</button>
+      <p class="error" id="login-err"></p>
+    </form>
+  </div>
+
+  <div id="app" hidden>
+    <header class="topbar">
+      <h1 id="title">チャート分析</h1>
+      <button class="icon-btn" id="open-settings" aria-label="設定">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </header>
+
+    <main>
+      <!-- ===== チャート ===== -->
+      <section class="view" id="view-chart">
+        <div class="card">
+          <form class="row" id="symbol-form">
+            <input class="input grow" id="symbol-input" list="symbol-list" placeholder="例: USDJPY / 7203 / ^N225" autocomplete="off" autocapitalize="characters">
+            <button class="btn primary" type="submit">表示</button>
+          </form>
+          <datalist id="symbol-list"></datalist>
+          <div class="chips" id="fav-chips" style="margin-top:8px"></div>
+          <div class="seg" id="tf-seg" style="margin-top:8px"></div>
+          <div class="quote">
+            <span class="qname" id="q-name">—</span>
+            <span class="qprice" id="q-price">—</span>
+            <span id="q-change" class="num"></span>
+          </div>
+          <div class="chart-box" id="chart-main"><div class="chart-msg" id="chart-msg">読み込み中…</div></div>
+          <div class="legend" id="legend"></div>
+          <div class="chips" id="layer-chips" style="margin-top:8px"></div>
+          <div class="seg" id="sub-seg" style="margin-top:8px"></div>
+          <div class="sub-chart" id="chart-sub"></div>
+        </div>
+
+        <div class="two-col">
+          <div class="card">
+            <h2>テクニカル分析<span class="sub" id="tech-tf"></span></h2>
+            <div id="tech-summary"></div>
+          </div>
+          <div class="card">
+            <h2>抵抗線・支持線<span class="sub">自動検出</span></h2>
+            <div id="levels-list"></div>
+          </div>
+        </div>
+        <div class="card" style="margin-top:12px">
+          <h2>予想チャート<span class="sub">シミュレーション</span></h2>
+          <div id="forecast-box"></div>
+        </div>
+        <div class="card">
+          <h2>ファンダメンタルズ・ニュース</h2>
+          <p class="small muted">金利・経済指標・決算やSNSの話題は「ニュース」タブで確認できます。</p>
+          <button class="btn block" id="goto-news">この銘柄のニュースを見る</button>
+        </div>
+      </section>
+
+      <!-- ===== 候補リスト ===== -->
+      <section class="view" id="view-screener" hidden>
+        <div class="card">
+          <h2>可能性のある銘柄・通貨ペア</h2>
+          <p class="small muted">登録した銘柄を日足でまとめてチェックし、テクニカルの点数が高い順に並べます。</p>
+          <div class="seg" id="scr-filter" style="margin:8px 0"></div>
+          <button class="btn primary block" id="scr-run">チェック開始</button>
+          <p class="small muted" id="scr-status" style="margin:8px 0 0"></p>
+        </div>
+        <div class="card"><ul class="list" id="scr-list"><li class="empty">「チェック開始」を押してください</li></ul></div>
+        <div class="card">
+          <h2>チェックする銘柄</h2>
+          <textarea class="input" id="watchlist" rows="5"></textarea>
+          <p class="small muted">1行に1つ。例: USDJPY、EURJPY、7203（トヨタ）、^N225（日経平均）</p>
+          <button class="btn block" id="watch-save">保存</button>
+        </div>
+      </section>
+
+      <!-- ===== ニュース ===== -->
+      <section class="view" id="view-news" hidden>
+        <div class="card">
+          <form class="row" id="news-form">
+            <input class="input grow" id="news-q" placeholder="例: ドル円 / トヨタ">
+            <button class="btn primary" type="submit">検索</button>
+          </form>
+          <div id="news-summary" style="margin-top:10px"></div>
+        </div>
+        <div class="card">
+          <h2>AIで詳しく調べる<span class="sub">Web・SNSを検索</span></h2>
+          <p class="small muted">ネットやSNSの情報をAIが集めて、裏付けのない噂やあおり記事を除外し、ファンダメンタルズと今後の見通しをまとめます（1回あたり数十円程度の利用料がかかります）。</p>
+          <button class="btn primary block" id="ai-research">「<span id="ai-research-name">—</span>」をAIで調べる</button>
+          <div id="ai-research-out"></div>
+        </div>
+        <div class="card">
+          <h2>ニュース一覧<span class="sub">信頼度つき</span></h2>
+          <label class="row small" style="margin-bottom:6px"><input type="checkbox" id="show-excluded"> 除外した情報も表示する</label>
+          <ul class="list" id="news-list"><li class="empty">検索してください</li></ul>
+        </div>
+      </section>
+
+      <!-- ===== 取引分析 ===== -->
+      <section class="view" id="view-trades" hidden>
+        <div class="card stack">
+          <h2>取引履歴を読み込む</h2>
+          <label class="drop">
+            <strong>CSVファイルを選ぶ</strong>
+            iSPEED（楽天証券）・LION FX（ヒロセ通商）の取引履歴CSV
+            <input type="file" id="csv-file" accept=".csv,.txt,text/csv" hidden>
+          </label>
+          <label class="drop">
+            <strong>スクリーンショットから読み取る（AI）</strong>
+            取引履歴画面の画像を選んでください（複数可）
+            <input type="file" id="trade-img" accept="image/*" multiple hidden>
+          </label>
+          <details class="small muted">
+            <summary>CSVの出し方</summary>
+            <p>楽天証券: パソコン版サイトの「口座管理」→「取引履歴」から CSV で保存できます。<br>
+            ヒロセ通商（LION FX）: 会員ページやパソコン版の「取引履歴」「約定照会」から CSV で保存できます。<br>
+            メニュー名は変わることがあります。見つからない場合はスクリーンショットでも分析できます。<br>
+            ※ID・パスワードはこのサイトに入れる必要はありません。</p>
+          </details>
+          <div id="map-box"></div>
+          <p class="small muted" id="trade-status"></p>
+        </div>
+        <div id="trade-result"></div>
+      </section>
+
+      <!-- ===== 画像分析 ===== -->
+      <section class="view" id="view-image" hidden>
+        <div class="card stack">
+          <h2>チャート画像に線を引く（AI）</h2>
+          <p class="small muted">iSPEED や LION FX のチャートのスクリーンショットを入れると、AIが分析してサポート・レジスタンス・トレンドラインを書き込みます。</p>
+          <label class="drop">
+            <strong>画像を選ぶ</strong>
+            写真アプリからスクリーンショットを選択
+            <input type="file" id="chart-img" accept="image/*" hidden>
+          </label>
+          <input class="input" id="img-memo" placeholder="メモ（任意）例: ドル円の1時間足です">
+          <button class="btn primary block" id="img-run" disabled>分析して線を引く</button>
+          <p class="notice">きれいに撮るコツ: 右側の価格の目盛りがはっきり写るように撮る／銘柄名と時間足が写るように撮る／インジケーターは少なめにする</p>
+        </div>
+        <div id="img-result"></div>
+      </section>
+    </main>
+
+    <nav class="tabbar" id="tabbar" role="tablist"></nav>
+  </div>
+
+  <dialog id="settings">
+    <div class="dlg-head"><h2>設定</h2><button class="icon-btn" id="close-settings" aria-label="閉じる">✕</button></div>
+    <div class="dlg-body">
+      <div class="field">
+        <label for="api-key">AIのAPIキー（Anthropic）</label>
+        <p class="small muted" id="api-status"></p>
+        <input class="input" type="password" id="api-key" placeholder="sk-ant-..." autocomplete="off">
+        <p class="small muted">このスマホのブラウザだけに保存されます。画像分析・AIニュース分析・取引アドバイスに使います。</p>
+      </div>
+      <div class="field">
+        <label>お気に入り（チャート画面の上に並ぶボタン）</label>
+        <textarea class="input" id="fav-edit" rows="4"></textarea>
+        <p class="small muted">1行に「コード,表示名」。例: USDJPY,ドル円</p>
+      </div>
+      <div class="field">
+        <label>ローソク足の色</label>
+        <div class="seg" id="candle-seg"></div>
+      </div>
+      <div class="field">
+        <label>画面の明るさ</label>
+        <div class="seg" id="theme-seg"></div>
+      </div>
+      <button class="btn primary block" id="save-settings">保存する</button>
+      <hr style="border:0;border-top:1px solid var(--border);margin:18px 0">
+      <button class="btn danger block" id="clear-data">保存したデータをすべて消す</button>
+      <p class="small muted" style="margin-top:14px">このサイトの分析や予想は参考情報です。将来の値動きを保証するものではありません。最終的な売買の判断はご自身で行ってください。</p>
+    </div>
+  </dialog>
+
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>
