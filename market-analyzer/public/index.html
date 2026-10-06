@@ -29,7 +29,12 @@
 
   <div id="app" hidden>
     <header class="topbar">
+      <div class="seg mode-seg" id="mode-seg" role="tablist" aria-label="為替と株の切り替え">
+        <button type="button" data-mode="fx" aria-pressed="true">為替</button>
+        <button type="button" data-mode="stock" aria-pressed="false">株</button>
+      </div>
       <h1 id="title">チャート分析</h1>
+      <button class="icon-btn" id="open-glossary" aria-label="用語集"><b style="font-size:17px">?</b></button>
       <button class="icon-btn" id="open-settings" aria-label="設定">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
       </button>
@@ -40,7 +45,7 @@
       <section class="view" id="view-chart">
         <div class="card">
           <form class="row" id="symbol-form">
-            <input class="input grow" id="symbol-input" list="symbol-list" placeholder="例: USDJPY / 7203 / ^N225" autocomplete="off" autocapitalize="characters">
+            <input class="input grow" id="symbol-input" list="symbol-list" placeholder="例: USDJPY" autocomplete="off" autocapitalize="characters">
             <button class="btn primary" type="submit">表示</button>
           </form>
           <datalist id="symbol-list"></datalist>
@@ -56,33 +61,39 @@
           <div class="chips" id="layer-chips" style="margin-top:8px"></div>
           <div class="seg" id="sub-seg" style="margin-top:8px"></div>
           <div class="sub-chart" id="chart-sub"></div>
+          <p class="small muted" style="margin:8px 0 0">言葉の意味が分からないときは、右上の <b>?</b> か、各項目の <span class="q-demo">?</span> を押してください。</p>
+        </div>
+
+        <div class="card only-stock">
+          <h2><button type="button" class="term" data-term="stop">ストップ高・ストップ安<span class="q" aria-hidden="true">?</span></button></h2>
+          <div id="stop-box"></div>
         </div>
 
         <div class="card">
-          <h2>AI予想（理由つき）<span class="sub">為替介入・イベント考慮</span></h2>
-          <p class="small muted">AIが今後1か月の重要な予定（金融政策・経済指標・決算など）や為替介入の可能性を調べ、値動きの予想と「なぜ上がる／下がるのか」をチャートに書き込みます（1回あたり数十円程度）。</p>
+          <h2><button type="button" class="term" data-term="aiForecast">AI予想（理由つき）<span class="q" aria-hidden="true">?</span></button><span class="sub only-fx">為替介入・イベント考慮</span><span class="sub only-stock">決算・イベント考慮</span></h2>
+          <p class="small muted">AIが今後1か月の大事な予定（<span class="only-fx">金利の発表・経済指標・<button type="button" class="term" data-term="intervention">為替介入<span class="q" aria-hidden="true">?</span></button>の可能性など</span><span class="only-stock">決算発表・業界のニュースなど</span>）を調べ、値動きの予想と「なぜ上がる／下がるのか」をチャートに書き込みます。AIのキーが必要です（1回あたり数十円程度）。</p>
           <button class="btn primary block" id="scenario-run">「<span id="scenario-name">—</span>」の予想を作る</button>
           <div id="scenario-box"></div>
         </div>
 
         <div class="two-col">
           <div class="card">
-            <h2>テクニカル分析<span class="sub" id="tech-tf"></span></h2>
+            <h2><button type="button" class="term" data-term="technical">テクニカル分析<span class="q" aria-hidden="true">?</span></button><span class="sub" id="tech-tf"></span></h2>
             <div id="tech-summary"></div>
           </div>
           <div class="card">
-            <h2>抵抗線・支持線<span class="sub">自動検出</span></h2>
+            <h2>上値の壁と下値の支え<span class="sub">自動で検出</span></h2>
             <div id="levels-list"></div>
           </div>
         </div>
         <div class="card" style="margin-top:12px">
-          <h2>予想チャート<span class="sub">シミュレーション</span></h2>
+          <h2><button type="button" class="term" data-term="forecast">予想チャート<span class="q" aria-hidden="true">?</span></button><span class="sub">計算による予想</span></h2>
           <div id="forecast-box"></div>
         </div>
-        <div class="card">
-          <h2>注文・約定分析<span class="sub">株</span></h2>
+        <div class="card only-stock">
+          <h2>注文・約定分析<span class="sub">売買の量から見る</span></h2>
           <div id="orderflow-box"></div>
-          <h3>板・歩み値から分析（AI）</h3>
+          <h3><button type="button" class="term" data-term="board">板<span class="q" aria-hidden="true">?</span></button>・<button type="button" class="term" data-term="ticks">歩み値<span class="q" aria-hidden="true">?</span></button>から分析（AI）</h3>
           <label class="drop" id="book-label">
             <strong>板・歩み値のスクリーンショットを選ぶ</strong>
             iSPEED の板や歩み値（約定履歴）の画面
@@ -91,27 +102,62 @@
           <div id="book-result"></div>
         </div>
         <div class="card">
-          <h2>ファンダメンタルズ・ニュース</h2>
-          <p class="small muted">金利・経済指標・決算やSNSの話題は「ニュース」タブで確認できます。</p>
+          <h2><button type="button" class="term" data-term="fundamental">ファンダメンタルズ<span class="q" aria-hidden="true">?</span></button>・ニュース</h2>
+          <p class="small muted"><span class="only-fx">金利・経済指標・要人の発言</span><span class="only-stock">決算・業績・業界の動き</span>やSNSの話題は「ニュース」タブで確認できます。</p>
           <button class="btn block" id="goto-news">この銘柄のニュースを見る</button>
         </div>
       </section>
 
       <!-- ===== 候補リスト ===== -->
       <section class="view" id="view-screener" hidden>
-        <div class="card">
-          <h2>可能性のある銘柄・通貨ペア</h2>
-          <p class="small muted">登録した銘柄を日足でまとめてチェックし、テクニカルの点数が高い順に並べます。</p>
-          <div class="seg" id="scr-filter" style="margin:8px 0"></div>
-          <button class="btn primary block" id="scr-run">チェック開始</button>
-          <p class="small muted" id="scr-status" style="margin:8px 0 0"></p>
+        <!-- 為替 -->
+        <div class="only-fx">
+          <div class="card">
+            <h2>可能性のある通貨ペア</h2>
+            <p class="small muted">登録した通貨ペアを日足でまとめてチェックし、上がりそう・下がりそうなサインが強い順に並べます。</p>
+            <div class="seg" id="scr-filter" style="margin:8px 0"></div>
+            <button class="btn primary block" id="scr-run">チェック開始</button>
+            <p class="small muted" id="scr-status" style="margin:8px 0 0"></p>
+          </div>
+          <div class="card"><ul class="list" id="scr-list"><li class="empty">「チェック開始」を押してください</li></ul></div>
+          <div class="card">
+            <h2>チェックする通貨ペア</h2>
+            <textarea class="input" id="watchlist" rows="5"></textarea>
+            <p class="small muted">1行に1つ。例: USDJPY、EURJPY、GBPJPY</p>
+            <button class="btn block" id="watch-save">保存</button>
+          </div>
         </div>
-        <div class="card"><ul class="list" id="scr-list"><li class="empty">「チェック開始」を押してください</li></ul></div>
-        <div class="card">
-          <h2>チェックする銘柄</h2>
-          <textarea class="input" id="watchlist" rows="5"></textarea>
-          <p class="small muted">1行に1つ。例: USDJPY、EURJPY、7203（トヨタ）、^N225（日経平均）</p>
-          <button class="btn block" id="watch-save">保存</button>
+
+        <!-- 株 -->
+        <div class="only-stock">
+          <div class="card">
+            <h2>全上場企業から探す</h2>
+            <p class="small muted" id="stk-meta">東証の上場企業の一覧を読み込み中…</p>
+            <h3><button type="button" class="term" data-term="market">市場<span class="q" aria-hidden="true">?</span></button></h3>
+            <div class="chips" id="stk-markets"></div>
+            <h3>業種・値段</h3>
+            <div class="row" style="flex-wrap:wrap">
+              <select class="input grow" id="stk-sector" style="min-width:140px"><option value="">すべての業種</option></select>
+              <select class="input grow" id="stk-price" style="min-width:140px">
+                <option value="">すべての値段</option>
+                <option value="0-1000">1,000円以下</option>
+                <option value="1000-3000">1,000〜3,000円</option>
+                <option value="3000-10000">3,000〜10,000円</option>
+                <option value="10000-0">10,000円以上</option>
+              </select>
+            </div>
+            <button class="btn primary block" id="stk-run" style="margin-top:10px">全銘柄をチェックする</button>
+            <div class="progress" id="stk-progress" hidden><span></span></div>
+            <p class="small muted" id="stk-status" style="margin:8px 0 0"></p>
+          </div>
+          <div class="card">
+            <div class="chips" id="stk-views"></div>
+            <ul class="list" id="stk-list" style="margin-top:8px"><li class="empty">「全銘柄をチェックする」を押してください（1〜5分ほどかかります）</li></ul>
+          </div>
+          <div class="card">
+            <h2><button type="button" class="term" data-term="newListing">新しく上場した会社<span class="q" aria-hidden="true">?</span></button><span class="sub">自動で更新</span></h2>
+            <ul class="list" id="stk-new"><li class="empty">読み込み中…</li></ul>
+          </div>
         </div>
       </section>
 
@@ -119,7 +165,7 @@
       <section class="view" id="view-news" hidden>
         <div class="card">
           <form class="row" id="news-form">
-            <input class="input grow" id="news-q" placeholder="例: ドル円 / トヨタ">
+            <input class="input grow" id="news-q" placeholder="例: ドル円">
             <button class="btn primary" type="submit">検索</button>
           </form>
           <div id="news-summary" style="margin-top:10px"></div>
@@ -131,7 +177,7 @@
           <div id="ai-research-out"></div>
         </div>
         <div class="card">
-          <h2>ニュース一覧<span class="sub">信頼度つき</span></h2>
+          <h2>ニュース一覧<span class="sub"><button type="button" class="term" data-term="credibility">信頼度<span class="q" aria-hidden="true">?</span></button>つき</span></h2>
           <label class="row small" style="margin-bottom:6px"><input type="checkbox" id="show-excluded"> 除外した情報も表示する</label>
           <ul class="list" id="news-list"><li class="empty">検索してください</li></ul>
         </div>
@@ -140,10 +186,11 @@
       <!-- ===== 取引分析 ===== -->
       <section class="view" id="view-trades" hidden>
         <div class="card stack">
-          <h2>取引履歴を読み込む</h2>
+          <h2>取引履歴を読み込む（<span class="only-fx">為替</span><span class="only-stock">株</span>）</h2>
+          <p class="small muted">為替と株の取引は別々に保存・分析されます。上の切り替えで<span class="only-fx">「株」にすると株の取引</span><span class="only-stock">「為替」にすると為替の取引</span>を見られます。</p>
           <label class="drop">
             <strong>CSVファイルを選ぶ</strong>
-            iSPEED（楽天証券）・LION FX（ヒロセ通商）の取引履歴CSV
+            <span class="only-fx">LION FX（ヒロセ通商）などの取引履歴CSV</span><span class="only-stock">iSPEED（楽天証券）などの取引履歴CSV</span>
             <input type="file" id="csv-file" accept=".csv,.txt,text/csv" hidden>
           </label>
           <label class="drop">
@@ -168,7 +215,7 @@
       <section class="view" id="view-image" hidden>
         <div class="card stack">
           <h2>チャート画像に線を引く（AI）</h2>
-          <p class="small muted">iSPEED や LION FX のチャートのスクリーンショットを入れると、AIが分析してサポート・レジスタンス・トレンドラインを書き込みます。</p>
+          <p class="small muted">iSPEED や LION FX のチャートのスクリーンショットを入れると、AIが分析して「上値の壁」「下値の支え」「流れの線」を書き込みます。</p>
           <label class="drop">
             <strong>画像を選ぶ</strong>
             写真アプリからスクリーンショットを選択
@@ -195,9 +242,9 @@
         <p class="small muted">このスマホのブラウザだけに保存されます。画像分析・AIニュース分析・取引アドバイスに使います。</p>
       </div>
       <div class="field">
-        <label>お気に入り（チャート画面の上に並ぶボタン）</label>
+        <label>お気に入り（チャート画面の上に並ぶボタン・<span id="fav-mode">為替</span>）</label>
         <textarea class="input" id="fav-edit" rows="4"></textarea>
-        <p class="small muted">1行に「コード,表示名」。例: USDJPY,ドル円</p>
+        <p class="small muted">1行に「コード,表示名」。例: USDJPY,ドル円 ／ 7203,トヨタ。為替と株は別々に保存されます。</p>
       </div>
       <div class="field">
         <label>ローソク足の色</label>
@@ -212,6 +259,11 @@
       <button class="btn danger block" id="clear-data">保存したデータをすべて消す</button>
       <p class="small muted" style="margin-top:14px">このサイトの分析や予想は参考情報です。将来の値動きを保証するものではありません。最終的な売買の判断はご自身で行ってください。</p>
     </div>
+  </dialog>
+
+  <dialog id="term-dialog">
+    <div class="dlg-head"><h2 id="term-title">用語の説明</h2><button class="icon-btn" id="close-term" aria-label="閉じる">✕</button></div>
+    <div class="dlg-body" id="term-body"></div>
   </dialog>
 
   <script type="module" src="/js/app.js"></script>

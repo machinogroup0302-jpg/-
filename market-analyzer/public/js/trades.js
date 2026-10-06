@@ -172,9 +172,9 @@ export function computeStats(allTrades) {
 export function insights(s) {
   const out = [];
   const yen = (v) => `${Math.round(v).toLocaleString()}円`;
-  if (s.payoff != null && s.payoff < 1 && s.winRate > 0.5) out.push(`勝率は${Math.round(s.winRate * 100)}%と高いのに、平均損失（${yen(s.avgLoss)}）が平均利益（${yen(s.avgWin)}）より大きい「損大利小」の傾向があります。損切りを早めに、利確を少し伸ばすと改善しやすいです。`);
+  if (s.payoff != null && s.payoff < 1 && s.winRate > 0.5) out.push(`勝率は${Math.round(s.winRate * 100)}%と高いのに、平均損失（${yen(s.avgLoss)}）が平均利益（${yen(s.avgWin)}）より大きい「負けるときは大きく、勝つときは小さい」傾向（損大利小）があります。損切りを早めに、利確を少し伸ばすと改善しやすいです。`);
   if (s.payoff != null && s.payoff >= 1.5 && s.winRate < 0.4) out.push('利益は大きく伸ばせていますが勝率が低めです。エントリーの条件を絞ると成績が安定しやすいです。');
-  if (s.profitFactor != null) out.push(s.profitFactor >= 1.3 ? `プロフィットファクター${s.profitFactor.toFixed(2)}で、トータルではしっかり勝てています。` : s.profitFactor >= 1 ? `プロフィットファクター${s.profitFactor.toFixed(2)}で、トントンに近い状態です。` : `プロフィットファクター${s.profitFactor.toFixed(2)}で、トータルでは負け越しています。`);
+  if (s.profitFactor != null) out.push(s.profitFactor >= 1.3 ? `プロフィットファクター${s.profitFactor.toFixed(2)}で、トータルではしっかり勝てています（利益の合計が損失の合計の${s.profitFactor.toFixed(2)}倍）。` : s.profitFactor >= 1 ? `プロフィットファクター${s.profitFactor.toFixed(2)}で、トントンに近い状態です。` : `プロフィットファクター${s.profitFactor.toFixed(2)}で、トータルでは負け越しています。`);
   if (s.maxLossStreak >= 5) out.push(`最大${s.maxLossStreak}連敗があります。連敗中に取引量を増やしていないか見直しましょう（3連敗したらその日は休む、などのルールが有効です）。`);
   if (Math.abs(s.worstTrade) > s.avgLoss * 4 && s.avgLoss > 0) out.push(`1回の最大損失（${yen(s.worstTrade)}）が平均損失の4倍以上です。損切り注文を必ず入れる習慣をつけると大きな負けを防げます。`);
   const goodSym = s.bySymbol.filter((g) => g.count >= 5).sort((a, b) => b.pnl - a.pnl);

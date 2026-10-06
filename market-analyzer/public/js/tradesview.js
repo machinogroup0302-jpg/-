@@ -1,11 +1,29 @@
 // 取引分析画面：CSV またはスクリーンショットから取引を読み込み、成績を分析する
 import { api, $, esc, store, busy, fmtYen, toast, loadImage, imageToDataUrl } from './util.js';
+import { term } from './glossary.js';
 import { parseCsv, findHeader, guessMapping, rowsToTrades, decodeFile, computeStats, insights, FIELD_LABELS } from './trades.js';
 
-let trades = store.get('trades', []);
+// 為替と株の取引は別々に保存する
+const isFxTrade = (sym) => /[A-Z]{3}\s*\/?\s*[A-Z]{3}/i.test(sym || '') || /円|ドル|ユーロ|ポンド|ランド|ペソ|リラ|フラン/.test(sym || '');
+(function migrate() {
+  const old = store.get('trades', null);
+  if (!old || store.get('trades_fx', null) || store.get('trades_stock', null)) return;
+  store.set('trades_fx', old.filter((t) => isFxTrade(t.symbol)));
+  store.set('trades_stock', old.filter((t) => !isFxTrade(t.symbol)));
+})();
+let tradeMode = store.get('mode', 'fx') === 'stock' ? 'stock' : 'fx';
+let trades = store.get(`trades_${tradeMode}`, []);
+
+export function setTradesMode(mode) {
+  tradeMode = mode;
+  trades = store.get(`trades_${tradeMode}`, []);
+  $('map-box').innerHTML = '';
+  $('trade-status').textContent = '';
+  render();
+}
 
 function save() {
-  if (!store.set('trades', trades)) toast('保存できませんでした（容量オーバーの可能性があります）');
+  if (!store.set(`trades_${tradeMode}`, trades)) toast('保存できませんでした（容量オーバーの可能性があります）');
 }
 
 function bars(groups, labelFn) {
@@ -50,13 +68,13 @@ function render() {
       <h2>成績のまとめ<span class="sub">${esc(period)}</span></h2>
       <div class="grid2">
         <div class="stat"><div class="label">合計損益</div><div class="value ${s.totalPnl >= 0 ? 'plus' : 'minus'}">${fmtYen(s.totalPnl)}</div></div>
-        <div class="stat"><div class="label">勝率（${s.count}回）</div><div class="value">${pct(s.winRate)}</div></div>
+        <div class="stat"><div class="label">${term('winRate', '勝率')}（${s.count}回）</div><div class="value">${pct(s.winRate)}</div></div>
         <div class="stat"><div class="label">平均利益</div><div class="value plus">${fmtYen(s.avgWin)}</div></div>
         <div class="stat"><div class="label">平均損失</div><div class="value minus">${fmtYen(-s.avgLoss)}</div></div>
-        <div class="stat"><div class="label">損益比（利益÷損失）</div><div class="value">${s.payoff != null ? s.payoff.toFixed(2) : '—'}</div></div>
-        <div class="stat"><div class="label">プロフィットファクター</div><div class="value">${s.profitFactor != null ? s.profitFactor.toFixed(2) : '—'}</div></div>
-        <div class="stat"><div class="label">最大ドローダウン</div><div class="value minus">${fmtYen(-s.maxDrawdown)}</div></div>
-        <div class="stat"><div class="label">最大連敗</div><div class="value">${s.maxLossStreak}回</div></div>
+        <div class="stat"><div class="label">${term('payoff', '損益比（利益÷損失）')}</div><div class="value">${s.payoff != null ? s.payoff.toFixed(2) : '—'}</div></div>
+        <div class="stat"><div class="label">${term('pf', '利益÷損失の合計（PF）')}</div><div class="value">${s.profitFactor != null ? s.profitFactor.toFixed(2) : '—'}</div></div>
+        <div class="stat"><div class="label">${term('drawdown', '一番減ったときの額')}</div><div class="value minus">${fmtYen(-s.maxDrawdown)}</div></div>
+        <div class="stat"><div class="label">${term('streak', '最大連敗')}</div><div class="value">${s.maxLossStreak}回</div></div>
       </div>
       <h3>損益の推移</h3>${equitySvg(s.curve)}
     </div>
@@ -67,7 +85,7 @@ function render() {
       <div id="coach-out"></div>
     </div>
     <div class="two-col">
-      <div class="card"><h2>銘柄・通貨ペア別</h2>${bars(s.bySymbol.slice(0, 12), (k) => k)}</div>
+      <div class="card"><h2>${tradeMode === 'fx' ? '通貨ペア別' : '銘柄別'}</h2>${bars(s.bySymbol.slice(0, 12), (k) => k)}</div>
       <div class="card"><h2>買い・売り別</h2>${bars(s.bySide, (k) => k)}
         <h3>曜日別</h3>${bars(s.byWeekday, (k) => k + '曜')}</div>
     </div>

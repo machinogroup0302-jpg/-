@@ -61,7 +61,7 @@ function draw() {
     g.lineWidth = lv.strength === '強' ? lw * 1.6 : lw;
     g.setLineDash(lv.strength === '弱' ? [lw * 2, lw * 3] : lv.strength === '中' ? [lw * 6, lw * 3] : []);
     g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke();
-    label(`${lv.kind === 'resistance' ? 'レジスタンス' : 'サポート'} ${fmtPrice(lv.price)}`, fs * 0.5, y, color);
+    label(`${lv.kind === 'resistance' ? '上値の壁' : '下値の支え'} ${fmtPrice(lv.price)}`, fs * 0.5, y, color);
   }
   g.setLineDash([]);
   if (show.trend) {
@@ -87,7 +87,7 @@ function renderResult() {
     <div class="card">
       <h2>線を引いた画像</h2>
       <div class="chips" id="img-layers" style="margin-bottom:8px">
-        ${[['resistance', 'レジスタンス'], ['support', 'サポート'], ['trend', 'トレンドライン'], ['label', '価格ラベル']].map(([k, v]) => `<button class="chip" data-k="${k}" aria-pressed="${show[k]}">${v}</button>`).join('')}
+        ${[['resistance', '上値の壁'], ['support', '下値の支え'], ['trend', '流れの線'], ['label', '値段の文字']].map(([k, v]) => `<button class="chip" data-k="${k}" aria-pressed="${show[k]}">${v}</button>`).join('')}
       </div>
       <div class="canvas-wrap"><canvas id="img-canvas"></canvas></div>
       ${fit ? '' : '<p class="notice" style="margin-top:8px">価格の目盛りが読み取りにくかったため、線の位置は目安です。下の価格の数字を優先してください。</p>'}
@@ -98,11 +98,11 @@ function renderResult() {
       <div class="li-head" style="margin-bottom:6px"><span class="name">トレンド</span><span class="badge ${signalClass(r.trend)}">${esc(r.trend)}</span></div>
       <p class="small">${esc(r.summary)}</p>
       <h3>引いた線の価格</h3>
-      <ul class="list">${lv.map((l) => `<li class="lv-row"><span class="badge ${l.kind === 'resistance' ? 'warn' : 'ok'}">${l.kind === 'resistance' ? 'レジスタンス' : 'サポート'}</span><span class="num" style="font-weight:700">${fmtPrice(l.price)}</span><span class="small muted">強さ:${esc(l.strength)}</span></li>
+      <ul class="list">${lv.map((l) => `<li class="lv-row"><span class="badge ${l.kind === 'resistance' ? 'warn' : 'ok'}">${l.kind === 'resistance' ? '上値の壁' : '下値の支え'}</span><span class="num" style="font-weight:700">${fmtPrice(l.price)}</span><span class="small muted">強さ:${esc(l.strength)}</span></li>
         ${l.note ? `<li class="small muted" style="border-top:0;padding-top:0">${esc(l.note)}</li>` : ''}`).join('')}</ul>
-      ${r.trendlines.length ? `<h3>トレンドライン</h3><ul class="list">${r.trendlines.map((t) => `<li class="small"><b>${esc(t.kind)}</b> ${esc(t.note)}</li>`).join('')}</ul>` : ''}
-      ${r.patterns.length ? `<h3>チャートパターン</h3><ul class="list">${r.patterns.map((p) => `<li class="small"><b>${esc(p.name)}</b> ${esc(p.meaning)}</li>`).join('')}</ul>` : ''}
-      ${r.signals.length ? `<h3>サイン一覧</h3><ul class="list">${r.signals.map((s) => `<li><div class="li-head"><span class="name small">${esc(s.name)}</span><span class="badge ${signalClass(s.direction)}">${esc(s.direction)}</span></div><div class="small muted">${esc(s.detail)}</div></li>`).join('')}</ul>` : ''}
+      ${r.trendlines.length ? `<h3>流れの線（トレンドライン）</h3><ul class="list">${r.trendlines.map((t) => `<li class="small"><b>${esc(t.kind)}</b> ${esc(t.note)}</li>`).join('')}</ul>` : ''}
+      ${r.patterns.length ? `<h3>チャートの形（パターン）</h3><ul class="list">${r.patterns.map((p) => `<li class="small"><b>${esc(p.name)}</b> ${esc(p.meaning)}</li>`).join('')}</ul>` : ''}
+      ${r.signals.length ? `<h3>買い・売りのサイン</h3><ul class="list">${r.signals.map((s) => `<li><div class="li-head"><span class="name small">${esc(s.name)}</span><span class="badge ${signalClass(s.direction)}">${esc(s.direction)}</span></div><div class="small muted">${esc(s.detail)}</div></li>`).join('')}</ul>` : ''}
       <h3>シナリオ</h3>
       <p class="small"><b class="plus">上がる場合:</b> ${esc(r.scenario.bullish)}</p>
       <p class="small"><b class="minus">下がる場合:</b> ${esc(r.scenario.bearish)}</p>

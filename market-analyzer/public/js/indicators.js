@@ -122,64 +122,64 @@ export function technicalSummary(candles) {
   const closes = candles.map((c) => c.close);
   const price = last(closes);
   const rows = [];
-  const add = (name, signal, detail, value) => rows.push({ name, signal, detail, value });
+  const add = (key, name, signal, detail, value) => rows.push({ key, name, signal, detail, value });
 
   const s25 = sma(closes, 25), s75 = sma(closes, 75);
   if (last(s25) != null) {
-    add('移動平均(25)', price > last(s25) ? '買い' : '売り', price > last(s25) ? '価格が25本平均より上（短期は上向き）' : '価格が25本平均より下（短期は下向き）', last(s25));
+    add('ma', '最近の平均値段との比較', price > last(s25) ? '買い' : '売り', price > last(s25) ? '今の値段が、最近25本の平均より高い（上向きの流れ）' : '今の値段が、最近25本の平均より低い（下向きの流れ）', last(s25));
   }
   if (last(s75) != null && last(s25) != null) {
     const gc = last(s25, 1) <= last(s75, 1) && last(s25) > last(s75);
     const dc = last(s25, 1) >= last(s75, 1) && last(s25) < last(s75);
-    add('ゴールデン/デッドクロス', last(s25) > last(s75) ? '買い' : '売り',
-      gc ? '直近でゴールデンクロス発生（上昇のサイン）' : dc ? '直近でデッドクロス発生（下落のサイン）' : last(s25) > last(s75) ? '短期線が長期線の上（上昇基調）' : '短期線が長期線の下（下落基調）');
+    add('cross', '短期と長期の平均線', last(s25) > last(s75) ? '買い' : '売り',
+      gc ? '短い期間の平均線が長い期間の平均線を上に抜けた（ゴールデンクロス＝上がり始めのサイン）' : dc ? '短い期間の平均線が長い期間の平均線を下に抜けた（デッドクロス＝下がり始めのサイン）' : last(s25) > last(s75) ? '短い期間の平均が長い期間の平均より上（上向きが続いている）' : '短い期間の平均が長い期間の平均より下（下向きが続いている）');
   }
 
   const r = last(rsi(closes));
   if (r != null) {
-    add('RSI(14)', r < 30 ? '買い' : r > 70 ? '売り' : '中立',
-      r < 30 ? '売られすぎ（反発しやすい水準）' : r > 70 ? '買われすぎ（反落しやすい水準）' : r >= 50 ? '買いの勢いがやや強い' : '売りの勢いがやや強い', r);
+    add('rsi', '買われすぎ・売られすぎ度', r < 30 ? '買い' : r > 70 ? '売り' : '中立',
+      r < 30 ? '売られすぎ。そろそろ上がり返しやすい' : r > 70 ? '買われすぎ。そろそろ下がり返しやすい' : r >= 50 ? '買う人がやや多い' : '売る人がやや多い', r);
   }
 
   const m = macd(closes);
   if (last(m.line) != null && last(m.signal) != null) {
     const crossUp = last(m.line, 1) <= last(m.signal, 1) && last(m.line) > last(m.signal);
     const crossDown = last(m.line, 1) >= last(m.signal, 1) && last(m.line) < last(m.signal);
-    add('MACD', last(m.line) > last(m.signal) ? '買い' : '売り',
-      crossUp ? 'MACDがシグナルを上抜け（買いのサイン）' : crossDown ? 'MACDがシグナルを下抜け（売りのサイン）' : last(m.line) > last(m.signal) ? 'MACDがシグナルより上（上昇の勢い）' : 'MACDがシグナルより下（下落の勢い）', last(m.line));
+    add('macd', '勢いの変化', last(m.line) > last(m.signal) ? '買い' : '売り',
+      crossUp ? '上がる勢いに切り替わったところ' : crossDown ? '下がる勢いに切り替わったところ' : last(m.line) > last(m.signal) ? '上がる勢いが続いている' : '下がる勢いが続いている', last(m.line));
   }
 
   const bb = bollinger(closes);
   if (last(bb.upper) != null) {
     const pos = (price - last(bb.lower)) / (last(bb.upper) - last(bb.lower));
-    add('ボリンジャーバンド', pos < 0.05 ? '買い' : pos > 0.95 ? '売り' : '中立',
-      pos < 0.05 ? '−2σ付近（下がりすぎ）' : pos > 0.95 ? '+2σ付近（上がりすぎ）' : `バンド内の${Math.round(pos * 100)}%の位置`, pos);
+    add('bb', 'いつもの値動きの範囲', pos < 0.05 ? '買い' : pos > 0.95 ? '売り' : '中立',
+      pos < 0.05 ? 'いつもの範囲の下の端。下がりすぎ' : pos > 0.95 ? 'いつもの範囲の上の端。上がりすぎ' : `いつもの範囲の中で、下から${Math.round(pos * 100)}%の位置`, pos);
   }
 
   const st = stochastic(candles);
   if (last(st.k) != null && last(st.d) != null) {
     const k = last(st.k), d = last(st.d);
-    add('ストキャスティクス', k < 20 && k > d ? '買い' : k > 80 && k < d ? '売り' : '中立',
-      k < 20 ? '売られすぎゾーン' : k > 80 ? '買われすぎゾーン' : '中間ゾーン', k);
+    add('stoch', '最近の値幅の中での位置', k < 20 && k > d ? '買い' : k > 80 && k < d ? '売り' : '中立',
+      k < 20 ? '最近の値幅の底のあたり（売られすぎ）' : k > 80 ? '最近の値幅の天井のあたり（買われすぎ）' : '最近の値幅の真ん中あたり', k);
   }
 
   const ich = ichimoku(candles);
   const i0 = candles.length - 1 - ich.shift; // 今のローソク足の位置にある雲
   if (i0 >= 0 && ich.spanA[i0] != null && ich.spanB[i0] != null) {
     const top = Math.max(ich.spanA[i0], ich.spanB[i0]), bottom = Math.min(ich.spanA[i0], ich.spanB[i0]);
-    add('一目均衡表（雲）', price > top ? '買い' : price < bottom ? '売り' : '中立',
-      price > top ? '価格が雲の上（上昇基調）' : price < bottom ? '価格が雲の下（下落基調）' : '価格が雲の中（方向感なし）');
+    add('cloud', '雲との位置関係', price > top ? '買い' : price < bottom ? '売り' : '中立',
+      price > top ? '値段が雲より上（上向きの流れ）' : price < bottom ? '値段が雲より下（下向きの流れ）' : '値段が雲の中（どちらに行くか迷っている）');
   }
   if (last(ich.tenkan) != null && last(ich.kijun) != null) {
-    add('一目均衡表（転換線/基準線）', last(ich.tenkan) > last(ich.kijun) ? '買い' : last(ich.tenkan) < last(ich.kijun) ? '売り' : '中立',
-      last(ich.tenkan) > last(ich.kijun) ? '転換線が基準線の上（好転）' : '転換線が基準線の下（逆転）');
+    add('ichimoku', '短期と中期の流れ', last(ich.tenkan) > last(ich.kijun) ? '買い' : last(ich.tenkan) < last(ich.kijun) ? '売り' : '中立',
+      last(ich.tenkan) > last(ich.kijun) ? '短期の流れが中期の流れより強い（上向き）' : '短期の流れが中期の流れより弱い（下向き）');
   }
 
   // 直近20本の高値・安値ブレイク
   const recent = candles.slice(-21, -1);
   const hi = Math.max(...recent.map((c) => c.high)), lo = Math.min(...recent.map((c) => c.low));
-  add('直近高値・安値', price > hi ? '買い' : price < lo ? '売り' : '中立',
-    price > hi ? '直近20本の高値を上抜け' : price < lo ? '直近20本の安値を下抜け' : 'レンジ内で推移');
+  add('breakout', '最近の高値・安値の突破', price > hi ? '買い' : price < lo ? '売り' : '中立',
+    price > hi ? '最近20本の一番高い値段を超えた（上に抜けた）' : price < lo ? '最近20本の一番安い値段を下回った（下に抜けた）' : '最近20本の高値と安値の間で動いている');
 
   const score = rows.reduce((s, r2) => s + (r2.signal === '買い' ? 1 : r2.signal === '売り' ? -1 : 0), 0);
   const ratio = score / rows.length;

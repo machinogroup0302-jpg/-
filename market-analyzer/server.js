@@ -7,6 +7,8 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { getChart } from './lib/market.js';
 import { getNews } from './lib/news.js';
+import { searchListings, listingMeta } from './lib/listings.js';
+import { startScan, scanStatus } from './lib/scanner.js';
 import { analyzeChartImage, extractTradesFromImage, coachTrades, researchMarket, scenarioForecast, analyzeOrderBookImage, aiErrorMessage } from './lib/ai.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -133,6 +135,36 @@ async function handleApi(req, res, url) {
     } catch (e) {
       return json(res, 502, { error: e.message });
     }
+  }
+  if (route === 'GET /api/stocks/search') {
+    try {
+      return json(res, 200, { items: await searchListings(String(url.searchParams.get('q') || '').slice(0, 40)) });
+    } catch (e) {
+      return json(res, 502, { error: e.message });
+    }
+  }
+  if (route === 'GET /api/stocks/meta') {
+    try {
+      return json(res, 200, await listingMeta());
+    } catch (e) {
+      return json(res, 502, { error: e.message });
+    }
+  }
+  if (route === 'POST /api/stocks/scan') {
+    const body = await readBody(req);
+    const markets = (Array.isArray(body.markets) ? body.markets : []).map(String).filter((m) => ['プライム', 'スタンダード', 'グロース', '外国株'].includes(m));
+    const j = startScan({ markets });
+    return json(res, 200, { status: j.status });
+  }
+  if (route === 'GET /api/stocks/scan') {
+    const q = url.searchParams;
+    return json(res, 200, scanStatus({
+      view: q.get('view') || 'buy',
+      sector: q.get('sector') || '',
+      minPrice: Number(q.get('min')) || 0,
+      maxPrice: Number(q.get('max')) || 0,
+      limit: Number(q.get('limit')) || 100,
+    }));
   }
   if (route === 'GET /api/news') {
     try {

@@ -1,5 +1,6 @@
 // ニュース画面：無料のニュース収集（信頼度つき）と、AIによる詳しい調査
 import { api, $, esc, store, busy, signalClass } from './util.js';
+import { term } from './glossary.js';
 import { state as chartState } from './chartview.js';
 
 let current = null;
@@ -60,7 +61,7 @@ function renderResearch(r, when) {
     <h3>見通し <span class="badge ${signalClass(o.direction || '')}">${esc(o.direction || '—')}</span></h3>
     <p class="small"><b>短期:</b> ${esc(o.short_term || '')}<br><b>中期:</b> ${esc(o.mid_term || '')}</p>
     ${(o.risks || []).length ? `<p class="small"><b>注意するリスク:</b> ${(o.risks || []).map(esc).join(' / ')}</p>` : ''}
-    <h3>ファンダメンタルズ分析</h3>
+    <h3>${term('fundamental', 'ファンダメンタルズ分析')}（景気・金利・業績などから見た理由）</h3>
     <p class="small">${esc(f.summary || '')}</p>
     <ul class="list">${(f.factors || []).map((x) => `<li><div class="li-head"><span class="name small">${esc(x.name)}</span><span class="badge ${signalClass(x.direction || '')}">${esc(x.direction)}</span></div><div class="small muted">${esc(x.detail)}</div></li>`).join('')}</ul>
     ${r.sns ? `<h3>SNS・掲示板の雰囲気</h3><p class="small">${esc(r.sns.summary || '')}${r.sns.bullish_percent != null ? `（強気 ${Math.round(r.sns.bullish_percent)}%）` : ''}</p>

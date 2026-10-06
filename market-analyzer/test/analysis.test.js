@@ -194,3 +194,71 @@ test('AI予想をチャートの点と目印に変換', () => {
   assert.equal(b.bull.length, 2);
   assert.equal(b.bear.length, 0);
 });
+
+import * as XLSX from 'xlsx';
+import { priceLimit, stopInfo } from '../public/js/limits.js';
+import { parseListingRows, parseNewListings, mergeListing, shortMarket } from '../lib/listings.js';
+import { parseSpark, evaluate, closesToCandles } from '../lib/scanner.js';
+
+test('値幅制限とストップ高・安', () => {
+  assert.equal(priceLimit(99), 30);
+  assert.equal(priceLimit(100), 50);
+  assert.equal(priceLimit(1000), 300);
+  assert.equal(priceLimit(2999), 500);
+  assert.equal(priceLimit(3000), 700);
+  const s = stopInfo(1000, 1300);
+  assert.equal(s.up, 1300);
+  assert.equal(s.down, 700);
+  assert.equal(s.status, 'ストップ高');
+  assert.equal(stopInfo(1000, 790).status, 'ストップ安に近い');
+  assert.equal(stopInfo(1000, 1010).status, null);
+});
+
+test('東証の上場銘柄一覧（Excel）を読み込む', () => {
+  const rows = [
+    ['日付', 'コード', '銘柄名', '市場・商品区分', '33業種コード', '33業種区分', '17業種コード', '17業種区分', '規模コード', '規模区分'],
+    ['20260930', '1301', '極洋', 'プライム（内国株式）', '50', '水産・農林業', '1', '食品', '7', 'TOPIX Small 2'],
+    ['20260930', '1305', 'ｉＦｒｅｅＥＴＦ　ＴＯＰＩＸ', 'ETF・ETN', '-', '-', '-', '-', '-', '-'],
+    ['20260930', '130A', 'Ｖｅｒｉｔａｓ　Ｉｎ　Ｓｉｌｉｃｏ', 'グロース（内国株式）', '9050', 'サービス業', '10', '情報通信', '-', '-'],
+    ['20260930', 7203, 'トヨタ自動車', 'プライム（内国株式）', '3700', '輸送用機器', '6', '自動車', '1', 'TOPIX Core30'],
+  ];
+  // 実物と同じく .xls（古いExcel形式）にしてから読み直す
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'biff8' });
+  const back = XLSX.read(buf, { type: 'buffer' });
+  const parsed = parseListingRows(XLSX.utils.sheet_to_json(back.Sheets[back.SheetNames[0]], { header: 1, raw: false, defval: '' }));
+  assert.deepEqual(parsed.map((x) => x.code), ['1301', '130A', '7203']);
+  assert.equal(parsed[2].market, 'プライム');
+  assert.equal(parsed[1].sector, 'サービス業');
+  assert.equal(shortMarket('PRO Market'), null);
+});
+
+test('新しく上場した会社を見つける', () => {
+  const prev = { items: [{ code: '1301' }], firstSeen: {} };
+  const m = mergeListing(prev, [{ code: '1301' }, { code: '555A' }], [], '2026-10-06');
+  assert.deepEqual(m.firstSeen, { '555A': '2026-10-06' });
+  // 初回は全部が「新規」にならない
+  assert.deepEqual(mergeListing(null, [{ code: '1301' }], [], '2026-10-06').firstSeen, {});
+  const html = '<table><tr><th>上場日</th><th>会社名</th><th>コード</th></tr><tr><td>2026/10/21</td><td><a>サンプル株式会社</a></td><td>（555A）</td><td>グロース</td></tr></table>';
+  const nl = parseNewListings(html);
+  assert.equal(nl.length, 1);
+  assert.equal(nl[0].code, '555A');
+  assert.equal(nl[0].date, '2026-10-21');
+  assert.equal(nl[0].name, 'サンプル株式会社');
+});
+
+test('まとめて取得した株価（spark）を読み、判定する', () => {
+  const closes = Array.from({ length: 120 }, (_, i) => 1000 + i * 2 + Math.sin(i / 5) * 10);
+  closes[closes.length - 1] = closes[closes.length - 2] + 300; // ストップ高
+  const ts = closes.map((_, i) => 1_700_000_000 + i * 86400);
+  const v8 = parseSpark({ '7203.T': { symbol: '7203.T', timestamp: ts, close: closes } });
+  const v7 = parseSpark({ spark: { result: [{ symbol: '7203.T', response: [{ timestamp: ts, indicators: { quote: [{ close: closes }] } }] }] } });
+  assert.deepEqual(v8['7203.T'].closes, v7['7203.T'].closes);
+  const r = evaluate({ code: '7203', name: 'トヨタ自動車', market: 'プライム', sector: '輸送用機器' }, v8['7203.T']);
+  assert.equal(r.symbol, '7203.T');
+  assert.equal(r.stop.status, 'ストップ高');
+  assert.ok(r.reasons.every((x) => x.key));
+  assert.equal(closesToCandles([1, 2, 3], [10, null, 12]).length, 2);
+});

@@ -4,7 +4,9 @@ import { technicalSummary } from './indicators.js';
 import { supportResistance } from './levels.js';
 import { monteCarlo } from './forecast.js';
 
-const DEFAULT_WATCH = ['USDJPY', 'EURJPY', 'GBPJPY', 'AUDJPY', 'EURUSD', 'GBPUSD', '^N225', '7203', '6758', '9984', '8306', '7974'].join('\n');
+const DEFAULT_WATCH = ['USDJPY', 'EURJPY', 'GBPJPY', 'AUDJPY', 'NZDJPY', 'CADJPY', 'CHFJPY', 'ZARJPY', 'MXNJPY', 'EURUSD', 'GBPUSD', 'AUDUSD'].join('\n');
+// 以前の一覧から、通貨ペアだけを引き継ぐ
+const oldWatch = () => (store.get('watchlist', '') || '').split('\n').filter((c) => /^[A-Z]{6}(=X)?$/i.test(c.trim())).join('\n');
 const FILTERS = [['all', 'すべて'], ['buy', '買い候補'], ['sell', '売り候補']];
 let results = [];
 let filter = 'all';
@@ -47,7 +49,7 @@ async function run(onPick) {
   results = [];
   let done = 0;
   const queue = [...codes];
-  const names = Object.fromEntries((store.get('favs', []) || []).map((f) => [f.code.toUpperCase(), f.name]));
+  const names = Object.fromEntries((store.get('favs_fx', store.get('favs', [])) || []).map((f) => [f.code.toUpperCase(), f.name]));
   async function worker() {
     while (queue.length) {
       const code = queue.shift();
@@ -74,7 +76,7 @@ async function run(onPick) {
 }
 
 export function initScreener(onPick) {
-  $('watchlist').value = store.get('watchlist', DEFAULT_WATCH);
+  $('watchlist').value = store.get('watchlist_fx', oldWatch() || DEFAULT_WATCH);
   $('scr-filter').innerHTML = FILTERS.map(([k, v]) => `<button data-f="${k}" aria-pressed="${k === filter}">${v}</button>`).join('');
   $('scr-filter').addEventListener('click', (e) => {
     const b = e.target.closest('button');
@@ -84,7 +86,7 @@ export function initScreener(onPick) {
     render();
   });
   $('watch-save').addEventListener('click', () => {
-    store.set('watchlist', $('watchlist').value);
+    store.set('watchlist_fx', $('watchlist').value);
     $('scr-status').textContent = '保存しました';
   });
   $('scr-run').addEventListener('click', () => run(onPick));

@@ -1,17 +1,47 @@
 // 画面全体の動き：ログイン・タブ切り替え・設定
 import { api, $, esc, store, toast } from './util.js';
-import { initChartView, loadChart, renderFavorites, onSymbolChange, refreshTheme, state as chartState } from './chartview.js';
+import { initChartView, loadChart, renderFavorites, onSymbolChange, refreshTheme, setMode, getMode, state as chartState } from './chartview.js';
+import { initStockScreener, showStockScreener } from './stockscreener.js';
+import { initGlossary } from './glossary.js';
+import { setTradesMode } from './tradesview.js';
 import { initScreener } from './screener.js';
 import { initNewsView, onSymbol as newsOnSymbol } from './newsview.js';
 import { initTradesView } from './tradesview.js';
 import { initImageView } from './imageview.js';
 import { initOrderflow } from './orderflow.js';
 
-const DEFAULT_FAVS = [
-  { code: 'USDJPY', name: 'ドル円' }, { code: 'EURJPY', name: 'ユーロ円' }, { code: 'GBPJPY', name: 'ポンド円' },
-  { code: 'AUDJPY', name: '豪ドル円' }, { code: 'EURUSD', name: 'ユーロドル' }, { code: '^N225', name: '日経平均' },
-  { code: '7203', name: 'トヨタ' }, { code: '9984', name: 'ソフトバンクG' },
-];
+const DEFAULT_FAVS = {
+  fx: [
+    { code: 'USDJPY', name: 'ドル円' }, { code: 'EURJPY', name: 'ユーロ円' }, { code: 'GBPJPY', name: 'ポンド円' },
+    { code: 'AUDJPY', name: '豪ドル円' }, { code: 'MXNJPY', name: 'メキシコペソ円' }, { code: 'EURUSD', name: 'ユーロドル' },
+  ],
+  stock: [
+    { code: '^N225', name: '日経平均' }, { code: '7203', name: 'トヨタ自動車' }, { code: '9984', name: 'ソフトバンクG' },
+    { code: '6758', name: 'ソニーG' }, { code: '8306', name: '三菱UFJ' }, { code: '7974', name: '任天堂' },
+  ],
+};
+const isFxCode = (c) => /^[A-Z]{6}(=X)?$/i.test(c);
+
+// お気に入りは為替と株で別々。以前の共通のお気に入りは振り分けて引き継ぐ
+function favsFor(mode) {
+  const own = store.get(`favs_${mode}`, null);
+  if (own) return own;
+  const old = store.get('favs', null);
+  if (old) {
+    const mine = old.filter((f) => (mode === 'fx' ? isFxCode(f.code) : !isFxCode(f.code)));
+    if (mine.length) return mine;
+  }
+  return DEFAULT_FAVS[mode];
+}
+
+function applyMode(mode) {
+  document.body.dataset.mode = mode;
+  document.querySelectorAll('#mode-seg button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === mode)));
+  $('symbol-input').placeholder = mode === 'fx' ? '例: USDJPY（ドル円）' : '例: 7203 または トヨタ';
+  $('news-q').placeholder = mode === 'fx' ? '例: ドル円' : '例: トヨタ';
+  renderFavorites(favsFor(mode));
+  setTradesMode(mode);
+}
 
 const ICON = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
 const TABS = [
@@ -33,6 +63,7 @@ function showTab(id) {
   document.querySelectorAll('#tabbar button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === id)));
   store.set('tab', id);
   if (id === 'news') newsOnSymbol(chartState);
+  if (id === 'screener' && getMode() === 'stock') showStockScreener();
   window.scrollTo({ top: 0 });
 }
 
@@ -62,7 +93,8 @@ function parseFavs(text) {
 }
 
 async function openSettings() {
-  const favs = store.get('favs', DEFAULT_FAVS);
+  const favs = favsFor(getMode());
+  $('fav-mode').textContent = getMode() === 'fx' ? '為替' : '株';
   $('fav-edit').value = favs.map((f) => `${f.code},${f.name}`).join('\n');
   $('api-key').value = store.get('apiKey', '');
   seg($('candle-seg'), [['jp', '日本式（陽線=赤）'], ['global', '海外式（陽線=緑）']], store.get('candle', 'jp'));
@@ -76,11 +108,11 @@ async function openSettings() {
 
 function saveSettings() {
   const favs = parseFavs($('fav-edit').value);
-  store.set('favs', favs.length ? favs : DEFAULT_FAVS);
+  store.set(`favs_${getMode()}`, favs.length ? favs : DEFAULT_FAVS[getMode()]);
   store.set('apiKey', $('api-key').value.trim());
   store.set('candle', segValue($('candle-seg')) || 'jp');
   store.set('theme', segValue($('theme-seg')) || 'auto');
-  renderFavorites(store.get('favs', DEFAULT_FAVS));
+  renderFavorites(favsFor(getMode()));
   applyTheme();
   $('settings').close();
   toast('保存しました');
@@ -94,9 +126,11 @@ function startApp() {
     if (b) showTab(b.dataset.tab);
   });
 
+  initGlossary();
   initChartView();
-  renderFavorites(store.get('favs', DEFAULT_FAVS));
-  initScreener((code, name) => { showTab('chart'); loadChart(code, name, '1d'); });
+  const openChart = (code, name) => { showTab('chart'); loadChart(code, name, '1d'); };
+  initScreener(openChart);
+  initStockScreener(openChart);
   initNewsView();
   initTradesView();
   initImageView();
@@ -104,6 +138,13 @@ function startApp() {
   onSymbolChange((st) => { if (currentTab === 'news') newsOnSymbol(st); });
 
   $('goto-news').addEventListener('click', () => showTab('news'));
+  $('mode-seg').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-mode]');
+    if (!b || b.dataset.mode === getMode()) return;
+    setMode(b.dataset.mode);
+    applyMode(b.dataset.mode);
+    showTab(currentTab);
+  });
   $('open-settings').addEventListener('click', openSettings);
   $('close-settings').addEventListener('click', () => $('settings').close());
   $('save-settings').addEventListener('click', saveSettings);
@@ -115,6 +156,7 @@ function startApp() {
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', applyTheme);
 
   applyTheme();
+  applyMode(getMode());
   showTab(store.get('tab', 'chart'));
   loadChart();
 }

@@ -241,3 +241,28 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .grow { flex: 1; min-width: 0; }
 
 .drop.busy { opacity: .5; pointer-events: none; }
+
+/* ---------- 為替・株の切り替え ---------- */
+body[data-mode="fx"] .only-stock, body[data-mode="stock"] .only-fx { display: none !important; }
+.mode-seg { grid-auto-columns: auto; padding: 3px; }
+.mode-seg button { min-height: 34px; padding: 0 14px; font-size: 14px; }
+.mode-seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); }
+.topbar h1 { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- 用語の「?」 ---------- */
+.term { border: 0; background: none; padding: 0; font: inherit; color: inherit; cursor: pointer; text-align: left; display: inline; }
+.term .q, .q-demo {
+  display: inline-grid; place-items: center; width: 17px; height: 17px; margin-left: 4px; border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent);
+  font-size: 11px; font-weight: 800; vertical-align: 1px; line-height: 1;
+}
+.term-item { padding: 10px 0; border-top: 1px solid var(--border); }
+.term-item:first-child { border-top: 0; padding-top: 0; }
+.term-item h3 { margin: 0 0 4px; font-size: 15px; }
+.term-item p { margin: 0 0 4px; }
+
+/* ---------- 進み具合 ---------- */
+.progress { height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; margin-top: 10px; }
+.progress span { display: block; height: 100%; width: 0; background: var(--accent); transition: width .4s; }
+.stop-bar { position: relative; height: 12px; border-radius: 999px; background: linear-gradient(90deg, var(--sell), var(--surface-2) 50%, var(--buy)); margin: 10px 0 4px; }
+.stop-bar span { position: absolute; top: -4px; width: 4px; height: 20px; border-radius: 2px; background: var(--text); transform: translateX(-50%); }

@@ -50,8 +50,8 @@ export function supportResistance(candles, { k = 3, maxEach = 3 } = {}) {
   const below = levels.filter((l) => l.price <= price).sort((x, y) => y.score - x.score).slice(0, maxEach);
   const strength = (l) => (l.touches >= 3 ? '強' : l.touches === 2 ? '中' : '弱');
   return [
-    ...above.map((l) => ({ ...l, kind: 'resistance', label: 'レジスタンス', strength: strength(l) })),
-    ...below.map((l) => ({ ...l, kind: 'support', label: 'サポート', strength: strength(l) })),
+    ...above.map((l) => ({ ...l, kind: 'resistance', label: '上値の壁', strength: strength(l) })),
+    ...below.map((l) => ({ ...l, kind: 'support', label: '下値の支え', strength: strength(l) })),
   ].sort((x, y) => y.price - x.price);
 }
 
@@ -78,7 +78,7 @@ export function trendlines(candles, k = 4) {
       const endI = n - 1;
       out.push({
         kind,
-        label: kind === 'up' ? '上昇トレンドライン' : '下降トレンドライン',
+        label: kind === 'up' ? '上向きの流れの線' : '下向きの流れの線',
         from: { time: p1.time, price: p1.price },
         to: { time: candles[endI].time, price: p1.price + slope * (endI - p1.i) },
       });

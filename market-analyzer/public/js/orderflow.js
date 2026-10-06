@@ -1,5 +1,6 @@
 // 注文・約定分析（株）：価格帯別出来高・買いと売りの勢い・板と歩み値
-import { api, $, esc, fmtPrice, digitsFor, loadImage, imageToDataUrl, toast } from './util.js';
+import { api, $, esc, fmtPrice, loadImage, imageToDataUrl, toast } from './util.js';
+import { term } from './glossary.js';
 import { volumeProfile, buySellPressure, volumeSpikes, summarizeTicks } from './volume.js';
 
 const fmtVol = (v) => (v >= 1e8 ? `${(v / 1e8).toFixed(1)}億` : v >= 1e4 ? `${(v / 1e4).toFixed(1)}万` : Math.round(v).toLocaleString('ja-JP'));
@@ -54,7 +55,7 @@ export function renderOrderflow(data) {
     return;
   }
   const price = candles[candles.length - 1].close;
-  const digits = digitsFor(price);
+  const digits = 1; // 株の値段は小数点1桁まで
   const pr = buySellPressure(candles);
   const recent = pr.slice(-20);
   const buy = recent.reduce((s, x) => s + x.buy, 0), sell = recent.reduce((s, x) => s + x.sell, 0);
@@ -64,16 +65,16 @@ export function renderOrderflow(data) {
   box.innerHTML = `
     <div class="grid2">
       <div class="stat"><div class="label">直近20本の買いの割合（推定）</div><div class="value ${buyPct >= 50 ? 'plus' : 'minus'}">${buyPct}%</div></div>
-      <div class="stat"><div class="label">いちばん売買が多い値段</div><div class="value">${fmtPrice(p.poc.mid, digits)}</div></div>
+      <div class="stat"><div class="label">${term('poc', 'いちばん売買が多い値段')}</div><div class="value">${fmtPrice(p.poc.mid, digits)}</div></div>
     </div>
     <p class="small" style="margin:8px 0">現在値は${where}。</p>
-    <h3>価格帯別出来高</h3>
+    <h3>${term('profile', '値段ごとの売買の量（価格帯別出来高）')}</h3>
     <p class="small muted" style="margin:0 0 4px">棒が長い値段ほど、たくさん売買された＝意識されやすい値段です。<span class="plus">■</span>買い <span class="minus">■</span>売り（推定）。薄い帯は出来高の70%が集まる範囲です。</p>
     ${profileSvg(p, price, digits)}
-    <h3>買いと売りの勢い（直近40本）</h3>
+    <h3>${term('pressure', '買いと売りの勢い')}（最近40本）</h3>
     <p class="small muted" style="margin:0 0 4px">棒が上なら買い優勢、下なら売り優勢。黄色の線は積み上げで、右上がりなら買いが続いています。</p>
     ${pressureSvg(pr)}
-    ${spikes.length ? `<h3>出来高が急に増えた足</h3><ul class="list">${spikes.map((s) => `<li class="small"><span class="badge ${s.up ? 'buy' : 'sell'}">${s.up ? '上げ' : '下げ'}</span> ${new Date(s.time * 1000).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}　平均の${s.ratio.toFixed(1)}倍</li>`).join('')}</ul>` : ''}
+    ${spikes.length ? `<h3>${term('volume', '売買の量（出来高）')}が急に増えた日・時間</h3><ul class="list">${spikes.map((s) => `<li class="small"><span class="badge ${s.up ? 'buy' : 'sell'}">${s.up ? '上げ' : '下げ'}</span> ${new Date(s.time * 1000).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}　平均の${s.ratio.toFixed(1)}倍</li>`).join('')}</ul>` : ''}
     <p class="notice" style="margin-top:8px">買い・売りの量は、ローソク足の形からの推定です。正確な内訳は下の「板・歩み値」で確認できます。</p>`;
 }
 
@@ -88,7 +89,7 @@ function boardSvg(board) {
       const top = 2 + i * rowH;
       const ws = (r.sell_qty / max) * half, wb = (r.buy_qty / max) * half;
       return `<rect x="${mid - 36 - ws}" y="${top + 2}" width="${ws}" height="${rowH - 4}" rx="2" fill="var(--sell)" opacity=".8"/>
-        <text x="${mid}" y="${top + 12}" text-anchor="middle" font-size="10" fill="var(--text)">${fmtPrice(r.price, digitsFor(r.price))}</text>
+        <text x="${mid}" y="${top + 12}" text-anchor="middle" font-size="10" fill="var(--text)">${fmtPrice(r.price, 0)}</text>
         <rect x="${mid + 36}" y="${top + 2}" width="${wb}" height="${rowH - 4}" rx="2" fill="var(--buy)" opacity=".8"/>
         ${r.sell_qty ? `<text x="${mid - 40 - ws}" y="${top + 12}" text-anchor="end" font-size="9" fill="var(--muted)">${fmtVol(r.sell_qty)}</text>` : ''}
         ${r.buy_qty ? `<text x="${mid + 40 + wb}" y="${top + 12}" font-size="9" fill="var(--muted)">${fmtVol(r.buy_qty)}</text>` : ''}`;
@@ -102,25 +103,25 @@ function renderBook(r) {
   const tickMax = Math.max(...s.rows.map((x) => x.buy + x.sell + x.other), 1);
   $('book-result').innerHTML = `
     <p class="small" style="margin:10px 0">${esc(r.comment)}</p>
-    ${r.board.length ? `<h3>板の厚さ</h3>
+    ${r.board.length ? `<h3>${term('board', '板')}の厚さ（注文がたまっている量）</h3>
       <div class="grid2" style="margin-bottom:6px">
         <div class="stat"><div class="label">売り注文の合計</div><div class="value minus">${fmtVol(sellTotal)}株</div></div>
         <div class="stat"><div class="label">買い注文の合計</div><div class="value plus">${fmtVol(buyTotal)}株</div></div>
       </div>
       <p class="small muted" style="margin:0 0 4px">左が売り注文、右が買い注文。長い棒の値段は「壁」になりやすいです。</p>
       ${boardSvg(r.board)}` : ''}
-    ${s.rows.length ? `<h3>歩み値（約定）の集計</h3>
+    ${s.rows.length ? `<h3>${term('ticks', '歩み値')}（実際に売買が成立した記録）の集計</h3>
       <div class="grid2" style="margin-bottom:6px">
         <div class="stat"><div class="label">買いの約定</div><div class="value plus">${fmtVol(s.buy)}株</div></div>
         <div class="stat"><div class="label">売りの約定</div><div class="value minus">${fmtVol(s.sell)}株</div></div>
       </div>
       <div class="bars">${s.rows.slice(0, 15).map((x) => {
         const t = x.buy + x.sell + x.other;
-        return `<div class="bar"><span>${fmtPrice(x.price, digitsFor(x.price))}</span>
+        return `<div class="bar"><span>${fmtPrice(x.price, 0)}</span>
           <span class="track"><span class="fill" style="left:0;width:${(x.buy / tickMax) * 100}%;background:var(--buy)"></span><span class="fill" style="left:${(x.buy / tickMax) * 100}%;width:${(x.sell / tickMax) * 100}%;background:var(--sell)"></span></span>
           <span class="val">${fmtVol(t)}株</span></div>`;
       }).join('')}</div>
-      ${s.big.length ? `<h3>大口の約定</h3><ul class="list">${s.big.slice(0, 8).map((t) => `<li class="small"><span class="badge ${t.side === '買い' ? 'buy' : t.side === '売り' ? 'sell' : 'neutral'}">${esc(t.side)}</span> ${esc(t.time)}　${fmtPrice(t.price, digitsFor(t.price))}　<b>${fmtVol(t.qty)}株</b></li>`).join('')}</ul>` : ''}` : ''}`;
+      ${s.big.length ? `<h3>大口の売買（ふつうの5倍以上の株数）</h3><ul class="list">${s.big.slice(0, 8).map((t) => `<li class="small"><span class="badge ${t.side === '買い' ? 'buy' : t.side === '売り' ? 'sell' : 'neutral'}">${esc(t.side)}</span> ${esc(t.time)}　${fmtPrice(t.price, 0)}　<b>${fmtVol(t.qty)}株</b></li>`).join('')}</ul>` : ''}` : ''}`;
 }
 
 export function initOrderflow() {

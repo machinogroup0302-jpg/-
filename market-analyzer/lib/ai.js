@@ -81,7 +81,7 @@ const CHART_SCHEMA = obj({
 export async function analyzeChartImage(userKey, dataUrl, memo) {
   return structured(userKey, {
     effort: 'high',
-    system: 'あなたはFXと日本株のテクニカル分析の専門家です。投資初心者にも分かる、やさしい日本語で答えてください。断定は避け、根拠を添えてください。',
+    system: 'あなたはFXと日本株のテクニカル分析の専門家です。投資初心者にも分かる、専門用語をできるだけ使わない、中学生にも分かるやさしい日本語で（専門用語を使うときは、かっこで短い説明を付けて）答えてください。断定は避け、根拠を添えてください。',
     content: [
       imageBlock(dataUrl),
       {
@@ -149,7 +149,7 @@ const COACH_SCHEMA = obj({
 export async function coachTrades(userKey, stats) {
   return structured(userKey, {
     effort: 'medium',
-    system: 'あなたは個人トレーダーのコーチです。統計データだけを根拠に、やさしい日本語で具体的に助言してください。特定の銘柄の売買を勧めないでください。',
+    system: 'あなたは個人トレーダーのコーチです。統計データだけを根拠に、専門用語をできるだけ使わない、中学生にも分かるやさしい日本語で（専門用語を使うときは、かっこで短い説明を付けて）具体的に助言してください。特定の銘柄の売買を勧めないでください。',
     content: [{
       type: 'text',
       text: `次は私の過去の取引成績の集計です。良い点・直すべき癖・明日から守るルール（3〜5個）を教えてください。\n\n${JSON.stringify(stats)}`,
@@ -214,7 +214,7 @@ async function webSearchJson(userKey, { system, prompt, maxUses = 8 }) {
 export async function researchMarket(userKey, { symbol, name }) {
   const today = new Date().toISOString().slice(0, 10);
   return webSearchJson(userKey, {
-    system: 'あなたは慎重な金融リサーチャーです。事実と噂をはっきり区別し、やさしい日本語で書いてください。',
+    system: 'あなたは慎重な金融リサーチャーです。事実と噂をはっきり区別し、専門用語をできるだけ使わない、中学生にも分かるやさしい日本語で（専門用語を使うときは、かっこで短い説明を付けて）書いてください。',
     prompt: `今日は ${today} です。「${name || symbol}」（コード: ${symbol}）について、Web検索で最新の情報を集めて分析してください。
 
 手順:
@@ -247,7 +247,7 @@ export async function scenarioForecast(userKey, ctx) {
   const isFx = /=X$/.test(ctx.symbol);
   return webSearchJson(userKey, {
     maxUses: 8,
-    system: 'あなたは為替と日本株の相場見通しを作るストラテジストです。根拠のある予想だけを書き、噂は使わず、やさしい日本語で書いてください。予想は外れることがある前提で書いてください。',
+    system: 'あなたは為替と日本株の相場見通しを作るストラテジストです。根拠のある予想だけを書き、噂は使わず、専門用語をできるだけ使わない、中学生にも分かるやさしい日本語で（専門用語を使うときは、かっこで短い説明を付けて）書いてください。予想は外れることがある前提で書いてください。',
     prompt: `今日は ${today} です。「${ctx.name || ctx.symbol}」（コード: ${ctx.symbol}）の今後およそ1か月（20営業日）の値動きの予想シナリオを作ってください。
 
 いまの相場データ（日足）:
