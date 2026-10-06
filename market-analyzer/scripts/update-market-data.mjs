@@ -16,12 +16,13 @@ async function pdfLines(buf) {
     const rows = new Map();
     for (const it of tc.items) {
       if (!it.str || !it.str.trim()) continue;
-      const y = Math.round(it.transform[5]);
-      const key = [...rows.keys()].find((k) => Math.abs(k - y) <= 2) ?? y;
+      // ページが横向きに回転しているので、同じ横位置（x）の文字を1社分としてまとめる
+      const x = Math.round(it.transform[4]);
+      const key = [...rows.keys()].find((k) => Math.abs(k - x) <= 2) ?? x;
       if (!rows.has(key)) rows.set(key, []);
-      rows.get(key).push({ x: it.transform[4], s: it.str.trim() });
+      rows.get(key).push({ y: it.transform[5], s: it.str.trim() });
     }
-    [...rows.entries()].sort((a, b) => b[0] - a[0]).forEach(([, items]) => out.push(items.sort((a, b) => a.x - b.x).map((i) => i.s)));
+    [...rows.entries()].sort((a, b) => a[0] - b[0]).forEach(([, items]) => out.push(items.sort((a, b) => b.y - a.y).map((i) => i.s)));
   }
   return out;
 }
@@ -100,10 +101,11 @@ try {
     console.log('信用残: PDFを読みます', pdfs[0]);
     if (pdfs.length) {
       const lines = await pdfLines(await get(pdfs[0], false));
-      console.log(`  ${lines.length}行。先頭40行:`);
-      lines.slice(0, 40).forEach((l) => console.log('  |', l.join(' | ')));
-      console.log('  途中の行:');
-      lines.slice(200, 215).forEach((l) => console.log('  |', l.join(' | ')));
+      console.log(`  ${lines.length}列。先頭12列:`);
+      lines.slice(0, 12).forEach((l) => console.log('  |', l.join(' | ')));
+      const toyota = lines.findIndex((l) => l.includes('72030'));
+      console.log('  トヨタ(72030)の前後:');
+      lines.slice(Math.max(0, toyota - 2), toyota + 3).forEach((l) => console.log('  |', l.join(' | ')));
       const items = parseMarginLines(lines);
       console.log(`  読み取れた銘柄: ${items.length}件`, JSON.stringify(items.slice(0, 3)));
       if (items.length > 500) await save('margin.json', { items, source: pdfs[0], date: (pdfs[0].match(/(\d{8})_mtall/) || [])[1] });
