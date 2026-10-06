@@ -58,6 +58,13 @@
           <div class="sub-chart" id="chart-sub"></div>
         </div>
 
+        <div class="card">
+          <h2>AI予想（理由つき）<span class="sub">為替介入・イベント考慮</span></h2>
+          <p class="small muted">AIが今後1か月の重要な予定（金融政策・経済指標・決算など）や為替介入の可能性を調べ、値動きの予想と「なぜ上がる／下がるのか」をチャートに書き込みます（1回あたり数十円程度）。</p>
+          <button class="btn primary block" id="scenario-run">「<span id="scenario-name">—</span>」の予想を作る</button>
+          <div id="scenario-box"></div>
+        </div>
+
         <div class="two-col">
           <div class="card">
             <h2>テクニカル分析<span class="sub" id="tech-tf"></span></h2>
@@ -71,6 +78,17 @@
         <div class="card" style="margin-top:12px">
           <h2>予想チャート<span class="sub">シミュレーション</span></h2>
           <div id="forecast-box"></div>
+        </div>
+        <div class="card">
+          <h2>注文・約定分析<span class="sub">株</span></h2>
+          <div id="orderflow-box"></div>
+          <h3>板・歩み値から分析（AI）</h3>
+          <label class="drop" id="book-label">
+            <strong>板・歩み値のスクリーンショットを選ぶ</strong>
+            iSPEED の板や歩み値（約定履歴）の画面
+            <input type="file" id="book-img" accept="image/*" hidden>
+          </label>
+          <div id="book-result"></div>
         </div>
         <div class="card">
           <h2>ファンダメンタルズ・ニュース</h2>

@@ -5,6 +5,7 @@ import { initScreener } from './screener.js';
 import { initNewsView, onSymbol as newsOnSymbol } from './newsview.js';
 import { initTradesView } from './tradesview.js';
 import { initImageView } from './imageview.js';
+import { initOrderflow } from './orderflow.js';
 
 const DEFAULT_FAVS = [
   { code: 'USDJPY', name: 'ドル円' }, { code: 'EURJPY', name: 'ユーロ円' }, { code: 'GBPJPY', name: 'ポンド円' },
@@ -99,6 +100,7 @@ function startApp() {
   initNewsView();
   initTradesView();
   initImageView();
+  initOrderflow();
   onSymbolChange((st) => { if (currentTab === 'news') newsOnSymbol(st); });
 
   $('goto-news').addEventListener('click', () => showTab('news'));

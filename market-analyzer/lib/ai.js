@@ -176,24 +176,11 @@ const RESEARCH_FORMAT = `{
   "outlook": { "direction": "上昇|下落|横ばい", "short_term": "数日〜1週間の見通し", "mid_term": "1〜3か月の見通し", "risks": ["注意すべきリスク"] }
 }`;
 
-export async function researchMarket(userKey, { symbol, name }) {
+// Web検索をしながら調べてもらい、最後のJSONを受け取る
+async function webSearchJson(userKey, { system, prompt, maxUses = 8 }) {
   const client = clientFor(userKey);
-  const tools = [{ type: 'web_search_20260209', name: 'web_search', max_uses: 8 }];
-  const today = new Date().toISOString().slice(0, 10);
-  const userMsg = {
-    role: 'user',
-    content: `今日は ${today} です。「${name || symbol}」（コード: ${symbol}）について、Web検索で最新の情報を集めて分析してください。
-
-手順:
-1. 大手メディア・公的機関・会社の発表などの一次情報、金融専門メディア、SNSや掲示板の話題を幅広く調べる。
-2. 1つ1つの情報について、情報源の信頼性、複数の独立した情報源で裏付けが取れるか、日付が新しいか、あおり表現がないかを確認し、credibility を付ける。裏付けのない噂・古い情報の使い回し・誇張は verdict を「除外」にする。
-3. FXなら金利・金融政策・経済指標・要人発言、株なら業績・決算・PER/PBR・配当・業界動向などのファンダメンタルズをまとめる。
-4. 今後の予定と見通しをまとめる。
-
-最後に、次の形式のJSONだけを \`\`\`json と \`\`\` で囲んで出力してください（説明文は不要）。news は8〜15件。
-${RESEARCH_FORMAT}`,
-  };
-
+  const tools = [{ type: 'web_search_20260209', name: 'web_search', max_uses: maxUses }];
+  const userMsg = { role: 'user', content: prompt };
   const messages = [userMsg];
   let message;
   for (let i = 0; i < 5; i++) {
@@ -203,7 +190,7 @@ ${RESEARCH_FORMAT}`,
       betas: BETAS,
       fallbacks: 'default',
       output_config: { effort: 'medium' },
-      system: 'あなたは慎重な金融リサーチャーです。事実と噂をはっきり区別し、やさしい日本語で書いてください。',
+      system,
       tools,
       messages,
     });
@@ -222,6 +209,90 @@ ${RESEARCH_FORMAT}`,
   } catch {
     throw new Error('AIの回答を読み取れませんでした。もう一度お試しください。');
   }
+}
+
+export async function researchMarket(userKey, { symbol, name }) {
+  const today = new Date().toISOString().slice(0, 10);
+  return webSearchJson(userKey, {
+    system: 'あなたは慎重な金融リサーチャーです。事実と噂をはっきり区別し、やさしい日本語で書いてください。',
+    prompt: `今日は ${today} です。「${name || symbol}」（コード: ${symbol}）について、Web検索で最新の情報を集めて分析してください。
+
+手順:
+1. 大手メディア・公的機関・会社の発表などの一次情報、金融専門メディア、SNSや掲示板の話題を幅広く調べる。
+2. 1つ1つの情報について、情報源の信頼性、複数の独立した情報源で裏付けが取れるか、日付が新しいか、あおり表現がないかを確認し、credibility を付ける。裏付けのない噂・古い情報の使い回し・誇張は verdict を「除外」にする。
+3. FXなら金利・金融政策・経済指標・要人発言、株なら業績・決算・PER/PBR・配当・業界動向などのファンダメンタルズをまとめる。
+4. 今後の予定と見通しをまとめる。
+
+最後に、次の形式のJSONだけを \`\`\`json と \`\`\` で囲んで出力してください（説明文は不要）。news は8〜15件。
+${RESEARCH_FORMAT}`,
+  });
+}
+
+// ---------------- 理由つきの予想シナリオ（為替介入・今後のイベントを含む） ----------------
+const SCENARIO_FORMAT = `{
+  "summary": "今後1か月の見通しの要点（2〜4文）",
+  "direction": "上昇|下落|横ばい",
+  "main": [{ "date": "YYYY-MM-DD", "price": 数値, "label": "チャートに出す短い見出し（全角10文字以内）", "reason": "その日にその価格になると考える理由" }],
+  "bull": [{ "date": "YYYY-MM-DD", "price": 数値 }],
+  "bear": [{ "date": "YYYY-MM-DD", "price": 数値 }],
+  "bull_reason": "上ぶれするとしたら何が起きたときか",
+  "bear_reason": "下ぶれするとしたら何が起きたときか",
+  "events": [{ "date": "YYYY-MM-DD", "name": "イベント名", "impact": "上昇要因|下落要因|どちらも", "detail": "影響の説明" }],
+  "intervention": { "applicable": true または false, "risk": "高|中|低|対象外", "level": 数値（警戒される価格。なければ0）, "reason": "説明" },
+  "key_levels": [{ "price": 数値, "reason": "その価格が意識される理由" }]
+}`;
+
+export async function scenarioForecast(userKey, ctx) {
+  const today = new Date().toISOString().slice(0, 10);
+  const isFx = /=X$/.test(ctx.symbol);
+  return webSearchJson(userKey, {
+    maxUses: 8,
+    system: 'あなたは為替と日本株の相場見通しを作るストラテジストです。根拠のある予想だけを書き、噂は使わず、やさしい日本語で書いてください。予想は外れることがある前提で書いてください。',
+    prompt: `今日は ${today} です。「${ctx.name || ctx.symbol}」（コード: ${ctx.symbol}）の今後およそ1か月（20営業日）の値動きの予想シナリオを作ってください。
+
+いまの相場データ（日足）:
+- 現在値: ${ctx.price}
+- 直近の終値（古い順）: ${ctx.closes.join(', ')}
+- テクニカルの総合判定: ${ctx.technical}
+- 自動検出した抵抗線・支持線: ${ctx.levels.join(', ') || 'なし'}
+- 統計シミュレーション（20営業日後）: 中心 ${ctx.mc.p50} / 90%の範囲 ${ctx.mc.p05}〜${ctx.mc.p95}
+
+手順:
+1. Web検索で、今後1か月の重要イベント（中央銀行の会合・要人発言・経済指標・選挙・決算発表など）と最新の情勢を調べる。
+2. ${isFx ? '円が絡む通貨ペアなら、財務省・日銀による為替介入の可能性（過去に介入があった水準、最近の口先介入、財務官の発言など）を必ず調べて intervention に書く。円が絡まない通貨ペアは applicable を false にする。' : '株なので intervention は applicable を false、risk を「対象外」、level を 0 にする。'}
+3. 上の相場データとイベントを組み合わせ、メインシナリオ main を 5〜8 個の点（日付と価格）で作る。点はイベントの日や、流れが変わりそうな日に置き、それぞれに「なぜ上がる／下がるのか」の理由を付ける。date はすべて今日より後の営業日にする。
+4. 上ぶれ（bull）と下ぶれ（bear）のシナリオも 3〜4 点ずつ作る。
+
+最後に、次の形式のJSONだけを \`\`\`json と \`\`\` で囲んで出力してください（説明文は不要）。
+${SCENARIO_FORMAT}`,
+  });
+}
+
+// ---------------- 板・歩み値の画像の読み取り ----------------
+const ORDERBOOK_SCHEMA = obj({
+  symbol: str,
+  board: arr(obj({ price: num, sell_qty: num, buy_qty: num })),
+  ticks: arr(obj({ time: str, price: num, qty: num, side: { type: 'string', enum: ['買い', '売り', '不明'] } })),
+  comment: str,
+});
+
+export async function analyzeOrderBookImage(userKey, dataUrl) {
+  return structured(userKey, {
+    effort: 'medium',
+    system: 'あなたは株の板情報と歩み値（約定履歴）を正確に読み取る担当者です。読み取れない値は推測しないでください。',
+    content: [
+      imageBlock(dataUrl),
+      {
+        type: 'text',
+        text: `この画面（iSPEED などの板・歩み値・約定履歴）から数字を読み取ってください。
+- board: 板の各行。price=値段、sell_qty=売り注文の株数、buy_qty=買い注文の株数（無い側は0）。値段の高い順。
+- ticks: 歩み値の各行。time=時刻、price=約定値段、qty=株数。side は、直前より値段が上がった約定や売り板の値段での約定なら「買い」、下がった約定や買い板の値段での約定なら「売り」、判断できなければ「不明」。
+- 板か歩み値の片方しか写っていなければ、もう片方は空の配列にする。
+- comment: 厚い板（大きな注文がたまっている値段）、大口の約定、買いと売りどちらが優勢かを、初心者にも分かるように2〜4文で。`,
+      },
+    ],
+    schema: ORDERBOOK_SCHEMA,
+  });
 }
 
 export function aiErrorMessage(e) {

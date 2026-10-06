@@ -73,7 +73,8 @@ function renderResearch(r, when) {
 }
 
 function updateResearchTarget() {
-  $('ai-research-name').textContent = chartState.name || chartState.symbol;
+  const nameEl = $('ai-research-name'); // 調査中はボタンの文字が入れ替わっている
+  if (nameEl) nameEl.textContent = chartState.name || chartState.symbol;
   const saved = store.get('research_' + chartState.symbol, null);
   if (saved) renderResearch(saved.result, saved.when);
   else $('ai-research-out').innerHTML = '';

@@ -239,3 +239,5 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 }
 
 .grow { flex: 1; min-width: 0; }
+
+.drop.busy { opacity: .5; pointer-events: none; }
