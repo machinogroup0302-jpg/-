@@ -3,7 +3,7 @@ import { api, $, esc, store, toast } from './util.js';
 import { initChartView, loadChart, renderFavorites, onSymbolChange, refreshTheme, setMode, getMode, startAutoRefresh, state as chartState } from './chartview.js';
 import { initStockScreener, showStockScreener } from './stockscreener.js';
 import { initGlossary } from './glossary.js';
-import { getFavs, setFavs, DEFAULT_FAVS } from './favorites.js';
+import { getFavs, setFavs, DEFAULT_FAVS, syncFavs, onFavsSynced, syncState } from './favorites.js';
 import { setTradesMode } from './tradesview.js';
 import { setScreenerMode } from './screener.js';
 import { updateRatings, updatePts } from './ratingsview.js';
@@ -14,6 +14,7 @@ import { initTradesView } from './tradesview.js';
 import { updateOrderflow, resetOrderflow } from './orderflow.js';
 import { updateFundamentals } from './fundview.js';
 import { initLab, updateLab, resetLab } from './labview.js';
+import { updateEarningsCard } from './earningsview.js';
 
 const MODE_NAMES = { fx: '為替', stock: '日本株', us: '米国株' };
 function applyMode(mode) {
@@ -29,9 +30,9 @@ function applyMode(mode) {
 const ICON = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
 const TABS = [
   ['chart', 'チャート', 'チャート分析', ICON('<path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/>')],
-  ['screener', '候補', '可能性のある候補', ICON('<path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>')],
   ['news', 'ニュース', 'ニュース・ファンダ', ICON('<path d="M4 4h13v16H6a2 2 0 0 1-2-2z"/><path d="M17 8h3v10a2 2 0 0 1-2 2"/><path d="M8 8h5M8 12h5M8 16h3"/>')],
   ['lab', '成績', '答え合わせ・自動売買', ICON('<path d="M4 20h16"/><rect x="5" y="11" width="3" height="7"/><rect x="10.5" y="7" width="3" height="11"/><rect x="16" y="4" width="3" height="14"/>')],
+  ['screener', '候補', '可能性のある候補', ICON('<path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>')],
   ['trades', '取引分析', '自分の取引の分析', ICON('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>')],
 ];
 
@@ -83,7 +84,22 @@ async function openSettings() {
   $('fav-edit').value = favs.map((f) => `${f.code},${f.name}`).join('\n');
   seg($('candle-seg'), [['jp', '日本式（陽線=赤）'], ['global', '海外式（陽線=緑）']], store.get('candle', 'jp'));
   seg($('theme-seg'), [['auto', '自動'], ['dark', 'ダーク'], ['light', 'ライト']], store.get('theme', 'auto'));
+  renderSyncStatus();
   $('settings').showModal();
+  syncFavs().then(renderSyncStatus);
+}
+
+function renderSyncStatus() {
+  const el = $('sync-status');
+  if (syncState.durable === true && !syncState.error) {
+    el.innerHTML = '<span class="badge ok">共有中</span> パソコンとスマホで同じお気に入りが使えます（同じパスワードでログインした端末どうし）。';
+  } else if (syncState.durable === true) {
+    el.innerHTML = `<span class="badge warn">一時的に共有できません</span> ${esc(syncState.error)}`;
+  } else if (syncState.durable === false) {
+    el.innerHTML = '<span class="badge warn">一時的な共有のみ</span> サーバーが眠るまで（しばらく使わないと）の間だけ共有されます。ずっと共有するには、Render に <b>GITHUB_TOKEN</b> を登録してください（やり方はチャットで説明しています）。';
+  } else {
+    el.textContent = syncState.error ? `共有の確認に失敗しました：${syncState.error}` : '共有の状態を確認しています…';
+  }
 }
 
 function saveSettings() {
@@ -118,11 +134,17 @@ function startApp() {
     if (currentTab === 'news') newsOnSymbol(st);
     updateRatings(st, getMode());
     updatePts(st, getMode());
+    updateEarningsCard(st, getMode());
     updateOrderflow(st, getMode());
     updateFundamentals(st);
     if (currentTab === 'lab') updateLab(st, getMode());
   });
   startAutoRefresh();
+  // お気に入りをパソコンとスマホでそろえる（開いたとき・画面に戻ってきたとき・2分ごと）
+  onFavsSynced(() => renderFavorites());
+  syncFavs();
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') syncFavs(); });
+  setInterval(() => { if (document.visibilityState === 'visible') syncFavs(); }, 2 * 60 * 1000);
   // ニュースタブを開いている間は10分ごとに最新にする
   setInterval(() => {
     if (currentTab === 'news' && document.visibilityState === 'visible' && store.get('autoRefresh', 'on') === 'on' && $('news-q').value) searchNews($('news-q').value);

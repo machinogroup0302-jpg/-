@@ -111,6 +111,9 @@ export function rowsToTrades(rows, headerIndex, map) {
   const total = isTotalPnl(header[map.pnl]);
   // LION FX は新規と決済の値段から、買いで持っていたか売りで持っていたかを判定する
   const entryCol = header.findIndex((c) => /新規約定値|取得価額|取得単価/.test(c));
+  // 新規の日時（持ち始めた時刻）と銘柄コードがあれば、詳しい分析に使う
+  const openCol = header.findIndex((c, i) => i !== map.date && /新規約定日時|新規約定日|建玉日時|新規日時|建日/.test(c));
+  const codeCol = header.findIndex((c, i) => i !== map.symbol && /銘柄コード|ティッカー/.test(c));
   const trades = [];
   for (const r of rows.slice(headerIndex + 1)) {
     if (r.some((c) => /^(総?合計|小計|計)$/.test(String(c).trim()))) continue; // 合計の行は取引ではない
@@ -132,6 +135,8 @@ export function rowsToTrades(rows, headerIndex, map) {
       qty: map.qty != null ? toNumber(r[map.qty]) || 0 : 0,
       price,
       entry: Number.isNaN(entry) ? null : entry,
+      openDate: openCol >= 0 ? parseDate(r[openCol])?.toISOString() || null : null,
+      code: codeCol >= 0 ? String(r[codeCol] || '').normalize('NFKC').trim() : '',
       pnl: Number.isNaN(pnl) ? null : total ? pnl : pnl + (Number.isNaN(swap) ? 0 : swap) - (Number.isNaN(fee) ? 0 : Math.abs(fee)),
     });
   }

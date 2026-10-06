@@ -509,7 +509,7 @@ export function initChartView() {
         } catch (err) { $('chart-msg').hidden = false; $('chart-msg').textContent = err.message; return; }
       }
     }
-    const fav = [...document.querySelectorAll('#fav-chips .chip')].find((b) => b.dataset.code.toUpperCase() === v.toUpperCase());
+    const fav = [...document.querySelectorAll('#fav-chips .chip[data-code]')].find((b) => b.dataset.code.toUpperCase() === v.toUpperCase());
     loadChart(v, fav?.dataset.name);
   });
   // 入力中に候補を出す（ひらがな・カタカナ・コードの一部でもOK）

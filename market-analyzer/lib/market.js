@@ -104,3 +104,22 @@ export async function getChart(rawSymbol, tf = '1h') {
   cache.set(key, { at: Date.now(), data });
   return data;
 }
+
+// 過去の決まった期間の値動き（取引分析で「持っていた間の値動き」を調べるため）
+const HISTORY_IV = { '5m': 59 * 86400, '60m': 729 * 86400, '1d': 20 * 365 * 86400 };
+export async function getHistory(rawSymbol, interval, from, to) {
+  const symbol = normalizeSymbol(rawSymbol);
+  if (!HISTORY_IV[interval]) throw new Error('足の指定が正しくありません');
+  const now = Math.floor(Date.now() / 1000);
+  const p1 = Math.max(Math.floor(Number(from)) || 0, now - HISTORY_IV[interval]);
+  const p2 = Math.min(Math.floor(Number(to)) || now, now);
+  if (!(p2 > p1)) throw new Error('期間の指定が正しくありません');
+  const key = `h|${symbol}|${interval}|${Math.floor(p1 / 3600)}|${Math.floor(p2 / 3600)}`;
+  const hit = cache.get(key);
+  if (hit && Date.now() - hit.at < 10 * 60 * 1000) return hit.data;
+  const data = parseChart(await fetchJson(`/v8/finance/chart/${encodeURIComponent(symbol)}?interval=${interval}&period1=${p1}&period2=${p2}&includePrePost=false`));
+  const out = { symbol: data.symbol, interval, candles: data.candles.map((c) => ({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close })) };
+  if (cache.size > 400) cache.delete(cache.keys().next().value); // 古いものから捨てる
+  cache.set(key, { at: Date.now(), data: out });
+  return out;
+}

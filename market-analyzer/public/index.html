@@ -59,6 +59,7 @@
             <button type="button" class="chip fav-star" id="fav-star" aria-pressed="false">☆ お気に入りに追加</button>
           </div>
           <p class="small muted" id="q-updated" style="margin:-4px 0 6px"></p>
+          <div id="q-earn" class="only-stock" style="margin:0 0 8px;cursor:pointer" title="決算発表の予定を見る" hidden></div>
           <div class="chart-box" id="chart-main"><div class="chart-msg" id="chart-msg">読み込み中…</div></div>
           <div class="legend" id="legend"></div>
           <div class="chips" id="layer-chips" style="margin-top:8px"></div>
@@ -70,6 +71,11 @@
         <div class="card only-stock">
           <h2><button type="button" class="term" data-term="stop">ストップ高・ストップ安<span class="q" aria-hidden="true">?</span></button></h2>
           <div id="stop-box"></div>
+        </div>
+
+        <div class="card only-stock">
+          <h2><button type="button" class="term" data-term="earnings">決算発表の予定<span class="q" aria-hidden="true">?</span></button></h2>
+          <div id="earn-box"></div>
         </div>
 
         <div class="card only-stock">
@@ -280,6 +286,7 @@
         <label>お気に入り（チャート画面の上に並ぶボタン・<span id="fav-mode">為替</span>）</label>
         <textarea class="input" id="fav-edit" rows="4"></textarea>
         <p class="small muted">1行に「コード,表示名」。例: USDJPY,ドル円 ／ 7203,トヨタ。為替と株は別々に保存されます。</p>
+        <p class="small" id="sync-status" style="margin-top:6px"></p>
       </div>
       <div class="field">
         <label>値段の自動更新</label>

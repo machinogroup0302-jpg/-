@@ -7,13 +7,13 @@ const MARKETS = ['プライム', 'スタンダード', 'グロース', '外国�
 const VIEWS = [['buy', '上がりそう'], ['sell', '下がりそう'], ['up', '今日の値上がり'], ['down', '今日の値下がり']];
 const STOP_VIEWS = [['stopHigh', 'ストップ高'], ['stopLow', 'ストップ安']];
 const EARN_VIEWS = [['week', '今週'], ['month', '1か月'], ['all', 'すべて'], ['fav', 'お気に入り']];
-const PAGE = 20;
+const PAGE = 10;
 let markets = store.get('stk_markets', ['プライム', 'スタンダード', 'グロース']);
 let view = 'buy', stopView = 'stopHigh', earnView = 'week';
 let polling = null;
 let onPick = () => {};
 
-// 20件ずつ表示して、残りは「もっと見る」で出す
+// 10件ずつ表示して、残りは「もっと見る」で出す
 export function pagedList(el, items, render, { empty = '該当なし', tag = 'ul', wrap = (x) => x } = {}) {
   let shown = 0;
   const draw = () => {

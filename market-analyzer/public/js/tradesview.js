@@ -1,7 +1,8 @@
 // 取引分析画面：CSV またはスクリーンショットから取引を読み込み、成績を分析する
-import { $, esc, store, fmtYen, toast } from './util.js';
+import { $, esc, store, fmtYen, toast, api } from './util.js';
 import { term } from './glossary.js';
-import { parseCsv, findHeader, guessMapping, rowsToTrades, decodeFile, computeStats, insights, FIELD_LABELS, detectFormat, fileId } from './trades.js';
+import { coach, fmtDuration, tradeSymbol, pickInterval, excursion, excursionAdvice } from './tradecoach.js';
+import { parseCsv, findHeader, guessMapping, rowsToTrades, decodeFile, computeStats, FIELD_LABELS, detectFormat, fileId } from './trades.js';
 
 // 為替と株の取引は別々に保存する
 const isFxTrade = (sym) => /[A-Z]{3}\s*\/?\s*[A-Z]{3}/i.test(sym || '') || /円|ドル|ユーロ|ポンド|ランド|ペソ|リラ|フラン/.test(sym || '');
@@ -52,6 +53,107 @@ function equitySvg(curve) {
     <path d="${d}" fill="none" stroke="${color}" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>`;
 }
 
+
+const LEVEL = { bad: ['要注意', 'danger', '✕'], warn: ['直すと伸びる', 'warn', '！'], good: ['できている', 'ok', '◯'] };
+
+function findingHtml(f) {
+  const [label, cls, mark] = LEVEL[f.level];
+  return `<li class="finding ${f.level}">
+    <div class="li-head"><span class="name"><span class="mark ${cls}">${mark}</span>${esc(f.title)}</span><span class="badge ${cls}">${esc(f.cat)}</span></div>
+    <p class="small" style="margin:4px 0">${f.body}</p>
+    ${f.rule ? `<p class="small rule"><b>こうしてみよう：</b>${f.rule}</p>` : ''}
+  </li>`;
+}
+
+function sessionTable(rows) {
+  return `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>時間帯</th><th class="r">回数</th><th class="r">勝率</th><th class="r">損益</th></tr></thead><tbody>
+    ${rows.map((r) => `<tr><td class="small">${esc(String(r.key))}</td><td class="r">${r.count}</td><td class="r">${Math.round(r.winRate * 100)}%</td><td class="r ${r.pnl >= 0 ? 'plus' : 'minus'}">${fmtYen(r.pnl)}</td></tr>`).join('')}
+  </tbody></table></div>`;
+}
+
+function coachHtml(c) {
+  if (!c) return '<div class="card"><h2>アドバイス</h2><p class="small muted">取引が3回以上になると、くせやアドバイスが出ます。</p></div>';
+  const [, tcls] = LEVEL[c.type.level];
+  const timeNote = c.timeKey === 'openDate' ? '取引を始めた時刻で分けています' : c.timeKey === 'date' ? '決済した時刻で分けています' : '';
+  return `
+    <div class="card">
+      <h2>あなたの取引タイプ</h2>
+      <p style="margin:0 0 6px"><span class="badge ${tcls}" style="font-size:14px">${esc(c.type.name)}</span></p>
+      <p class="small" style="margin:0">${esc(c.type.text)}</p>
+    </div>
+    ${c.top.length ? `<div class="card">
+      <h2>まず直したいこと<span class="sub">効果が大きい順</span></h2>
+      <ol class="top-fix">${c.top.map((f) => `<li><b>${esc(f.title)}</b><p class="small" style="margin:4px 0 0">${f.rule}</p></li>`).join('')}</ol>
+    </div>` : ''}
+    <div class="card">
+      <h2>くわしい分析<span class="sub">${c.findings.length}項目</span></h2>
+      <ul class="list findings" id="coach-list">${c.findings.map(findingHtml).join('')}</ul>
+    </div>
+    <div class="card">
+      <h2>実際の値動きと照らし合わせる</h2>
+      <p class="small muted" style="margin:0 0 6px">持っていた間に一番良かったとき・悪かったときと比べて、「利益確定が遅れて負けた」「高いところで飛びついた」などを調べます。</p>
+      <div id="exc-box"><p class="small muted">準備中…</p></div>
+    </div>
+    ${c.sessions.length ? `<div class="card">
+      <h2>時間帯別の成績<span class="sub">${esc(timeNote)}</span></h2>
+      ${sessionTable(c.sessions)}
+      <h3>1時間ごと</h3>${bars(c.hours, (k) => k + '時')}
+    </div>` : '<div class="card"><h2>時間帯別の成績</h2><p class="small muted">このCSVには時刻（何時何分）が入っていないため、時間帯の分析はできません。時刻が入った「約定履歴」のCSVを読み込むと分析できます。</p></div>'}
+    ${c.holding ? `<div class="card">
+      <h2>持っていた時間</h2>
+      <div class="grid2" style="margin-bottom:8px">
+        <div class="stat"><div class="label">勝った取引（ふつう）</div><div class="value plus">${c.holding.win ? fmtDuration(c.holding.win) : '—'}</div></div>
+        <div class="stat"><div class="label">負けた取引（ふつう）</div><div class="value minus">${c.holding.loss ? fmtDuration(c.holding.loss) : '—'}</div></div>
+      </div>
+      ${sessionTable(c.holding.buckets).replace('<th>時間帯</th>', '<th>持っていた時間</th>')}
+    </div>` : ''}`;
+}
+
+let excKey = '';
+// 取引ごとに、持っていた間の値動きを取ってきて調べる
+async function runExcursions(c) {
+  const box = $('exc-box');
+  const list = trades.filter((t) => t.pnl && t.openDate && t.entry > 0 && t.price > 0).slice(-300);
+  if (!list.length) {
+    box.innerHTML = `<p class="small muted">${trades.some((t) => t.openDate) ? '値段（新規の値段と決済の値段）が入っている取引がないため、調べられません。' : 'このCSVには「持ち始めた日時」（新規約定日時など）が入っていないため、調べられません。LION FX の「決済履歴」のように、新規と決済の両方の日時・値段が入ったCSVを読み込むと分析できます。（前に読み込んだ取引は、同じCSVをもう一度読み込み直すと分析できるようになります）'}</p>`;
+    return;
+  }
+  const groups = new Map();
+  for (const t of list) {
+    const sym = tradeSymbol(t, tradeMode), iv = pickInterval(t);
+    if (!sym || !iv) continue;
+    const k = `${sym}|${iv}`;
+    if (!groups.has(k)) groups.set(k, { sym, iv, list: [] });
+    groups.get(k).list.push(t);
+  }
+  if (!groups.size) {
+    box.innerHTML = '<p class="small muted">持っていた時間が短すぎる（数分）取引や、古すぎる取引しかないため、細かい値動きと照らし合わせられませんでした（5分足は約2か月前まで、1時間足は約2年前までの取引が対象です）。</p>';
+    return;
+  }
+  const key = `${tradeMode}|${list.length}|${list[list.length - 1].date}`;
+  excKey = key;
+  box.innerHTML = '<p class="small muted"><span class="spinner"></span> 値動きを取ってきて調べています…</p>';
+  const results = [];
+  const back = { '5m': 6 * 3600, '60m': 48 * 3600, '1d': 20 * 86400 };
+  let failed = 0;
+  for (const g of [...groups.values()].slice(0, 25)) {
+    const from = Math.min(...g.list.map((t) => new Date(t.openDate).getTime() / 1000)) - back[g.iv] - 86400;
+    const to = Math.max(...g.list.map((t) => new Date(t.date).getTime() / 1000)) + 3600;
+    try {
+      const d = await api(`/api/history?symbol=${encodeURIComponent(g.sym)}&interval=${g.iv}&from=${Math.floor(from)}&to=${Math.ceil(to)}`);
+      for (const t of g.list) results.push(excursion(t, d.candles, g.iv));
+    } catch { failed++; }
+    if (excKey !== key) return;
+  }
+  const adv = excursionAdvice(results, c.stats);
+  if (!adv) {
+    box.innerHTML = `<p class="small muted">照らし合わせられた取引が少なすぎました${failed ? `（${failed}件の値動きを取得できませんでした）` : ''}。</p>`;
+    return;
+  }
+  box.innerHTML = `<p class="small muted" style="margin:0 0 6px">${adv.checked}回の取引を、実際の値動きと照らし合わせました${failed ? `（${failed}件は値動きを取得できませんでした）` : ''}。</p>
+    <ul class="list findings">${adv.findings.map(findingHtml).join('')}</ul>`;
+}
+
 function render() {
   const out = $('trade-result');
   const s = computeStats(trades);
@@ -62,6 +164,7 @@ function render() {
     return;
   }
   const pct = (v) => `${Math.round(v * 100)}%`;
+  const c = coach(trades, tradeMode);
   const period = s.from ? `${new Date(s.from).toLocaleDateString('ja-JP')} 〜 ${new Date(s.to).toLocaleDateString('ja-JP')}` : '';
   out.innerHTML = `
     <div class="card">
@@ -78,16 +181,12 @@ function render() {
       </div>
       <h3>損益の推移</h3>${equitySvg(s.curve)}
     </div>
-    <div class="card">
-      <h2>あなたの癖・傾向</h2>
-      <ul class="list">${insights(s).map((t) => `<li class="small">${esc(t)}</li>`).join('') || '<li class="small muted">取引がもう少し増えると傾向が分かります</li>'}</ul>
-    </div>
+    ${coachHtml(c)}
     <div class="two-col">
       <div class="card"><h2>${tradeMode === 'fx' ? '通貨ペア別' : '銘柄別'}</h2>${bars(s.bySymbol.slice(0, 12), (k) => k)}</div>
       <div class="card"><h2>買い・売り別</h2>${bars(s.bySide, (k) => k)}
         <h3>曜日別</h3>${bars(s.byWeekday, (k) => k + '曜')}</div>
     </div>
-    <div class="card" style="margin-top:12px"><h2>時間帯別</h2>${bars(s.byHour, (k) => k + '時')}</div>
     <div class="card">
       <h2>取引一覧<span class="sub">${trades.length}件</span></h2>
       <div class="tbl-wrap"><table class="tbl"><thead><tr><th>日時</th><th>銘柄</th><th>売買</th><th class="r">損益</th></tr></thead><tbody>
@@ -97,6 +196,7 @@ function render() {
       <button class="btn danger block" id="trades-clear" style="margin-top:10px">読み込んだ取引をすべて消す</button>
     </div>`;
 
+  if (c) runExcursions(c);
   $('trades-clear').onclick = () => {
     if (!confirm('読み込んだ取引をすべて消しますか？')) return;
     trades = [];

@@ -5,7 +5,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { getChart } from './lib/market.js';
+import { getChart, getHistory } from './lib/market.js';
 import { getNews } from './lib/news.js';
 import { searchListings, listingMeta, nameFromCache, getListings } from './lib/listings.js';
 import { usName, searchUs } from './lib/usstocks.js';
@@ -15,6 +15,7 @@ import { loadRepoData } from './lib/jpxdata.js';
 import { INDEX_NAMES } from './lib/market.js';
 import { fxName } from './public/js/fxpairs.js';
 import { startScan, scanStatus } from './lib/scanner.js';
+import { getPrefs, putPref, loadPrefs } from './lib/prefs.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(here, 'public');
@@ -129,6 +130,14 @@ async function handleApi(req, res, url) {
       return json(res, 502, { error: e.message });
     }
   }
+  if (route === 'GET /api/history') {
+    try {
+      const q = url.searchParams;
+      return json(res, 200, await getHistory(q.get('symbol'), q.get('interval'), q.get('from'), q.get('to')));
+    } catch (e) {
+      return json(res, 502, { error: e.message });
+    }
+  }
   if (route === 'GET /api/stocks/search') {
     try {
       return json(res, 200, { items: await searchListings(String(url.searchParams.get('q') || '').slice(0, 40)) });
@@ -156,6 +165,13 @@ async function handleApi(req, res, url) {
     } catch (e) {
       return json(res, 502, { error: e.message });
     }
+  }
+  if (route === 'GET /api/prefs') {
+    return json(res, 200, await getPrefs());
+  }
+  if (route === 'PUT /api/prefs') {
+    const body = await readBody(req);
+    return json(res, 200, await putPref(String(body.key || ''), body.value));
   }
   if (route === 'GET /api/stocks/earnings') {
     // 決算発表の予定（日本取引所の公開データ。GitHub Actions で毎回更新）
@@ -241,6 +257,7 @@ const server = http.createServer(async (req, res) => {
 
 // 起動したら上場企業の一覧を先に読み込んでおく（会社名を日本語で出すため）
 getListings().catch((e) => console.error('上場銘柄一覧の読み込みに失敗:', e.message));
+loadPrefs();
 
 server.listen(PORT, () => {
   console.log(`分析サイトを起動しました: http://localhost:${PORT}`);

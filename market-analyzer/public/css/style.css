@@ -304,3 +304,18 @@ a.btn { text-decoration: none; color: var(--text); }
 /* ---------- もっと見る ---------- */
 .more-btn { margin-top: 8px; }
 details > summary { cursor: pointer; padding: 6px 0; color: var(--accent); font-weight: 600; }
+
+/* 取引分析のアドバイス */
+.findings li.finding { display: block; border-left: 4px solid var(--border); padding-left: 10px; }
+.badge.danger { background: color-mix(in srgb, #e5484d 18%, transparent); color: #e5484d; }
+.findings li.finding.bad { border-left-color: #e5484d; }
+.findings li.finding.warn { border-left-color: var(--warn); }
+.findings li.finding.good { border-left-color: var(--ok); }
+.findings .mark { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; font-size: 12px; margin-right: 6px; vertical-align: 1px; }
+.findings .mark.danger { background: color-mix(in srgb, #e5484d 20%, transparent); color: #e5484d; }
+.findings .mark.warn { background: color-mix(in srgb, var(--warn) 22%, transparent); color: var(--warn); }
+.findings .mark.ok { background: color-mix(in srgb, var(--ok) 20%, transparent); color: var(--ok); }
+.findings .li-head .name { white-space: normal; }
+.findings .rule { margin: 6px 0 0; padding: 8px 10px; border-radius: 10px; background: var(--surface-2); }
+.top-fix { margin: 0; padding-left: 22px; display: grid; gap: 10px; }
+.top-fix li::marker { font-weight: 800; color: var(--accent, var(--text)); }

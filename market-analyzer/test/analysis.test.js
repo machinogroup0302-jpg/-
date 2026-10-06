@@ -487,3 +487,109 @@ test('勝率の高い銘柄だけを選ぶ売買：選ぶときに未来を使�
   const sum = r.trades.reduce((a, t) => a + t.pnl, 0);
   assert.ok(Math.abs(daily - sum) < 1e-6);
 });
+
+import { coach, excursion, excursionAdvice, tradeSymbol, pickInterval, sessionOf } from '../public/js/tradecoach.js';
+import { earningsInfo, daysBetween } from '../public/js/earningsview.js';
+
+const mk = (i, pnl, extra = {}) => ({ date: new Date(2026, 8, 1 + Math.floor(i / 3), 10 + (i % 3) * 5, 0).toISOString(), symbol: i % 2 ? 'USD/JPY' : 'EUR/JPY', side: '買', qty: 1, pnl, ...extra });
+
+test('取引アドバイス：コツコツドカンと大きな負けを見つけて、損切りルールの効果を計算する', () => {
+  const list = [];
+  for (let i = 0; i < 20; i++) list.push(mk(i, i % 5 === 4 ? -20000 : 3000));
+  const c = coach(list, 'fx');
+  assert.equal(c.type.name, 'コツコツ勝って、ドカンと負けるタイプ');
+  const f = c.findings.find((x) => x.title.includes('大きな負け') || x.title.includes('損切りが少し遅め'));
+  assert.ok(f, '損切りのアドバイスが出る');
+  assert.ok(/合計は/.test(f.rule));
+  assert.ok(c.top.length >= 1);
+  assert.ok(c.sessions.length >= 1, '時刻があれば時間帯別が出る');
+});
+
+test('取引アドバイス：負けを長く持つくせと、負けた直後の取引を見つける', () => {
+  const list = [];
+  for (let i = 0; i < 24; i++) {
+    const win = i % 2 === 0;
+    const close = new Date(2026, 8, 1, 9, 0).getTime() + i * 3 * 3600e3;
+    const hold = win ? 10 * 60e3 : 90 * 60e3;
+    list.push({ date: new Date(close).toISOString(), openDate: new Date(close - hold).toISOString(), symbol: 'USD/JPY', side: '買', qty: 1, pnl: win ? 2000 : -2500 });
+  }
+  const c = coach(list, 'fx');
+  assert.ok(c.findings.some((x) => x.title === '負けている取引を長く持ちすぎています'));
+  assert.ok(c.holding.loss > c.holding.win);
+  assert.equal(c.timeKey, 'openDate');
+});
+
+test('取引アドバイス：日付だけのCSVでは時間帯の分析をしない', () => {
+  const list = Array.from({ length: 6 }, (_, i) => ({ date: new Date(2026, 8, 1 + i).toISOString(), symbol: '7203', side: '売', qty: 100, pnl: i % 2 ? 1000 : -500 }));
+  const c = coach(list, 'stock');
+  assert.equal(c.sessions.length, 0);
+  assert.equal(c.timeKey, null);
+});
+
+test('時間帯の分け方', () => {
+  assert.equal(sessionOf(new Date(2026, 8, 1, 22, 0), 'fx'), 'ニューヨーク時間（21〜翌2時）');
+  assert.equal(sessionOf(new Date(2026, 8, 1, 1, 0), 'fx'), 'ニューヨーク時間（21〜翌2時）');
+  assert.equal(sessionOf(new Date(2026, 8, 1, 9, 10), 'stock'), '寄り付き直後（9:00〜9:30）');
+});
+
+test('値動きとの照らし合わせ：含み益から負けになった取引と、飛びつき買いを見つける', () => {
+  const base = Date.UTC(2026, 8, 1, 0, 0) / 1000;
+  const candles = [];
+  // 入る前の6時間：100 → 102 に上がっていく
+  for (let i = 0; i < 72; i++) candles.push({ time: base + i * 300, open: 100 + i / 36, high: 100 + i / 36 + 0.05, low: 100 + i / 36 - 0.05, close: 100 + i / 36 });
+  // 持っている間：102.5 まで上がってから 101 に下がる
+  const start = base + 72 * 300;
+  for (let i = 0; i < 24; i++) {
+    const p = i < 12 ? 102 + i * 0.04 : 102.5 - (i - 12) * 0.13;
+    candles.push({ time: start + i * 300, open: p, high: p + 0.02, low: p - 0.02, close: p });
+  }
+  const t = { openDate: new Date(start * 1000).toISOString(), date: new Date((start + 24 * 300) * 1000).toISOString(), side: '買', entry: 102, price: 101, pnl: -10000 };
+  const r = excursion(t, candles, '5m');
+  assert.ok(r.mfe > 4000 && r.mfe < 6000, `含み益の最大 ${r.mfe}`);
+  assert.equal(r.chase, true);
+  const adv = excursionAdvice([r, r, r, { ...r, pnl: 3000, chase: false, position: 0.5, mfe: 3000, mae: 0 }, { ...r, pnl: 3000, chase: false, position: 0.4, mfe: 3200, mae: 0 }, { ...r, pnl: 2000, chase: false, position: 0.3, mfe: 2000, mae: 0 }], { avgWin: 3000, avgLoss: 10000 });
+  assert.ok(adv.findings.some((f) => f.title.startsWith('含み益があったのに')));
+  assert.ok(adv.findings.some((f) => f.title.startsWith('上がりきった')));
+});
+
+test('取引の銘柄名から値動きのコードを作る', () => {
+  assert.equal(tradeSymbol({ symbol: 'USD/JPY' }, 'fx'), 'USDJPY=X');
+  assert.equal(tradeSymbol({ symbol: '米ドル/円' }, 'fx'), 'USDJPY=X');
+  assert.equal(tradeSymbol({ symbol: 'トヨタ自動車', code: '7203' }, 'stock'), '7203.T');
+  assert.equal(tradeSymbol({ symbol: 'AAPL' }, 'us'), 'AAPL');
+  const now = Date.UTC(2026, 9, 6);
+  assert.equal(pickInterval({ openDate: new Date(now - 86400e3).toISOString(), date: new Date(now - 86400e3 + 3600e3).toISOString() }, now), '5m');
+  assert.equal(pickInterval({ openDate: new Date(now - 200 * 86400e3).toISOString(), date: new Date(now - 200 * 86400e3 + 5 * 3600e3).toISOString() }, now), '60m');
+  assert.equal(pickInterval({ openDate: new Date(now - 200 * 86400e3).toISOString(), date: new Date(now - 200 * 86400e3 + 60e3).toISOString() }, now), null);
+});
+
+test('LION FX：新規約定日時を、持ち始めた時刻として読む', () => {
+  const csv = [
+    '決済約定日時,ポジション番号,通貨ペア,売買,Lot数,新規約定日時,新規約定値,決済約定値,決済損益',
+    '2026/09/01 10:15:30,1001,USD/JPY,売,1,2026/09/01 09:00:00,146.500,146.800,3120',
+  ].join('\n');
+  const rows = parseCsv(csv);
+  const h = findHeader(rows);
+  const t = rowsToTrades(rows, h, guessMapping(rows[h]));
+  assert.equal(new Date(t[0].openDate).getHours(), 9);
+  assert.equal(new Date(t[0].date).getHours(), 10);
+});
+
+test('決算発表まであと何日', () => {
+  assert.equal(daysBetween('2026-10-06', '2026-10-28'), 22);
+  assert.equal(earningsInfo({ date: '2026-10-07' }, '2026-10-06').when, '明日');
+  assert.equal(earningsInfo({ date: '2026-10-08' }, '2026-10-06').level, 'bad');
+  assert.equal(earningsInfo({ date: '2026-10-01' }, '2026-10-06').when, '5日前に発表済み');
+});
+
+test('お気に入りの共有：新しい値を保存し、時刻が進む', async () => {
+  delete process.env.GITHUB_TOKEN; // テストでは GitHub に保存しない
+  const { putPref, getPrefs, _reset } = await import('../lib/prefs.js');
+  _reset();
+  const a = await putPref('favs_fx', [{ code: 'USDJPY', name: 'ドル円' }]);
+  const b = await putPref('favs_fx', [{ code: 'EURJPY', name: 'ユーロ円' }]);
+  assert.ok(b.ts > a.ts);
+  const p = await getPrefs();
+  assert.equal(p.items.favs_fx.value[0].code, 'EURJPY');
+  await assert.rejects(() => putPref('secret', []));
+});
