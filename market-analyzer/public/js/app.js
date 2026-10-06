@@ -1,19 +1,19 @@
 // 画面全体の動き：ログイン・タブ切り替え・設定
 import { api, $, esc, store, toast } from './util.js';
 import { initChartView, loadChart, renderFavorites, onSymbolChange, refreshTheme, setMode, getMode, startAutoRefresh, state as chartState } from './chartview.js';
-import { initStockScreener, showStockScreener } from './stockscreener.js';
+import { initStockScreener, showStockScreener, autoRefreshStock } from './stockscreener.js';
 import { initGlossary } from './glossary.js';
-import { getFavs, setFavs, DEFAULT_FAVS, syncFavs, onFavsSynced, syncState } from './favorites.js';
+import { getFavs, setFavs, DEFAULT_FAVS, syncFavs, onFavsSynced, syncState, getProfile, setProfile } from './favorites.js';
 import { setTradesMode } from './tradesview.js';
 import { setScreenerMode } from './screener.js';
-import { updateRatings, updatePts } from './ratingsview.js';
+import { updateRatings, updatePts, resetRatings } from './ratingsview.js';
 import { searchNews } from './newsview.js';
-import { initScreener } from './screener.js';
+import { initScreener, autoRefreshList } from './screener.js';
 import { initNewsView, onSymbol as newsOnSymbol } from './newsview.js';
 import { initTradesView } from './tradesview.js';
 import { updateOrderflow, resetOrderflow } from './orderflow.js';
-import { updateFundamentals } from './fundview.js';
-import { initLab, updateLab, resetLab } from './labview.js';
+import { updateFundamentals, resetFundamentals } from './fundview.js';
+import { initLab, updateLab, resetLab, refreshLab } from './labview.js';
 import { updateEarningsCard } from './earningsview.js';
 
 const MODE_NAMES = { fx: '為替', stock: '日本株', us: '米国株' };
@@ -80,29 +80,47 @@ function parseFavs(text) {
 async function openSettings() {
   const favs = getFavs(getMode());
   $('fav-mode').textContent = MODE_NAMES[getMode()];
-  seg($('refresh-seg'), [['on', '1分ごとに自動更新'], ['off', '自動更新しない']], store.get('autoRefresh', 'on'));
+  seg($('refresh-seg'), [['on', '自動で最新にする'], ['off', '自動更新しない']], store.get('autoRefresh', 'on'));
   $('fav-edit').value = favs.map((f) => `${f.code},${f.name}`).join('\n');
   seg($('candle-seg'), [['jp', '日本式（陽線=赤）'], ['global', '海外式（陽線=緑）']], store.get('candle', 'jp'));
   seg($('theme-seg'), [['auto', '自動'], ['dark', 'ダーク'], ['light', 'ライト']], store.get('theme', 'auto'));
+  const pf = getProfile();
+  $('pf-email').value = pf.email || '';
+  $('pf-budget').value = pf.budget ? String(pf.budget) : '';
+  showBudget();
+  seg($('pf-risk'), [['1', '1%（慎重）'], ['2', '2%（ふつう）'], ['3', '3%（積極的）']], String(pf.riskPct));
+  seg($('pf-maxpos'), [['1', '1つ'], ['2', '2つ'], ['3', '3つ'], ['5', '5つ']], String(pf.maxPos));
+  $('pf-notify').innerHTML = [['fx', '為替'], ['stock', '日本株'], ['us', '米国株']].map(([k, v]) => `<button type="button" class="chip" data-k="${k}" aria-pressed="${!!pf.notify?.[k]}">${v}のサインを通知</button>`).join('');
   renderSyncStatus();
   $('settings').showModal();
   syncFavs().then(renderSyncStatus);
 }
 
+const parseYen = (t) => Number(String(t).normalize('NFKC').replace(/[,，円\s]/g, '').replace(/万$/, '0000')) || 0;
+function showBudget() {
+  const v = parseYen($('pf-budget').value);
+  $('pf-budget-view').textContent = v ? `＝ ${v.toLocaleString()}円${v >= 10000 ? `（${(v / 10000).toLocaleString()}万円）` : ''}` : '未入力のときは、計算に100万円を使います';
+}
+
 function renderSyncStatus() {
   const el = $('sync-status');
-  if (syncState.durable === true && !syncState.error) {
-    el.innerHTML = '<span class="badge ok">共有中</span> パソコンとスマホで同じお気に入りが使えます（同じパスワードでログインした端末どうし）。';
+  if (syncState.error) {
+    el.innerHTML = `<span class="badge warn">共有できませんでした</span> ${esc(syncState.error)}`;
   } else if (syncState.durable === true) {
-    el.innerHTML = `<span class="badge warn">一時的に共有できません</span> ${esc(syncState.error)}`;
+    el.innerHTML = '<span class="badge ok">共有中</span> お気に入りと「あなたの設定」は、パソコンとスマホで同じものが使えます。';
   } else if (syncState.durable === false) {
-    el.innerHTML = '<span class="badge warn">一時的な共有のみ</span> サーバーが眠るまで（しばらく使わないと）の間だけ共有されます。ずっと共有するには、Render に <b>GITHUB_TOKEN</b> を登録してください（やり方はチャットで説明しています）。';
+    el.innerHTML = '<span class="badge warn">一時的な共有のみ</span> 今はサーバーが動いている間だけ共有されます。GitHub に <b>SITE_PASSWORD</b> を登録すると、ずっと共有されるようになります（やり方はチャットで説明しています）。';
   } else {
     el.textContent = syncState.error ? `共有の確認に失敗しました：${syncState.error}` : '共有の状態を確認しています…';
   }
 }
 
 function saveSettings() {
+  const email = $('pf-email').value.trim();
+  if (email && !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email)) { toast('メールアドレスの形が正しくありません'); $('pf-email').focus(); return; }
+  const notify = {};
+  $('pf-notify').querySelectorAll('button').forEach((b) => { notify[b.dataset.k] = b.getAttribute('aria-pressed') === 'true'; });
+  setProfile({ email, budget: parseYen($('pf-budget').value), riskPct: Number(segValue($('pf-risk')) || 2), maxPos: Number(segValue($('pf-maxpos')) || 3), notify });
   const favs = parseFavs($('fav-edit').value);
   setFavs(getMode(), favs.length ? favs : DEFAULT_FAVS[getMode()]);
   store.set('candle', segValue($('candle-seg')) || 'jp');
@@ -112,6 +130,33 @@ function saveSettings() {
   applyTheme();
   $('settings').close();
   toast('保存しました');
+  if (currentTab === 'lab') updateLab(chartState, getMode());
+}
+
+// ---- 画面ごとの自動更新（チャートの値段は chartview.js で1分ごと） ----
+// 何分ごとに最新にするか
+const EVERY = { chartCards: 5, ratings: 30, news: 5, screener: 5, lab: 15 };
+const lastRun = {};
+function due(key) {
+  const now = Date.now();
+  if (now - (lastRun[key] || now) < EVERY[key] * 60 * 1000) { lastRun[key] ||= now; return false; }
+  lastRun[key] = now;
+  return true;
+}
+function startAutoUpdate() {
+  const tick = () => {
+    if (store.get('autoRefresh', 'on') !== 'on' || document.visibilityState !== 'visible') return;
+    const mode = getMode();
+    if (currentTab === 'chart' && chartState.symbol) {
+      if (due('chartCards')) { resetOrderflow(); updateOrderflow(chartState, mode); updatePts(chartState, mode); }
+      if (due('ratings')) { resetRatings(); updateRatings(chartState, mode); resetFundamentals(); updateFundamentals(chartState); }
+    }
+    if (currentTab === 'news' && due('news') && $('news-q').value) searchNews($('news-q').value, { silent: true });
+    if (currentTab === 'screener' && due('screener')) { if (mode === 'stock') autoRefreshStock(); else autoRefreshList(); }
+    if (currentTab === 'lab' && due('lab')) refreshLab(mode);
+  };
+  setInterval(tick, 30 * 1000);
+  document.addEventListener('visibilitychange', tick);
 }
 
 function startApp() {
@@ -145,10 +190,7 @@ function startApp() {
   syncFavs();
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') syncFavs(); });
   setInterval(() => { if (document.visibilityState === 'visible') syncFavs(); }, 2 * 60 * 1000);
-  // ニュースタブを開いている間は10分ごとに最新にする
-  setInterval(() => {
-    if (currentTab === 'news' && document.visibilityState === 'visible' && store.get('autoRefresh', 'on') === 'on' && $('news-q').value) searchNews($('news-q').value);
-  }, 10 * 60 * 1000);
+  startAutoUpdate();
 
   $('goto-news').addEventListener('click', () => showTab('news'));
   $('mode-seg').addEventListener('click', (e) => {
@@ -159,6 +201,11 @@ function startApp() {
     showTab(currentTab);
   });
   $('open-settings').addEventListener('click', openSettings);
+  $('pf-budget').addEventListener('input', showBudget);
+  $('pf-notify').addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (b) b.setAttribute('aria-pressed', String(b.getAttribute('aria-pressed') !== 'true'));
+  });
   $('close-settings').addEventListener('click', () => $('settings').close());
   $('save-settings').addEventListener('click', saveSettings);
   $('clear-data').addEventListener('click', () => {

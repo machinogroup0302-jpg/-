@@ -90,6 +90,7 @@ async function refresh() {
   $('stk-run').disabled = false;
   if (data.status === 'error') { $('stk-status').textContent = `チェックできませんでした: ${data.error}`; return true; }
   if (data.status === 'done') {
+    lastFinishedAt = data.finishedAt || 0;
     $('stk-status').textContent = `${new Date(data.finishedAt).toLocaleString('ja-JP')} にチェック（${data.total.toLocaleString()}社${data.failed ? `・取得できなかった銘柄 ${data.failed}社` : ''}）。もう一度押すと最新にします。`;
     await Promise.all([renderResults(), renderStops()]);
   }
@@ -207,6 +208,16 @@ export function initStockScreener(pick) {
 }
 
 let opened = false;
+let lastFinishedAt = 0;
+// 自動更新：結果を読み直し、15分以上前のチェックなら全銘柄チェックをやり直す
+export async function autoRefreshStock() {
+  if (!opened) return;
+  try {
+    const done = await refresh();
+    if (done && lastFinishedAt && Date.now() - lastFinishedAt > 15 * 60 * 1000) await startScan();
+  } catch { /* 次の回にまた試す */ }
+}
+
 // 株の候補タブを開いたとき（初めて開いたら全銘柄チェックも自動で始める）
 export async function showStockScreener() {
   if (!opened) {

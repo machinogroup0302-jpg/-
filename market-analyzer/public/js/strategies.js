@@ -96,13 +96,14 @@ export function runStrategy(candles, id, { kind = 'stock', pair = '', regime = n
         const a = a14[i - 1] || c.open * 0.01;
         pos.stop = c.open - pos.side * a * (id === 'rebound' ? 2 : 2);
         pos.take = id === 'combo' ? c.open + pos.side * a * 3 : null;
+        pos.stop0 = pos.stop;
         pos.why = [...pos.why, `入った値段 ${num(c.open)}（次の日の始まりの値段）・損切りの線 ${num(pos.stop)}${pos.take ? `・利益確定の目標 ${num(pos.take)}` : ''}`];
         events.push(`${pos.side > 0 ? '買い' : '売り'}で入る（${pending.reason}）`);
       } else if (pending.type === 'close' && pos) {
         const ret = pos.side * (c.open / pos.entryPrice - 1) - cost(kind);
         const pnl = CAPITAL * ret;
         realized += pnl;
-        trades.push({ side: pos.side, entryDate: dayKey(candles[pos.entryIdx].time), entryTime: candles[pos.entryIdx].time, entryPrice: pos.entryPrice, exitDate: dayKey(c.time), exitTime: c.time, exitPrice: c.open, ret, pnl, reasonIn: pos.reason, reasonOut: pending.reason, strength: pos.strength, whyIn: pos.why, whyOut: pending.why || [], days: i - pos.entryIdx });
+        trades.push({ side: pos.side, entryDate: dayKey(candles[pos.entryIdx].time), entryTime: candles[pos.entryIdx].time, entryPrice: pos.entryPrice, exitDate: dayKey(c.time), exitTime: c.time, exitPrice: c.open, ret, pnl, stopPct: Math.abs(pos.entryPrice - pos.stop0) / pos.entryPrice, reasonIn: pos.reason, reasonOut: pending.reason, strength: pos.strength, whyIn: pos.why, whyOut: pending.why || [], days: i - pos.entryIdx });
         events.push(`決済（${pending.reason}）`);
         pos = null;
       }
@@ -174,7 +175,11 @@ export function runStrategy(candles, id, { kind = 'stock', pair = '', regime = n
         if (/買い/.test(t) && rg.score >= 0 && fundOk) { side = 1; why = explain('買い'); strength = ts.rows.filter((r) => r.signal === '買い').length / ts.rows.length; reason = `テクニカル判定が「${t}」で、世界の情勢も逆風ではない`; }
         else if (canShort && /売り/.test(t) && rg.score <= 0) { side = -1; why = explain('売り'); strength = ts.rows.filter((r) => r.signal === '売り').length / ts.rows.length; reason = `テクニカル判定が「${t}」で、世界の情勢も追い風ではない`; }
       }
-      if (side) pending = { type: 'open', side, reason, why, strength };
+      if (side) {
+        const a = a14[i] || price * 0.01;
+        // 次の日の始まりの値段は分からないので、今日の終わりの値段で損切り・目標の目安を出しておく
+        pending = { type: 'open', side, reason, why, strength, atr: a, stopEst: price - side * a * 2, takeEst: id === 'combo' ? price + side * a * 3 : null };
+      }
     }
 
     const unreal = pos ? CAPITAL * (pos.side * (price / pos.entryPrice - 1)) : 0;

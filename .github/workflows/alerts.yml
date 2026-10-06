@@ -3,7 +3,8 @@
 # 事前準備（GitHub の Settings → Secrets and variables → Actions に登録）:
 #   MAIL_USER … 送るのに使う Gmail アドレス
 #   MAIL_PASS … その Gmail の「アプリ パスワード」（16文字）
-#   MAIL_TO   … 届け先のメールアドレス
+#   SITE_PASSWORD … サイトのパスワード（サイトの設定に入れたメールアドレス・予算を読むため）
+#   MAIL_TO   … 届け先のメールアドレス（サイトの設定にメールアドレスがないときだけ使う・なくてもよい）
 # ※ 決まった時刻に動かすには、このブランチがリポジトリの「デフォルトブランチ」になっている必要があります
 name: 売買サインのメール
 
@@ -42,6 +43,7 @@ jobs:
           MAIL_USER: ${{ secrets.MAIL_USER }}
           MAIL_PASS: ${{ secrets.MAIL_PASS }}
           MAIL_TO: ${{ secrets.MAIL_TO }}
+          SITE_PASSWORD: ${{ secrets.SITE_PASSWORD }}
           MARKETS: ${{ github.event.inputs.markets || (github.event.schedule == '40 7 * * 1-5' && 'stock' || 'fx,us') }}
         run: |
           npm install --no-save --no-audit --no-fund --ignore-scripts nodemailer@6

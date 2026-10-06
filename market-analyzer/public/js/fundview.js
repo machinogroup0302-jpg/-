@@ -28,6 +28,8 @@ function show(html) {
   ['fund-box', 'fund-box-news'].forEach((id) => { if ($(id)) $(id).innerHTML = html; });
 }
 
+export function resetFundamentals() { lastKey = ''; }
+
 export async function updateFundamentals(st) {
   const key = `${st.symbol}|${st.name}`;
   if (key === lastKey) { show(lastHtml); return; }

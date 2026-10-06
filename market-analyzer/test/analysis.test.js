@@ -583,8 +583,8 @@ test('決算発表まであと何日', () => {
 });
 
 test('お気に入りの共有：新しい値を保存し、時刻が進む', async () => {
-  delete process.env.GITHUB_TOKEN; // テストでは GitHub に保存しない
-  const { putPref, getPrefs, _reset } = await import('../lib/prefs.js');
+  process.env.NODE_ENV = 'test'; // テストでは GitHub から読まない
+  const { putPref, getPrefs, _reset, encrypt, decrypt, backupBlob, alertProfile } = await import('../lib/prefs.js');
   _reset();
   const a = await putPref('favs_fx', [{ code: 'USDJPY', name: 'ドル円' }]);
   const b = await putPref('favs_fx', [{ code: 'EURJPY', name: 'ユーロ円' }]);
@@ -592,6 +592,18 @@ test('お気に入りの共有：新しい値を保存し、時刻が進む', as
   const p = await getPrefs();
   assert.equal(p.items.favs_fx.value[0].code, 'EURJPY');
   await assert.rejects(() => putPref('secret', []));
+  // あなたの設定：メール・予算
+  await putPref('profile', { email: 'a@example.com', budget: '500000', riskPct: 2, maxPos: 3, notify: { fx: true } });
+  await assert.rejects(() => putPref('profile', { email: 'not-an-email' }));
+  const ap = await alertProfile();
+  assert.equal(ap.profile.email, 'a@example.com');
+  assert.equal(ap.profile.budget, 500000);
+  assert.equal(ap.favs.fx[0].code, 'EURJPY');
+  // 暗号化したコピーから元に戻せる
+  const bk = await backupBlob();
+  assert.ok(!bk.blob.includes('example.com'));
+  assert.equal(decrypt(bk.blob).profile.value.email, 'a@example.com');
+  assert.deepEqual(decrypt(encrypt({ x: 1 })), { x: 1 });
 });
 
 test('勝つ確率の目安：銘柄の回数が少ないときは全体の勝率に近づく', async () => {

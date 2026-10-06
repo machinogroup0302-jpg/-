@@ -90,7 +90,14 @@ export function setScreenerMode(mode) {
   $('scr-status').textContent = '';
 }
 
+let pickFn = () => {};
+// 自動更新：一度チェックしていれば、もう一度チェックする
+export function autoRefreshList() {
+  if (results.length && !$('scr-run').disabled) run(pickFn);
+}
+
 export function initScreener(onPick) {
+  pickFn = onPick;
   setScreenerMode(store.get('mode', 'fx') === 'us' ? 'us' : 'fx');
   $('scr-filter').innerHTML = FILTERS.map(([k, v]) => `<button data-f="${k}" aria-pressed="${k === filter}">${v}</button>`).join('');
   $('scr-filter').addEventListener('click', (e) => {

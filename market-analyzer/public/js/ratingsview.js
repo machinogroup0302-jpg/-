@@ -56,6 +56,8 @@ function render(d, isUs) {
   box.insertAdjacentHTML('beforeend', `<p class="notice" style="margin-top:8px">${isUs ? '' : '日本株の各社の評価は、ニュースの見出しから自動で読み取っています（証券会社名をタップすると元の記事が開きます）。'}レーティングはアナリストの意見で、当たるとは限りません。</p>`);
 }
 
+export function resetRatings() { lastKey = ''; }
+
 export async function updateRatings(st, mode) {
   if (mode === 'fx') return;
   const key = `${st.symbol}|${st.name}`;

@@ -1,15 +1,18 @@
 // 売買サインをメールで知らせる（GitHub Actions で毎日実行）
 // 使い方: node scripts/alerts.mjs stock     … 日本株
 //         node scripts/alerts.mjs fx,us     … 為替と米国株
-// 必要な GitHub Secrets: MAIL_USER（送るGmail）・MAIL_PASS（Gmailのアプリパスワード）・MAIL_TO（届け先）
+// 必要な GitHub Secrets: MAIL_USER（送るGmail）・MAIL_PASS（Gmailのアプリパスワード）
+//   SITE_PASSWORD（サイトのパスワード）… サイトの設定に入れたメールアドレス・予算・お気に入りを読むため
+//   MAIL_TO（届け先・なくてもよい）… サイトの設定にメールアドレスがないときに使う
 import fs from 'node:fs/promises';
 import { getChart } from '../lib/market.js';
 import { runStrategy, regimeLookup, signalOdds, oddsLabel } from '../public/js/strategies.js';
 import { baseUniverse } from '../public/js/universe.js';
+import { sizePosition } from '../public/js/plan.js';
 
 const SITE = 'https://wataru-lupe.onrender.com';
 const STATE = new URL('../../alerts/state.json', import.meta.url);
-const MODES = (process.argv[2] || 'stock,fx,us').split(',');
+let MODES = (process.argv[2] || 'stock,fx,us').split(',');
 const NAMES = { fx: '為替', stock: '日本株', us: '米国株' };
 const dayKey = (t) => new Date((t + 9 * 3600) * 1000).toISOString().slice(0, 10);
 const md = (d) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
@@ -19,8 +22,30 @@ async function candles(code) {
   try { return (await getChart(code, '1d')).candles; } catch (e) { console.log(`  ${code}: 取得できません（${e.message}）`); return null; }
 }
 
+// サイトの「あなたの設定」を読む（サーバーが寝ていると起きるまで1分ほどかかる）
+async function siteProfile() {
+  const key = process.env.SITE_PASSWORD;
+  if (!key) return null;
+  for (let i = 0; i < 3; i++) {
+    try {
+      const res = await fetch(`${SITE}/api/alerts/profile`, { headers: { 'x-site-key': key }, signal: AbortSignal.timeout(90000) });
+      if (res.ok) return await res.json();
+      console.log(`サイトの設定を読めません（HTTP ${res.status}）`);
+      if (res.status === 401) return null;
+    } catch (e) { console.log('サイトの設定を読めません:', e.message); }
+  }
+  return null;
+}
+
+let site = null;
+const prices = {};
+
 async function collect(mode, regime) {
   const syms = baseUniverse(mode);
+  // お気に入りも入れる（指数は除く）
+  for (const f of site?.favs?.[mode] || []) {
+    if (!/^\^/.test(f.code) && !syms.some(([c]) => c.toUpperCase() === f.code.toUpperCase())) syms.push([f.code.toUpperCase(), f.name]);
+  }
   const list = [];
   const queue = [...syms];
   await Promise.all([1, 2, 3].map(async () => {
@@ -36,6 +61,7 @@ async function collect(mode, regime) {
     const r = runStrategy(x.candles, 'combo', { kind, pair: x.code, regime });
     for (const t of r.trades) trades.push({ ...t, symbol: x.symbol });
     const last = x.candles[x.candles.length - 1];
+    prices[x.symbol] = last.close;
     if (r.next) signals.push({ ...r.next, mode, name: x.name, symbol: x.symbol, open: r.open, last: last.close, date: dayKey(last.time) });
   }
   for (const s of signals) if (s.type === 'open') s.odds = signalOdds(trades, { symbol: s.symbol, side: s.side, strength: s.strength });
@@ -43,14 +69,21 @@ async function collect(mode, regime) {
   return signals;
 }
 
-function describe(s) {
+function describe(s, pf) {
   if (s.type === 'open') {
     const p = s.odds ? `${Math.round(s.odds.p * 100)}%（${oddsLabel(s.odds)}）` : 'まだ出せません';
+    let plan = [];
+    if (pf?.budget) {
+      const z = sizePosition({ mode: s.mode, symbol: s.symbol, price: s.last, stop: s.stopEst, budget: pf.budget, riskPct: pf.riskPct || 2, maxPos: pf.maxPos || 3, prices, usdjpy: prices['USDJPY=X'] });
+      if (z?.qty > 0) plan = [`あなたの予算なら：${z.qty.toLocaleString()}${z.unitLabel}（${z.kindLabel} 約${Math.round(z.cost).toLocaleString()}円）`, `損切りの値段：${price(s.stopEst, s.mode)}（約−${Math.round(z.maxLoss).toLocaleString()}円）${s.takeEst ? `／目標：${price(s.takeEst, s.mode)}` : ''}`];
+      else if (z) plan = [`あなたの予算では見送り：${z.why}`];
+    }
     return {
       title: `🟢【${s.side > 0 ? '買い' : '売り'}】${s.name}`,
       lines: [
         `次の取引日の始まりに${s.side > 0 ? '買う' : '売る'}サイン（今 ${price(s.last, s.mode)}）`,
         `勝つ確率の目安：${p}`,
+        ...plan,
         ...(s.why || []).map((w) => `・${w}`),
       ],
     };
@@ -71,12 +104,20 @@ const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&l
 async function main() {
   let state = { sent: {} };
   try { state = JSON.parse(await fs.readFile(STATE, 'utf8')); } catch { /* 初回 */ }
+  site = await siteProfile();
+  const pf = site?.profile;
+  if (pf?.notify) MODES = MODES.filter((m) => pf.notify[m]);
+  if (!MODES.length) { console.log('設定で通知がオフになっています'); return; }
+  const to = pf?.email || process.env.MAIL_TO;
+  // ログは公開されるので、メールアドレスや予算は出さない
+  console.log(`届け先: ${to ? '設定あり' : '（なし）'}・予算: ${pf?.budget ? '設定あり' : '（なし）'}`);
   const get = async (s) => (await candles(s)) || [];
   const [vix, tnx, nikkei] = await Promise.all([get('^VIX'), get('^TNX'), get('^N225')]);
   const regime = regimeLookup({ vix, tnx, nikkei });
 
   const all = [];
   for (const mode of MODES) all.push(...await collect(mode, regime));
+  if (!prices['USDJPY=X']) { const u = await candles('USDJPY=X'); if (u) prices['USDJPY=X'] = u[u.length - 1].close; }
   const today = dayKey(Date.now() / 1000);
   const fresh = all.filter((s) => {
     const age = (Date.parse(today) - Date.parse(s.date)) / 86400000;
@@ -86,7 +127,7 @@ async function main() {
   if (!fresh.length) { console.log('新しいサインはありません'); return; }
   const buys = fresh.filter((s) => s.type === 'open').length, closes = fresh.length - buys;
   const subject = `【売買サイン】${MODES.map((m) => NAMES[m]).join('・')}：新しく入る${buys}件・決済${closes}件（${md(today)}）`;
-  const blocks = fresh.map(describe);
+  const blocks = fresh.map((s) => describe(s, pf));
   const note = '※ 過去の値動きから計算した練習用のサインです。勝つ確率は目安で、当たる保証はありません。売買はご自身の判断で行ってください。';
   const text = [subject, '', ...blocks.flatMap((b) => [b.title, ...b.lines, '']), `くわしくはサイトの「成績」→「今のサイン」：${SITE}`, '', note].join('\n');
   const html = `<div style="font-family:sans-serif;font-size:14px;line-height:1.6">
@@ -94,15 +135,15 @@ async function main() {
     ${blocks.map((b) => `<div style="border:1px solid #ddd;border-radius:10px;padding:10px 12px;margin:10px 0"><b style="font-size:15px">${esc(b.title)}</b><br>${b.lines.map(esc).join('<br>')}</div>`).join('')}
     <p><a href="${SITE}">サイトで見る（成績 → 今のサイン）</a></p><p style="color:#888;font-size:12px">${esc(note)}</p></div>`;
 
-  const { MAIL_USER, MAIL_PASS, MAIL_TO } = process.env;
-  if (!MAIL_USER || !MAIL_PASS || !MAIL_TO) {
-    console.log('メールの設定（MAIL_USER・MAIL_PASS・MAIL_TO）がないため、送らずに内容だけ表示します。\n');
-    console.log(text);
+  const { MAIL_USER, MAIL_PASS } = process.env;
+  if (!MAIL_USER || !MAIL_PASS || !to) {
+    console.log('メールの設定（MAIL_USER・MAIL_PASS と届け先）がないため、送らずに内容だけ表示します。\n');
+    if (!pf) console.log(text);
     return;
   }
   const nodemailer = (await import('nodemailer')).default;
   const tr = nodemailer.createTransport({ service: 'gmail', auth: { user: MAIL_USER, pass: MAIL_PASS.replace(/\s/g, '') } });
-  await tr.sendMail({ from: `売買サイン <${MAIL_USER}>`, to: MAIL_TO, subject, text, html });
+  await tr.sendMail({ from: `売買サイン <${MAIL_USER}>`, to, subject, text, html });
   console.log(`メールを送りました（${fresh.length}件）`);
 
   const now = new Date().toISOString();

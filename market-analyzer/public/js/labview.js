@@ -6,7 +6,8 @@ import { runStrategy, regimeLookup, STRATEGIES, pickAndTrade, signalOdds, oddsLa
 import { baseUniverse } from './universe.js';
 import { pagedList } from './stockscreener.js';
 import { futureTimes } from './forecast.js';
-import { getFavs } from './favorites.js';
+import { getFavs, getProfile } from './favorites.js';
+import { sizePosition, replayWithBudget } from './plan.js';
 
 const LC = window.LightweightCharts;
 const HORIZONS = [[1, '翌日'], [5, '1週間後'], [20, '1か月後']];
@@ -159,7 +160,7 @@ async function prepare(st, mode) {
 }
 
 // 成績タブの中の切り替え（今のサイン・売買の一覧・この銘柄の売買・予想の答え合わせ・銘柄選び）
-let labSub = store.get('lab_sub', 'now');
+let labSub = store.get('lab_sub', 'plan');
 let getModeFn = () => 'fx';
 let lastSt = null;
 
@@ -173,18 +174,30 @@ export async function updateLab(st, mode) {
   if (st) lastSt = st;
   if ($('view-lab').hidden) return;
   applySub();
+  if (labSub === 'plan') return showPlan(mode);
   if (labSub === 'now') return showNow(mode);
   if (labSub === 'list') return showList(mode);
   if (labSub === 'more' || !lastSt) return;
   return updateSymbol(lastSt, mode);
 }
 
-async function updateSymbol(st, mode) {
+// 自動更新：今見ている画面を最新にする
+export function refreshLab(mode) {
+  if ($('view-lab').hidden) return;
+  if (labSub === 'plan') return showPlan(mode, true);
+  if (labSub === 'now') return showNow(mode, true);
+  if (labSub === 'list') return showList(mode, true);
+  if ((labSub === 'trade' || labSub === 'fc') && lastSt) { ctx = null; return updateSymbol(lastSt, mode, { silent: true }); }
+}
+
+async function updateSymbol(st, mode, { silent = false } = {}) {
   const key = `${st.symbol}|${mode}`;
   if (ctx && `${ctx.symbol}|${ctx.mode}` === key) return;
   $('lab-name').textContent = st.name || st.symbol;
-  $('lab-body').hidden = true;
-  $('lab-status').innerHTML = '<span class="spinner"></span> 過去のデータを読み込んで計算しています…';
+  if (!silent) {
+    $('lab-body').hidden = true;
+    $('lab-status').innerHTML = '<span class="spinner"></span> 過去のデータを読み込んで計算しています…';
+  }
   try {
     const next = await prepare(st, mode);
     ctx = next;
@@ -313,7 +326,9 @@ async function computeLog(mode, out, force = false) {
     await new Promise((r) => setTimeout(r, 30));
     const kind = kindOf(mode);
     const trades = [], holding = [], next = [];
+    const prices = {};
     for (const x of list) {
+      prices[x.symbol] = x.candles[x.candles.length - 1].close;
       const r = runStrategy(x.candles, 'combo', { kind, pair: x.symbol.replace(/=X$/, ''), regime });
       const last = x.candles[x.candles.length - 1];
       for (const t of r.trades) trades.push({ ...t, name: x.name, symbol: x.symbol });
@@ -324,7 +339,9 @@ async function computeLog(mode, out, force = false) {
     for (const x of next) if (x.type === 'open') x.odds = signalOdds(trades, { symbol: x.symbol, side: x.side, strength: x.strength });
     for (const x of holding) x.odds = signalOdds(trades, { symbol: x.symbol, side: x.side, strength: x.strength, before: x.entryDate });
     for (const t of trades) t.odds = signalOdds(trades, { symbol: t.symbol, side: t.side, strength: t.strength, before: t.entryDate });
-    const data = { trades, holding, next, count: list.length, at: Date.now() };
+    let usdjpy = prices['USDJPY=X'] || null;
+    if (!usdjpy) { try { const u = await api('/api/chart?symbol=USDJPY&tf=1d'); usdjpy = u.candles[u.candles.length - 1].close; } catch { /* 取れなければ米国株の量は出さない */ } }
+    const data = { trades, holding, next, prices, usdjpy, count: list.length, at: Date.now() };
     logCache[mode] = { at: Date.now(), data };
     return data;
   })();
@@ -336,6 +353,71 @@ const dayKeyOf = (t) => new Date((t + 9 * 3600) * 1000).toISOString().slice(0, 1
 
 function refreshBtn(id) {
   return `<button class="btn block" id="${id}" style="margin-top:10px">最新にする</button>`;
+}
+
+async function showPlan(mode, force = false) {
+  const out = $('lab-plan');
+  try {
+    const r = await computeLog(mode, out, force);
+    if (getModeFn() !== mode) return;
+    renderPlan(r, mode);
+  } catch (e) { out.innerHTML = `<p class="error">${esc(e.message)}</p>`; }
+}
+
+const yen0 = (v) => `${Math.round(v).toLocaleString()}円`;
+
+function renderPlan(r, mode) {
+  const pf = getProfile();
+  const budget = pf.budget || 1_000_000;
+  const d = digitsOf(mode);
+  const rule = { budget, riskPct: pf.riskPct, maxPos: pf.maxPos };
+  // 過去1年をあなたのルールでやり直す：全部やった場合と、確率の目安が高いものだけやった場合
+  const all = replayWithBudget(r.trades, rule);
+  const picky = replayWithBudget(r.trades, { ...rule, minOdds: 0.55 });
+  const usePicky = picky.trades >= 5 && picky.total > all.total;
+  const minOdds = usePicky ? 0.55 : 0.5;
+  const sz = (x, stop) => sizePosition({ mode, symbol: x.symbol, price: x.last, stop, budget, riskPct: pf.riskPct, maxPos: pf.maxPos, prices: r.prices, usdjpy: r.usdjpy });
+  const opens = r.next.filter((x) => x.type === 'open').map((x) => ({ ...x, size: sz(x, x.stopEst) }))
+    .sort((a, b) => (b.odds?.p || 0) - (a.odds?.p || 0));
+  const good = opens.filter((x) => x.odds && x.odds.p >= minOdds && x.odds.expect > 0);
+  const picks = good.filter((x) => x.size?.qty > 0).slice(0, pf.maxPos);
+  const rest = opens.filter((x) => !picks.includes(x));
+  const closes = r.next.filter((x) => x.type === 'close');
+  const replayCard = (t, x) => `<div class="stat"><div class="label">${t}</div><div class="value ${x.total >= 0 ? 'plus' : 'minus'}">${fmtYen(x.total)}</div><div class="small muted">${x.trades}回・勝率${pct(x.winRate)}・一番減ったとき ${fmtYen(-x.maxDD)}</div></div>`;
+  $('lab-plan').innerHTML = `
+    ${pf.budget ? '' : '<p class="notice" style="margin:0 0 8px">予算がまだ入っていないので、100万円で計算しています。右上の⚙（設定）の「あなたの設定」で入れてください。</p>'}
+    <div class="plan-rule small">予算 <b>${yen0(budget)}</b>　／　1回で減ってもいい額 <b>${yen0(budget * pf.riskPct / 100)}</b>（${pf.riskPct}%）　／　同時に <b>${pf.maxPos}銘柄</b>まで（1銘柄 ${yen0(budget / pf.maxPos)}まで）</div>
+    <button class="btn block" id="plan-settings" style="margin:8px 0 4px">予算・ルールを変える</button>
+
+    <h3>✅ 今やるといいこと<span class="sub">次の取引日の始まりに</span></h3>
+    ${picks.length ? `<ul class="list">${picks.map((x) => {
+      const s = x.size;
+      const gain = x.takeEst ? Math.abs(x.takeEst - x.last) * s.perPrice : null;
+      return `<li class="plan-pick">
+        <div class="li-head"><span class="name">${esc(x.name)}</span>${sideBadge(x.side)}</div>
+        <div class="plan-order"><b>${x.side > 0 ? '買う' : '売る'}：${s.qty.toLocaleString()}${s.unitLabel}</b>（今 ${fmtPrice(x.last, d)}・${s.kindLabel} 約${yen0(s.cost)}）</div>
+        <div class="grid2 plan-grid">
+          <div class="stat"><div class="label">損切りの値段</div><div class="value minus" style="font-size:16px">${fmtPrice(x.stopEst, d)}</div><div class="small muted">ここまで来たら決済：約−${yen0(s.maxLoss)}</div></div>
+          <div class="stat"><div class="label">利益確定の目標</div><div class="value plus" style="font-size:16px">${x.takeEst ? fmtPrice(x.takeEst, d) : '—'}</div><div class="small muted">${gain ? `届いたら決済：約+${yen0(gain)}` : '判定が変わるまで持つ'}</div></div>
+        </div>
+        ${oddsHtml(x.odds, { compact: true })}
+        <details class="why-box"><summary>理由を見る</summary>${whyList(x.why)}</details></li>`;
+    }).join('')}</ul>` : `<p class="small muted">今は、あなたのルールに合うサインがありません（勝つ確率の目安${Math.round(minOdds * 100)}%以上・予算内で買える量があるもの）。お休みも大事なトレードです。</p>`}
+
+    <h3>🔴 持っていたら決済した方がいいもの</h3>
+    ${closes.length ? `<ul class="list">${closes.map((x) => `<li><div class="li-head"><span class="name">${esc(x.name)}</span>${x.open ? sideBadge(x.open.side) : ''}</div>
+      <div class="small"><b>次の取引日の始まりに決済</b>：${esc(x.reason)}</div></li>`).join('')}</ul>` : '<p class="small muted">今はありません。</p>'}
+
+    ${rest.length ? `<details class="why-box" style="margin-top:10px"><summary>見送ったサイン（${rest.length}件）</summary><ul class="list">${rest.map((x) => `<li class="small"><b>${esc(x.name)}</b> ${sideBadge(x.side)} 確率${x.odds ? Math.round(x.odds.p * 100) + '%' : '—'}　<span class="muted">${
+      !x.odds || x.odds.p < minOdds ? `勝つ確率の目安が${Math.round(minOdds * 100)}%未満` : x.odds.expect <= 0 ? '勝っても負けても平均するとマイナス' : x.size && x.size.qty === 0 ? esc(x.size.why) : !x.size ? '量を計算できませんでした' : `同時に持つ数（${pf.maxPos}つ）を超えるため`}</span></li>`).join('')}</ul></details>` : ''}
+
+    <h3>📊 あなたの予算で、このやり方を1年続けていたら</h3>
+    <div class="grid2">${replayCard('サインが出たら全部やる', all)}${replayCard('確率の目安55%以上だけやる', picky)}</div>
+    <p class="small" style="margin:6px 0 0"><b>おすすめ：</b>${usePicky ? '確率の目安が55%以上のサインだけに絞る方が成績が良かったので、上の「今やるといいこと」も55%以上に絞っています。' : '絞らずにサインどおりにやる方が成績が良かったので、50%以上のサインを出しています。'}</p>
+    <p class="notice" style="margin-top:8px">過去の値動きでの計算です。日本株は100株単位、為替は1,000通貨単位・レバレッジ25倍で計算しています。手数料などは差し引いていますが、実際の値段（次の日の始まりの値段）は少しずれます。最終的な判断はご自身で行ってください。</p>
+    ${refreshBtn('lab-plan-refresh')}`;
+  $('lab-plan-refresh').onclick = () => showPlan(mode, true);
+  $('plan-settings').onclick = () => $('open-settings').click();
 }
 
 async function showNow(mode, force = false) {

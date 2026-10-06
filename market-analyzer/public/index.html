@@ -228,11 +228,20 @@
       <!-- ===== 成績（答え合わせ・自動売買） ===== -->
       <section class="view" id="view-lab" hidden>
         <div class="lab-subnav" id="lab-sub" role="tablist">
+          <button data-sub="plan">あなたのプラン</button>
           <button data-sub="now">今のサイン</button>
           <button data-sub="list">売買の一覧</button>
           <button data-sub="trade">この銘柄の売買</button>
           <button data-sub="fc">予想の答え合わせ</button>
           <button data-sub="more">銘柄選び・まとめ</button>
+        </div>
+
+        <div data-labpanel="plan" hidden>
+          <div class="card">
+            <h2>あなたのプラン<span class="sub">予算に合わせて計算</span></h2>
+            <p class="small muted" style="margin-top:-4px">設定（右上の⚙）に入れた予算とルールで、「今どれを・どれだけ買う（売る）といいか」「損切りはどこか」「決済した方がいいもの」を計算します。</p>
+            <div id="lab-plan"></div>
+          </div>
         </div>
 
         <div data-labpanel="now" hidden>
@@ -311,6 +320,20 @@
   <dialog id="settings">
     <div class="dlg-head"><h2>設定</h2><button class="icon-btn" id="close-settings" aria-label="閉じる">✕</button></div>
     <div class="dlg-body">
+      <div class="field profile-box">
+        <label>あなたの設定</label>
+        <p class="small muted" style="margin:-2px 0 8px">入力すると「成績」→「あなたのプラン」で、予算に合った「買う量・損切りの値段」を計算します。パソコンとスマホで共有されます。</p>
+        <label class="small" for="pf-email">通知を受け取るメールアドレス</label>
+        <input class="input" id="pf-email" type="email" inputmode="email" autocomplete="email" placeholder="例: example@i.softbank.jp">
+        <div class="chips" id="pf-notify" style="margin:6px 0 10px"></div>
+        <label class="small" for="pf-budget">使えるお金（予算）</label>
+        <div class="row"><input class="input grow" id="pf-budget" type="text" inputmode="numeric" placeholder="例: 500000"><span class="small">円</span></div>
+        <p class="small muted" id="pf-budget-view" style="margin:2px 0 8px"></p>
+        <label class="small">1回の取引で、最大どれだけ減ってもいいか</label>
+        <div class="seg" id="pf-risk" style="margin-bottom:8px"></div>
+        <label class="small">同時に持つ銘柄の数（いくつに分けるか）</label>
+        <div class="seg" id="pf-maxpos"></div>
+      </div>
       <div class="field">
         <label>お気に入り（チャート画面の上に並ぶボタン・<span id="fav-mode">為替</span>）</label>
         <textarea class="input" id="fav-edit" rows="4"></textarea>
@@ -318,9 +341,9 @@
         <p class="small" id="sync-status" style="margin-top:6px"></p>
       </div>
       <div class="field">
-        <label>値段の自動更新</label>
+        <label>自動更新</label>
         <div class="seg" id="refresh-seg"></div>
-        <p class="small muted">チャートを開いている間、1分ごとに最新の値段に入れ替えます（ニュースは10分ごと）。</p>
+        <p class="small muted">開いている画面を自動で最新にします。チャートの値段は1分ごと、注文・約定分析とニュースと候補は5分ごと、成績は15分ごと、レーティングとファンダメンタルズは30分ごとです。</p>
       </div>
       <div class="field">
         <label>ローソク足の色</label>

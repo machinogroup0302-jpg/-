@@ -39,14 +39,14 @@ function renderNews() {
       <div class="small muted">${esc(it.reason)}</div></li>`).join('') || '<li class="empty">表示できるニュースがありません</li>';
 }
 
-export async function searchNews(q) {
+export async function searchNews(q, { silent = false } = {}) {
   $('news-q').value = q;
-  $('news-list').innerHTML = '<li class="empty"><span class="spinner"></span></li>';
+  if (!silent) $('news-list').innerHTML = '<li class="empty"><span class="spinner"></span></li>';
   try {
     current = await api(`/api/news?q=${encodeURIComponent(q)}`);
     renderNews();
   } catch (e) {
-    $('news-list').innerHTML = `<li class="error">${esc(e.message)}</li>`;
+    if (!silent) $('news-list').innerHTML = `<li class="error">${esc(e.message)}</li>`;
   }
 }
 

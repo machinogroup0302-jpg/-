@@ -349,3 +349,8 @@ h3 .sub { font-weight: 400; font-size: 12px; color: var(--muted); margin-left: 8
 .tl-dot { flex: none; width: 12px; height: 12px; border-radius: 50%; margin-top: 4px; }
 .tl-dot.in { background: var(--accent); }
 .tl-dot.out { background: var(--muted); }
+
+/* あなたのプラン */
+.plan-rule { padding: 8px 10px; border-radius: 10px; background: var(--surface-2); line-height: 1.8; }
+.plan-order { font-size: 16px; margin: 4px 0 6px; }
+.plan-grid .stat { padding: 8px; }

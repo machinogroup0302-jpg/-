@@ -32,14 +32,14 @@ export function getFavs(mode) {
 
 export function setFavs(mode, list) {
   store.set(`favs_${mode}`, list);
-  const meta = store.get(`sync_favs_${mode}`, {});
-  store.set(`sync_favs_${mode}`, { ...meta, dirty: true, rev: (meta.rev || 0) + 1 });
-  schedulePush();
+  markDirty(`favs_${mode}`);
 }
 
-// ---- パソコンとスマホでお気に入りを共有する ----
+// ---- パソコンとスマホでお気に入り・あなたの設定を共有する ----
 // 端末ごとに「最後にサーバーとそろえた時刻（ts）」と「まだ送っていない変更があるか（dirty）」を覚えておく
 const MODES = ['fx', 'stock', 'us'];
+const KEYS = [...MODES.map((m) => `favs_${m}`), 'profile'];
+const localValue = (key) => (key === 'profile' ? store.get('profile', null) : getFavs(key.slice(5)));
 let pushTimer = null;
 let syncing = null;
 let onSynced = () => {};
@@ -47,21 +47,37 @@ export const syncState = { durable: null, error: '', last: 0 };
 
 export function onFavsSynced(fn) { onSynced = fn; }
 
+function markDirty(key) {
+  const meta = store.get(`sync_${key}`, {});
+  store.set(`sync_${key}`, { ...meta, dirty: true, rev: (meta.rev || 0) + 1 });
+  schedulePush();
+}
+
+// あなたの設定（メール・予算など）
+export const DEFAULT_PROFILE = { email: '', budget: 0, riskPct: 2, maxPos: 3, notify: { fx: true, stock: true, us: true } };
+export function getProfile() {
+  return { ...DEFAULT_PROFILE, ...(store.get('profile', null) || {}) };
+}
+export function setProfile(p) {
+  store.set('profile', p);
+  markDirty('profile');
+}
+
 function schedulePush() {
   clearTimeout(pushTimer);
-  pushTimer = setTimeout(() => pushDirty().catch(() => {}), 800);
+  pushTimer = setTimeout(() => pushDirty().catch((e) => { syncState.error = e.message; }), 800);
 }
 
 async function pushDirty() {
-  for (const mode of MODES) {
-    const key = `favs_${mode}`;
+  for (const key of KEYS) {
     const meta = store.get(`sync_${key}`, {});
     if (!meta.dirty) continue;
-    const r = await api('/api/prefs', { method: 'PUT', body: { key, value: getFavs(mode) } });
+    const value = localValue(key);
+    if (value == null) { store.set(`sync_${key}`, { ...meta, dirty: false }); continue; }
+    const r = await api('/api/prefs', { method: 'PUT', body: { key, value } });
     // 送っている間にまた変わっていたら、dirty のまま残して次に送る
     const now = store.get(`sync_${key}`, {});
     store.set(`sync_${key}`, { ts: r.ts, rev: now.rev || 0, dirty: (now.rev || 0) !== (meta.rev || 0) });
-    syncState.durable = r.durable;
   }
 }
 
@@ -70,24 +86,23 @@ const union = (a, b) => {
   return [...a, ...b.filter((f) => !seen.has(favCode(f.code)))];
 };
 
-// サーバーの最新と、この端末のお気に入りをそろえる
+// サーバーの最新と、この端末のお気に入り・設定をそろえる
 export function syncFavs() {
   syncing ||= (async () => {
     try {
-      const { items, durable, error } = await api('/api/prefs');
+      const { items, durable } = await api('/api/prefs');
       syncState.durable = durable;
-      syncState.error = error || '';
+      syncState.error = '';
       let changed = false;
-      for (const mode of MODES) {
-        const key = `favs_${mode}`;
+      for (const key of KEYS) {
         const remote = items[key];
         const meta = store.get(`sync_${key}`, null);
         const own = store.get(key, null);
         if (!meta) {
           // 初めてそろえる端末：今までのお気に入りは消さずに、サーバーのものと合わせる
-          if (remote && own) { store.set(key, union(remote.value, own)); changed = true; }
+          if (remote && own && key !== 'profile') { store.set(key, union(remote.value, own)); changed = true; }
           else if (remote) { store.set(key, remote.value); changed = true; }
-          store.set(`sync_${key}`, { ts: remote?.ts || 0, dirty: !!own });
+          store.set(`sync_${key}`, { ts: remote?.ts || 0, dirty: !!own && (key !== 'profile' || !remote) });
         } else if (meta.dirty) {
           // この端末で変えたものがまだ送れていない → こちらを送る
         } else if (remote && remote.ts > (meta.ts || 0)) {

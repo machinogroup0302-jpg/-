@@ -15,7 +15,7 @@ import { loadRepoData } from './lib/jpxdata.js';
 import { INDEX_NAMES } from './lib/market.js';
 import { fxName } from './public/js/fxpairs.js';
 import { startScan, scanStatus } from './lib/scanner.js';
-import { getPrefs, putPref, loadPrefs } from './lib/prefs.js';
+import { getPrefs, putPref, loadPrefs, backupBlob, alertProfile } from './lib/prefs.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(here, 'public');
@@ -117,6 +117,11 @@ async function handleApi(req, res, url) {
     }
     await new Promise((r) => setTimeout(r, 800));
     return json(res, 401, { error: 'パスワードが違います' });
+  }
+  // GitHub Actions 用（サイトのパスワードを x-site-key に入れて呼ぶ）
+  if (route === 'GET /api/backup/prefs' || route === 'GET /api/alerts/profile') {
+    if (!SITE_PASSWORD || !samePassword(req.headers['x-site-key'] || '')) return json(res, 401, { error: 'パスワードが違います' });
+    return json(res, 200, route.includes('backup') ? await backupBlob() : await alertProfile());
   }
   if (!authed(req)) return json(res, 401, { error: 'ログインしてください' });
 
