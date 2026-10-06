@@ -204,6 +204,49 @@
         <div id="trade-result"></div>
       </section>
 
+      <!-- ===== 成績（答え合わせ・自動売買） ===== -->
+      <section class="view" id="view-lab" hidden>
+        <div class="card">
+          <h2>「<span id="lab-name">—</span>」の成績</h2>
+          <p class="small muted">チャート画面で見ている銘柄について、過去約1年分の「予想の答え合わせ」と「自動売買の練習」の結果を出します。別の銘柄はチャート画面で選んでから開いてください。</p>
+          <p class="small" id="lab-status"></p>
+        </div>
+        <div id="lab-body" hidden>
+          <div class="card">
+            <h2>予想の答え合わせ<span class="sub">1日ずつ</span></h2>
+            <p class="small muted" style="margin-top:-4px">毎日、その日までのデータだけで<button type="button" class="term" data-term="forecast">予想<span class="q" aria-hidden="true">?</span></button>を出し、実際の値段と比べました。まだ結果が出ていない最近の予想は「答え合わせ待ち」として残ります（＝これからの予想の記録）。</p>
+            <div class="seg" id="lab-h-seg" style="margin:8px 0"></div>
+            <div id="lab-fc-stats"></div>
+            <div class="lab-chart" id="lab-fc-chart"></div>
+            <div class="legend"><span><i style="background:var(--text)"></i>実際の値段</span><span><i style="background:#f2c94c"></i>その日に出していた予想</span><span><i style="background:#a0aec0"></i>予想の幅（90%）</span></div>
+            <h3>1日ずつの答え合わせ</h3>
+            <div class="tbl-wrap lab-table" id="lab-fc-table"></div>
+          </div>
+          <div class="card">
+            <h2>自動売買の練習<span class="sub">仮想の100万円</span></h2>
+            <p class="small muted" style="margin-top:-4px">私が決めたルールで、毎日の終わりに「買う・売る・待つ」を判断し、次の日の始まりの値段で売買したらどうなったかの記録です。本物のお金は使っていません。</p>
+            <div class="chips" id="lab-s-chips"></div>
+            <p class="small" id="lab-s-desc" style="margin:6px 0"></p>
+            <div id="lab-s-stats"></div>
+            <h3>入った場所・出た場所</h3>
+            <div class="lab-chart tall" id="lab-s-chart"></div>
+            <div class="legend"><span>▲買い／▼売りで入った日</span><span>●出た日（数字は損益・千円）</span></div>
+            <h3>損益の推移</h3>
+            <div class="lab-chart short" id="lab-eq-chart"></div>
+            <h3>取引の一覧</h3>
+            <div class="tbl-wrap lab-table" id="lab-s-trades"></div>
+            <h3>1日ずつの損益（最近90日）</h3>
+            <div class="tbl-wrap lab-table" id="lab-s-daily"></div>
+            <p class="notice" style="margin-top:8px">過去のデータで試した結果です。これから同じように儲かるとは限りません。ファンダメンタルズは「今の数字」しか手に入らないため、過去の判断にも今の数字を使っています。</p>
+          </div>
+        </div>
+        <div class="card">
+          <h2>お気に入りの銘柄でまとめて計算</h2>
+          <p class="small muted">今の切り替え（<span class="only-fx">為替</span><span class="only-stock">日本株</span><span class="only-us">米国株</span>）のお気に入りすべてで、予想の的中率と3つのやり方の損益を一覧にします。</p>
+          <button class="btn primary block" id="lab-batch-run">まとめて計算する</button>
+          <div id="lab-batch" style="margin-top:10px"></div>
+        </div>
+      </section>
     </main>
 
     <nav class="tabbar" id="tabbar" role="tablist"></nav>

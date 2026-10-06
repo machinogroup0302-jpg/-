@@ -340,3 +340,64 @@ test('通貨ペアの日本語検索と、一覧ファイルの場所探し', ()
   assert.equal(findListLink('<a href="/markets/x/data_j.xlsx">一覧</a>'), 'https://www.jpx.co.jp/markets/x/data_j.xlsx');
   assert.equal(findListLink('<p>なし</p>'), null);
 });
+
+import { evaluateForecasts } from '../public/js/backtest.js';
+import { runStrategy, regimeLookup, regimeScore } from '../public/js/strategies.js';
+
+function walk(n = 400, seed = 7) {
+  const out = [];
+  let p = 100, s = seed;
+  const r = () => (s = (s * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < n; i++) {
+    const o = p;
+    p = o * (1 + (r() - 0.48) * 0.03);
+    out.push({ time: 1_700_000_000 + i * 86400, open: o, high: Math.max(o, p) * 1.005, low: Math.min(o, p) * 0.995, close: p, volume: 1000 });
+  }
+  return out;
+}
+
+test('予想の答え合わせ：最近の予想は「答え合わせ待ち」になる', () => {
+  const c = walk();
+  const e = evaluateForecasts(c, { horizon: 5, days: 60, paths: 200 });
+  assert.equal(e.stats.pending, 5);
+  assert.equal(e.stats.count, e.rows.length - 5);
+  const done = e.rows.find((r) => r.actual != null);
+  const i = c.findIndex((x) => x.time === done.time);
+  assert.equal(done.actual, c[i + 5].close);
+  assert.ok(e.stats.dirHit >= 0 && e.stats.dirHit <= 1);
+  // 同じデータなら毎回同じ予想になる（あとから出し直しても変わらない）
+  const again = evaluateForecasts(c, { horizon: 5, days: 60, paths: 200 });
+  assert.deepEqual(again.rows.map((r) => r.center), e.rows.map((r) => r.center));
+});
+
+test('自動売買：次の日の始まりの値段で売買し、損益が合う', () => {
+  const c = walk();
+  for (const id of ['trend', 'rebound', 'combo']) {
+    const r = runStrategy(c, id, { kind: 'fx', pair: 'USDJPY' });
+    for (const t of r.trades) {
+      const ei = c.findIndex((x) => x.time === t.entryTime);
+      assert.equal(t.entryPrice, c[ei].open); // 未来の値段を使っていない
+      assert.ok(t.exitTime > t.entryTime);
+    }
+    const realized = r.trades.reduce((s, t) => s + t.pnl, 0);
+    assert.ok(Math.abs(realized - r.stats.realized) < 1e-6);
+    const sumDaily = r.daily.reduce((s, d) => s + d.pnl, 0);
+    assert.ok(Math.abs(sumDaily - r.stats.total) < 1e-6);
+  }
+  // 株は売りから入らない
+  assert.ok(runStrategy(c, 'trend', { kind: 'stock' }).trades.every((t) => t.side === 1));
+});
+
+test('情勢の点数', () => {
+  const day = (i) => ({ time: 1_700_000_000 + i * 86400 });
+  const look = regimeLookup({
+    vix: Array.from({ length: 60 }, (_, i) => ({ ...day(i), close: 30 })),
+    tnx: Array.from({ length: 60 }, (_, i) => ({ ...day(i), close: 4 + i * 0.01 })),
+    nikkei: Array.from({ length: 60 }, (_, i) => ({ ...day(i), close: 30000 - i * 10 })),
+  });
+  const r = look('2099-01-01');
+  assert.equal(r.vix.v, 30);
+  const sc = regimeScore(r, 'fx', 'USDJPY');
+  assert.ok(sc.notes.some((n) => /恐怖指数/.test(n)));
+  assert.ok(sc.notes.some((n) => /金利が上昇/.test(n)));
+});

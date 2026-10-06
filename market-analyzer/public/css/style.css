@@ -77,7 +77,7 @@ a { color: var(--accent); }
 /* ---------- 下のタブ ---------- */
 .tabbar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
-  display: grid; grid-template-columns: repeat(4, 1fr);
+  display: grid; grid-template-columns: repeat(5, 1fr);
   height: calc(var(--nav-h) + env(safe-area-inset-bottom));
   padding-bottom: env(safe-area-inset-bottom);
   background: var(--surface);
@@ -230,7 +230,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .tbl-wrap { overflow-x: auto; }
 
 @media (min-width: 720px) {
-  .tabbar { grid-template-columns: repeat(4, 120px); justify-content: center; }
+  .tabbar { grid-template-columns: repeat(5, 110px); justify-content: center; }
   .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .two-col > .card { margin-bottom: 0; }
   .chart-box { margin: 0; }
@@ -290,3 +290,13 @@ a.btn { text-decoration: none; color: var(--text); }
 .fav-star[aria-pressed="true"] { color: var(--warn); border-color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, var(--surface)); }
 .chip.editing { border-style: dashed; }
 .chip .x { margin-left: 6px; color: var(--up); font-weight: 800; }
+
+/* ---------- 成績タブ ---------- */
+.lab-chart { height: 240px; margin: 10px -14px 4px; }
+.lab-chart.tall { height: 300px; }
+.lab-chart.short { height: 140px; }
+.lab-table { max-height: 420px; overflow-y: auto; }
+.lab-table thead th { position: sticky; top: 0; background: var(--surface); z-index: 1; }
+@media (min-width: 720px) { .lab-chart { margin: 10px 0 4px; } }
+.lab-table td.r, .lab-table th.r { white-space: nowrap; }
+.lab-table .tbl { font-size: 12px; }

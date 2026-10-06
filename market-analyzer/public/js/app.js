@@ -13,6 +13,7 @@ import { initNewsView, onSymbol as newsOnSymbol } from './newsview.js';
 import { initTradesView } from './tradesview.js';
 import { updateOrderflow, resetOrderflow } from './orderflow.js';
 import { updateFundamentals } from './fundview.js';
+import { initLab, updateLab, resetLab } from './labview.js';
 
 const MODE_NAMES = { fx: '為替', stock: '日本株', us: '米国株' };
 function applyMode(mode) {
@@ -30,6 +31,7 @@ const TABS = [
   ['chart', 'チャート', 'チャート分析', ICON('<path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/>')],
   ['screener', '候補', '可能性のある候補', ICON('<path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>')],
   ['news', 'ニュース', 'ニュース・ファンダ', ICON('<path d="M4 4h13v16H6a2 2 0 0 1-2-2z"/><path d="M17 8h3v10a2 2 0 0 1-2 2"/><path d="M8 8h5M8 12h5M8 16h3"/>')],
+  ['lab', '成績', '答え合わせ・自動売買', ICON('<path d="M4 20h16"/><rect x="5" y="11" width="3" height="7"/><rect x="10.5" y="7" width="3" height="11"/><rect x="16" y="4" width="3" height="14"/>')],
   ['trades', '取引分析', '自分の取引の分析', ICON('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>')],
 ];
 
@@ -45,6 +47,7 @@ function showTab(id) {
   store.set('tab', id);
   if (id === 'news') newsOnSymbol(chartState);
   if (id === 'screener' && getMode() === 'stock') showStockScreener();
+  if (id === 'lab') updateLab(chartState, getMode());
   window.scrollTo({ top: 0 });
 }
 
@@ -108,6 +111,7 @@ function startApp() {
   const openChart = (code, name) => { showTab('chart'); loadChart(code, name, '1d'); };
   initScreener(openChart);
   initStockScreener(openChart);
+  initLab(getMode);
   initNewsView();
   initTradesView();
   onSymbolChange((st) => {
@@ -116,6 +120,7 @@ function startApp() {
     updatePts(st, getMode());
     updateOrderflow(st, getMode());
     updateFundamentals(st);
+    if (currentTab === 'lab') updateLab(st, getMode());
   });
   startAutoRefresh();
   // ニュースタブを開いている間は10分ごとに最新にする
