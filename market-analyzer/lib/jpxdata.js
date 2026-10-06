@@ -90,6 +90,19 @@ export function parseMarginRows(rows) {
   return out;
 }
 
+// 信用残のPDF（行ごとの文字）から読む。並び方を確認してから仕上げる
+export function parseMarginLines(lines) {
+  const out = [];
+  for (const l of lines) {
+    const code = l.find((x) => /^[0-9][0-9A-Z]{3}0?$/.test(x));
+    if (!code) continue;
+    const nums = l.map((x) => num(x)).filter((v) => v != null);
+    if (nums.length < 4) continue;
+    out.push({ code: code.slice(0, 4), raw: l });
+  }
+  return out;
+}
+
 // サーバー：GitHub に保存したデータを読む（なければ同梱のファイル）
 const cache = new Map();
 export async function loadRepoData(name) {

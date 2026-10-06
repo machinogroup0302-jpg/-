@@ -42,7 +42,9 @@ jobs:
       - name: 決算発表予定日・信用残を取得
         continue-on-error: true
         working-directory: market-analyzer
-        run: node scripts/update-market-data.mjs
+        run: |
+          npm install --no-save --no-audit --no-fund pdfjs-dist@4
+          node scripts/update-market-data.mjs
 
       - name: データが変わっていれば保存
         run: |

@@ -3,7 +3,28 @@
 // ・銘柄別信用取引週末残高（ファイルの形式を確認して、読めれば data/margin.json）
 import fs from 'node:fs/promises';
 import * as XLSX from 'xlsx';
-import { parseEarningsRows, parseMarginRows } from '../lib/jpxdata.js';
+import { parseEarningsRows, parseMarginRows, parseMarginLines } from '../lib/jpxdata.js';
+
+// PDF の文字を、行ごと（同じ高さの文字のまとまり）に取り出す
+async function pdfLines(buf) {
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const doc = await pdfjs.getDocument({ data: new Uint8Array(buf), useSystemFonts: true }).promise;
+  const out = [];
+  for (let p = 1; p <= doc.numPages; p++) {
+    const page = await doc.getPage(p);
+    const tc = await page.getTextContent();
+    const rows = new Map();
+    for (const it of tc.items) {
+      if (!it.str || !it.str.trim()) continue;
+      const y = Math.round(it.transform[5]);
+      const key = [...rows.keys()].find((k) => Math.abs(k - y) <= 2) ?? y;
+      if (!rows.has(key)) rows.set(key, []);
+      rows.get(key).push({ x: it.transform[4], s: it.str.trim() });
+    }
+    [...rows.entries()].sort((a, b) => b[0] - a[0]).forEach(([, items]) => out.push(items.sort((a, b) => a.x - b.x).map((i) => i.s)));
+  }
+  return out;
+}
 
 const HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36',
@@ -75,7 +96,18 @@ try {
     if (items.length > 100) await save('margin.json', { items, source: xls[0] });
     else console.log('信用残: 読み取れた行が少なすぎます', items.length);
   } else {
-    console.log('信用残: Excel/CSVのファイルが見つかりません（PDFのみ）');
+    const pdfs = all.filter((f) => /mtall\.pdf$/i.test(f));
+    console.log('信用残: PDFを読みます', pdfs[0]);
+    if (pdfs.length) {
+      const lines = await pdfLines(await get(pdfs[0], false));
+      console.log(`  ${lines.length}行。先頭40行:`);
+      lines.slice(0, 40).forEach((l) => console.log('  |', l.join(' | ')));
+      console.log('  途中の行:');
+      lines.slice(200, 215).forEach((l) => console.log('  |', l.join(' | ')));
+      const items = parseMarginLines(lines);
+      console.log(`  読み取れた銘柄: ${items.length}件`, JSON.stringify(items.slice(0, 3)));
+      if (items.length > 500) await save('margin.json', { items, source: pdfs[0], date: (pdfs[0].match(/(\d{8})_mtall/) || [])[1] });
+    }
   }
 } catch (e) {
   console.log('信用残の取得に失敗:', e.message);
