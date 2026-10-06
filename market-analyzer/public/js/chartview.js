@@ -3,7 +3,6 @@ import { api, $, esc, store, fmtPrice, digitsFor, signalClass, JST, cssVar } fro
 import { sma, bollinger, rsi, macd, ichimoku, technicalSummary } from './indicators.js';
 import { supportResistance, trendlines, pivots } from './levels.js';
 import { monteCarlo, futureTimes } from './forecast.js';
-import { buildScenarioSeries, circled } from './scenario.js';
 import { vwap } from './volume.js';
 import { renderOrderflow } from './orderflow.js';
 import { term } from './glossary.js';
@@ -14,7 +13,7 @@ const LC = window.LightweightCharts;
 export const TF_LABELS = { '5m': '5分足', '15m': '15分足', '1h': '1時間足', '4h': '4時間足', '1d': '日足', '1wk': '週足' };
 const TF_SPAN = { '5m': '約1時間40分', '15m': '約5時間', '1h': '約1日', '4h': '約3〜4日', '1d': '約1か月', '1wk': '約5か月' };
 const LAYERS = [
-  ['ma', '平均線'], ['bb', 'いつもの範囲'], ['ichi', '雲（一目）'], ['levels', '壁と支え'], ['trend', '流れの線'], ['pivot', '今日の目安'], ['forecast', '予想の幅'], ['ai', 'AI予想'], ['vol', '売買の量', 'equity'],
+  ['ma', '平均線'], ['bb', 'いつもの範囲'], ['ichi', '雲（一目）'], ['levels', '壁と支え'], ['trend', '流れの線'], ['pivot', '今日の目安'], ['forecast', '予想の幅'], ['vol', '売買の量', 'equity'],
 ];
 const SUBS = [['rsi', '買われすぎ度（RSI）'], ['macd', '勢い（MACD）'], ['none', 'なし']];
 
@@ -188,31 +187,6 @@ function render() {
     legend.push(['#f2c94c', '予想の中心'], ['#a0aec0', '予想の幅']);
   }
 
-  // AIの理由つき予想（日足に表示）
-  const sc = scenarioFor(state.symbol);
-  let scenarioLen = 0;
-  if (L.ai && sc && tf === '1d') {
-    const built = buildScenarioSeries(sc.result, last.time, last.close);
-    if (built.line.length > 1) {
-      if (built.bull.length > 1) addLine(main, overlay, built.bull, up + 'aa', { lineStyle: LC.LineStyle.Dashed });
-      if (built.bear.length > 1) addLine(main, overlay, built.bear, down + 'aa', { lineStyle: LC.LineStyle.Dashed });
-      const ln = addLine(main, overlay, built.line, '#c084fc', { lineWidth: 3 });
-      ln.setMarkers(built.markers.map((m) => ({
-        time: m.time,
-        position: m.position,
-        shape: m.shape,
-        color: m.kind === 'event' ? '#e3a008' : m.up ? up : down,
-        text: m.text,
-      })));
-      scenarioLen = built.line.length;
-      legend.push(['#c084fc', 'AI予想'], [up, '上ぶれ'], [down, '下ぶれ']);
-    }
-    const iv = sc.result.intervention;
-    if (iv?.applicable && iv.level > 0) {
-      priceLines.push(candleSeries.createPriceLine({ price: iv.level, color: '#e5484d', lineWidth: 2, lineStyle: LC.LineStyle.LargeDashed, axisLabelVisible: true, title: `介入警戒(${iv.risk})` }));
-    }
-  }
-
   // ストップ高・ストップ安の値段（株のみ）
   const si = mode === 'stock' ? stopFor(raw, tf) : null;
   if (si) {
@@ -252,13 +226,12 @@ function render() {
   $('legend').innerHTML = legend.map(([c, l]) => `<span><i style="background:${c}"></i>${esc(l)}</span>`).join('');
   const visible = Math.min(candles.length, window.innerWidth < 600 ? 90 : 160);
   if (keepRange) main.timeScale().setVisibleLogicalRange(keepRange);
-  else main.timeScale().setVisibleLogicalRange({ from: candles.length - visible, to: candles.length + Math.max(L.forecast ? 22 : 4, scenarioLen + 3) });
+  else main.timeScale().setVisibleLogicalRange({ from: candles.length - visible, to: candles.length + (L.forecast ? 22 : 4) });
 
   renderQuote(raw, digits);
   renderTech(raw);
   renderLevels(levels, tls, pv, last.close, digits);
   renderForecast(fc, digits);
-  renderScenarioCard(digits);
   renderStop(raw, digits);
   renderOrderflow(state.data);
 }
@@ -304,86 +277,6 @@ function renderStop(candles, digits) {
     <p class="notice" style="margin-top:8px">ストップ高・安が何日も続くと、幅が広げられることがあります。正確な値段は証券会社のアプリでも確認してください。</p>`;
 }
 
-// ---------------- AIの理由つき予想 ----------------
-function scenarioFor(symbol) {
-  return store.get('scenario_' + symbol, null);
-}
-
-function renderScenarioCard(digits) {
-  const sc = scenarioFor(state.symbol);
-  const box = $('scenario-box');
-  // 処理中はボタンの文字が入れ替わっているので、名前の欄がないこともある
-  const nameEl = $('scenario-name');
-  if (nameEl) nameEl.textContent = state.name || state.symbol;
-  if (!sc) {
-    box.innerHTML = '';
-    return;
-  }
-  const r = sc.result;
-  // チャートの番号と同じ並び（今より後の点だけ・日付順）にする
-  const raw = state.data.candles;
-  const pts = buildScenarioSeries(r, raw[raw.length - 1].time + JST, raw[raw.length - 1].close).points;
-  const iv = r.intervention || {};
-  box.innerHTML = `
-    <p class="small muted" style="margin:10px 0 4px">${esc(sc.when)} に作成（作成時の価格 ${fmtPrice(sc.price, digits)}）</p>
-    ${state.tf !== '1d' ? '<p class="notice">予想の線と理由の目印は「日足」のチャートに表示されます。</p>' : ''}
-    <div class="li-head" style="margin:8px 0"><span class="name">1か月の見通し</span><span class="badge ${signalClass(r.direction || '')}">${esc(r.direction || '—')}</span></div>
-    <p class="small">${esc(r.summary || '')}</p>
-    ${iv.applicable ? `<div class="notice" style="margin:8px 0"><b>為替介入の警戒度: <span class="${iv.risk === '高' ? 'plus' : ''}">${esc(iv.risk)}</span></b>${iv.level > 0 ? `（目安 ${fmtPrice(iv.level, digits)}・チャートに赤い点線）` : ''}<br>${esc(iv.reason || '')}</div>` : ''}
-    <h3>値動きの理由（チャートの番号と対応）</h3>
-    <ul class="list">${pts.map((p, i) => {
-      const prev = i === 0 ? sc.price : pts[i - 1].price;
-      const upMove = p.price >= prev;
-      return `<li><div class="li-head"><span class="name small">${circled(i)} ${esc(p.date)}　<span class="num">${fmtPrice(p.price, digits)}</span></span><span class="badge ${upMove ? 'buy' : 'sell'}">${upMove ? '上がる' : '下がる'}</span></div>
-        <div class="small"><b>${esc(p.label || '')}</b> ${esc(p.reason || '')}</div></li>`;
-    }).join('')}</ul>
-    ${(r.events || []).length ? `<h3>今後のイベント（チャートの黄色の四角）</h3><ul class="list">${r.events.map((e) => `<li class="small"><span class="badge ${signalClass(e.impact || '')}">${esc(e.impact)}</span> ${esc(e.date)} <b>${esc(e.name)}</b><div class="muted">${esc(e.detail || '')}</div></li>`).join('')}</ul>` : ''}
-    <h3>上ぶれ・下ぶれするとき</h3>
-    <p class="small"><b class="plus">上ぶれ:</b> ${esc(r.bull_reason || '')}</p>
-    <p class="small"><b class="minus">下ぶれ:</b> ${esc(r.bear_reason || '')}</p>
-    ${(r.key_levels || []).length ? `<h3>意識される価格</h3><ul class="list">${r.key_levels.map((k) => `<li class="small"><b class="num">${fmtPrice(Number(k.price), digits)}</b> ${esc(k.reason)}</li>`).join('')}</ul>` : ''}
-    <p class="notice">AIがニュースや予定から考えた予想で、外れることがあります。急なニュースで大きく変わることもあります。</p>`;
-}
-
-async function runScenario() {
-  const btn = $('scenario-run');
-  btn.disabled = true;
-  btn.dataset.label = btn.innerHTML;
-  btn.innerHTML = '<span class="spinner"></span> AIがニュースと予定を調べています（1〜2分）…';
-  try {
-    if (state.tf !== '1d') await loadChart(state.symbol, state.name, '1d');
-    const raw = state.data.candles;
-    const price = raw[raw.length - 1].close;
-    const d = digitsFor(price);
-    const round = (v) => Number(v.toFixed(d));
-    const fc = monteCarlo(raw, { horizon: 20 });
-    const end = fc.bands[fc.bands.length - 1];
-    const result = await api('/api/ai/scenario', {
-      method: 'POST',
-      body: {
-        symbol: state.symbol,
-        name: state.name,
-        price: round(price),
-        closes: raw.slice(-60).map((c) => round(c.close)),
-        technical: technicalSummary(raw).label,
-        levels: supportResistance(raw).map((l) => `${l.label} ${round(l.price)}(${l.strength})`),
-        mc: { p05: round(end.p05), p50: round(end.p50), p95: round(end.p95) },
-      },
-    });
-    store.set('scenario_' + state.symbol, { result, when: new Date().toLocaleString('ja-JP'), price });
-    state.layers.ai = true;
-    store.set('layers', state.layers);
-    renderControls();
-    render();
-    $('chart-main').scrollIntoView({ behavior: 'smooth', block: 'start' });
-  } catch (e) {
-    $('scenario-box').innerHTML = `<p class="error">${esc(e.message)}</p>`;
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = btn.dataset.label;
-    $('scenario-name').textContent = state.name || state.symbol;
-  }
-}
 
 function pivotFor(candles, tf) {
   if (tf === '1wk' || candles.length < 3) return null;
@@ -552,7 +445,6 @@ function renderControls() {
 
 export function initChartView() {
   initCharts();
-  $('scenario-run').addEventListener('click', runScenario);
   renderControls();
   $('symbol-form').addEventListener('submit', async (e) => {
     e.preventDefault();

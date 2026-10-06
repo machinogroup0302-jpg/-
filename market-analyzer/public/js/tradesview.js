@@ -1,5 +1,5 @@
 // 取引分析画面：CSV またはスクリーンショットから取引を読み込み、成績を分析する
-import { api, $, esc, store, busy, fmtYen, toast, loadImage, imageToDataUrl } from './util.js';
+import { $, esc, store, fmtYen, toast } from './util.js';
 import { term } from './glossary.js';
 import { parseCsv, findHeader, guessMapping, rowsToTrades, decodeFile, computeStats, insights, FIELD_LABELS } from './trades.js';
 
@@ -81,8 +81,6 @@ function render() {
     <div class="card">
       <h2>あなたの癖・傾向</h2>
       <ul class="list">${insights(s).map((t) => `<li class="small">${esc(t)}</li>`).join('') || '<li class="small muted">取引がもう少し増えると傾向が分かります</li>'}</ul>
-      <button class="btn primary block" id="coach-btn" style="margin-top:10px">AIコーチにアドバイスをもらう</button>
-      <div id="coach-out"></div>
     </div>
     <div class="two-col">
       <div class="card"><h2>${tradeMode === 'fx' ? '通貨ペア別' : '銘柄別'}</h2>${bars(s.bySymbol.slice(0, 12), (k) => k)}</div>
@@ -105,23 +103,6 @@ function render() {
     save();
     render();
     $('trade-status').textContent = '';
-  };
-  $('coach-btn').onclick = async () => {
-    const btn = $('coach-btn');
-    busy(btn, true, 'AIが分析しています…');
-    try {
-      const { curve, ...rest } = s;
-      const r = await api('/api/ai/coach', { method: 'POST', body: { stats: { ...rest, bySymbol: rest.bySymbol.slice(0, 15) } } });
-      $('coach-out').innerHTML = `
-        <p class="small" style="margin-top:10px">${esc(r.summary)}</p>
-        <h3>良いところ</h3><ul class="small">${r.strengths.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
-        <h3>直したい癖</h3><ul class="small">${r.weaknesses.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
-        <h3>明日から守るルール</h3><ol class="small">${r.rules.map((x) => `<li>${esc(x)}</li>`).join('')}</ol>`;
-    } catch (e) {
-      $('coach-out').innerHTML = `<p class="error">${esc(e.message)}</p>`;
-    } finally {
-      busy(btn, false);
-    }
   };
 }
 
@@ -172,35 +153,11 @@ async function onCsv(file) {
   }
 }
 
-async function onImages(files) {
-  const status = $('trade-status');
-  let all = [];
-  for (let i = 0; i < files.length; i++) {
-    status.innerHTML = `<span class="spinner"></span> AIが読み取り中… ${i + 1} / ${files.length}`;
-    try {
-      const img = await loadImage(files[i]);
-      const r = await api('/api/ai/trades-image', { method: 'POST', body: { image: imageToDataUrl(img) } });
-      all = all.concat(r.trades.filter((t) => t.is_closed).map((t) => ({
-        date: (() => { const d = new Date(t.datetime.replace(/\//g, '-').replace(' ', 'T')); return Number.isNaN(d.getTime()) ? null : d.toISOString(); })(),
-        symbol: t.symbol, side: t.side, qty: t.quantity, price: t.price, pnl: t.pnl,
-      })));
-    } catch (e) {
-      status.textContent = `${i + 1}枚目: ${e.message}`;
-      return;
-    }
-  }
-  addTrades(all, 'スクリーンショット');
-}
 
 export function initTradesView() {
   $('csv-file').addEventListener('change', (e) => {
     const f = e.target.files[0];
     if (f) onCsv(f).catch((err) => toast(err.message));
-    e.target.value = '';
-  });
-  $('trade-img').addEventListener('change', (e) => {
-    const files = [...e.target.files];
-    if (files.length) onImages(files);
     e.target.value = '';
   });
   render();

@@ -147,7 +147,6 @@ test('銘柄コードの変換', () => {
 });
 
 import { volumeProfile, buySellPressure, vwap, summarizeTicks, splitVolume } from '../public/js/volume.js';
-import { buildScenarioSeries, dateToTime } from '../public/js/scenario.js';
 
 test('価格帯別出来高と買い売りの推定', () => {
   const c = makeCandles(200).map((x, i) => ({ ...x, volume: 1000 + (i % 10) * 100 }));
@@ -176,24 +175,7 @@ test('歩み値の集計と大口', () => {
   assert.equal(s.big.length, 1);
 });
 
-test('AI予想をチャートの点と目印に変換', () => {
-  const last = dateToTime('2026-10-06', 0);
-  const b = buildScenarioSeries({
-    main: [{ date: '2026-10-20', price: 148, label: '日銀会合' }, { date: '2026-10-09', price: 151, label: '雇用統計' }, { date: '2026-10-01', price: 140, label: '過去' }],
-    events: [{ date: '2026-10-14', name: '米CPI', impact: '下落要因' }],
-    bull: [{ date: '2026-10-20', price: 155 }],
-    bear: [],
-  }, last, 150);
-  assert.equal(b.points.length, 2); // 過去の点は除く
-  assert.equal(b.points[0].label, '雇用統計');
-  assert.equal(b.line[0].value, 150);
-  for (let i = 1; i < b.line.length; i++) assert.ok(b.line[i].time > b.line[i - 1].time);
-  const ev = b.markers.find((m) => m.kind === 'event');
-  assert.ok(ev && b.line.some((p) => p.time === ev.time));
-  assert.equal(b.markers.find((m) => m.kind === 'point').shape, 'arrowUp');
-  assert.equal(b.bull.length, 2);
-  assert.equal(b.bear.length, 0);
-});
+
 
 import * as XLSX from 'xlsx';
 import { priceLimit, stopInfo } from '../public/js/limits.js';

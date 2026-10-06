@@ -81,12 +81,6 @@
           <div id="rating-box"></div>
         </div>
 
-        <div class="card">
-          <h2><button type="button" class="term" data-term="aiForecast">AI予想（理由つき）<span class="q" aria-hidden="true">?</span></button><span class="sub only-fx">為替介入・イベント考慮</span><span class="sub only-equity">決算・イベント考慮</span></h2>
-          <p class="small muted">AIが今後1か月の大事な予定（<span class="only-fx">金利の発表・経済指標・<button type="button" class="term" data-term="intervention">為替介入<span class="q" aria-hidden="true">?</span></button>の可能性など</span><span class="only-equity">決算発表・業界のニュースなど</span>）を調べ、値動きの予想と「なぜ上がる／下がるのか」をチャートに書き込みます。AIのキーが必要です（1回あたり数十円程度）。</p>
-          <button class="btn primary block" id="scenario-run">「<span id="scenario-name">—</span>」の予想を作る</button>
-          <div id="scenario-box"></div>
-        </div>
 
         <div class="two-col">
           <div class="card">
@@ -105,13 +99,6 @@
         <div class="card only-equity">
           <h2>注文・約定分析<span class="sub">売買の量から見る</span></h2>
           <div id="orderflow-box"></div>
-          <h3><button type="button" class="term" data-term="board">板<span class="q" aria-hidden="true">?</span></button>・<button type="button" class="term" data-term="ticks">歩み値<span class="q" aria-hidden="true">?</span></button>から分析（AI）</h3>
-          <label class="drop" id="book-label">
-            <strong>板・歩み値のスクリーンショットを選ぶ</strong>
-            iSPEED の板や歩み値（約定履歴）の画面
-            <input type="file" id="book-img" accept="image/*" hidden>
-          </label>
-          <div id="book-result"></div>
         </div>
         <div class="card">
           <h2><button type="button" class="term" data-term="fundamental">ファンダメンタルズ<span class="q" aria-hidden="true">?</span></button>・ニュース</h2>
@@ -183,12 +170,6 @@
           <div id="news-summary" style="margin-top:10px"></div>
         </div>
         <div class="card">
-          <h2>AIで詳しく調べる<span class="sub">Web・SNSを検索</span></h2>
-          <p class="small muted">ネットやSNSの情報をAIが集めて、裏付けのない噂やあおり記事を除外し、ファンダメンタルズと今後の見通しをまとめます（1回あたり数十円程度の利用料がかかります）。</p>
-          <button class="btn primary block" id="ai-research">「<span id="ai-research-name">—</span>」をAIで調べる</button>
-          <div id="ai-research-out"></div>
-        </div>
-        <div class="card">
           <h2>ニュース一覧<span class="sub"><button type="button" class="term" data-term="credibility">信頼度<span class="q" aria-hidden="true">?</span></button>つき</span></h2>
           <label class="row small" style="margin-bottom:6px"><input type="checkbox" id="show-excluded"> 除外した情報も表示する</label>
           <ul class="list" id="news-list"><li class="empty">検索してください</li></ul>
@@ -205,17 +186,11 @@
             <span class="only-fx">LION FX（ヒロセ通商）などの取引履歴CSV</span><span class="only-stock">iSPEED（楽天証券）などの取引履歴CSV</span><span class="only-us">楽天証券などの米国株の取引履歴CSV</span>
             <input type="file" id="csv-file" accept=".csv,.txt,text/csv" hidden>
           </label>
-          <label class="drop">
-            <strong>スクリーンショットから読み取る（AI）</strong>
-            取引履歴画面の画像を選んでください（複数可）
-            <input type="file" id="trade-img" accept="image/*" multiple hidden>
-          </label>
           <details class="small muted">
             <summary>CSVの出し方</summary>
             <p>楽天証券: パソコン版サイトの「口座管理」→「取引履歴」から CSV で保存できます。<br>
             ヒロセ通商（LION FX）: 会員ページやパソコン版の「取引履歴」「約定照会」から CSV で保存できます。<br>
-            メニュー名は変わることがあります。見つからない場合はスクリーンショットでも分析できます。<br>
-            ※ID・パスワードはこのサイトに入れる必要はありません。</p>
+            メニュー名は変わることがあります。            ※ID・パスワードはこのサイトに入れる必要はありません。</p>
           </details>
           <div id="map-box"></div>
           <p class="small muted" id="trade-status"></p>
@@ -223,22 +198,6 @@
         <div id="trade-result"></div>
       </section>
 
-      <!-- ===== 画像分析 ===== -->
-      <section class="view" id="view-image" hidden>
-        <div class="card stack">
-          <h2>チャート画像に線を引く（AI）</h2>
-          <p class="small muted">iSPEED や LION FX のチャートのスクリーンショットを入れると、AIが分析して「上値の壁」「下値の支え」「流れの線」を書き込みます。</p>
-          <label class="drop">
-            <strong>画像を選ぶ</strong>
-            写真アプリからスクリーンショットを選択
-            <input type="file" id="chart-img" accept="image/*" hidden>
-          </label>
-          <input class="input" id="img-memo" placeholder="メモ（任意）例: ドル円の1時間足です">
-          <button class="btn primary block" id="img-run" disabled>分析して線を引く</button>
-          <p class="notice">きれいに撮るコツ: 右側の価格の目盛りがはっきり写るように撮る／銘柄名と時間足が写るように撮る／インジケーターは少なめにする</p>
-        </div>
-        <div id="img-result"></div>
-      </section>
     </main>
 
     <nav class="tabbar" id="tabbar" role="tablist"></nav>
@@ -247,12 +206,6 @@
   <dialog id="settings">
     <div class="dlg-head"><h2>設定</h2><button class="icon-btn" id="close-settings" aria-label="閉じる">✕</button></div>
     <div class="dlg-body">
-      <div class="field">
-        <label for="api-key">AIのAPIキー（Anthropic）</label>
-        <p class="small muted" id="api-status"></p>
-        <input class="input" type="password" id="api-key" placeholder="sk-ant-..." autocomplete="off">
-        <p class="small muted">このスマホのブラウザだけに保存されます。画像分析・AIニュース分析・取引アドバイスに使います。</p>
-      </div>
       <div class="field">
         <label>お気に入り（チャート画面の上に並ぶボタン・<span id="fav-mode">為替</span>）</label>
         <textarea class="input" id="fav-edit" rows="4"></textarea>

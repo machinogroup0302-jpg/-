@@ -26,13 +26,11 @@ export const store = {
 
 export async function api(path, { method = 'GET', body } = {}) {
   const headers = { Accept: 'application/json' };
-  const key = store.get('apiKey', '');
-  if (key && path.startsWith('/api/ai/')) headers['x-anthropic-key'] = key;
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   const res = await fetch(path, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined, credentials: 'same-origin' });
   let data = null;
   try { data = await res.json(); } catch { /* 空の応答 */ }
-  if (res.status === 401 && !path.startsWith('/api/ai/') && path !== '/api/login') {
+  if (res.status === 401 && path !== '/api/login') {
     location.reload();
   }
   if (!res.ok) throw new Error(data?.error || `通信エラー (${res.status})`);

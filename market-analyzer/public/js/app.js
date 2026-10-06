@@ -10,7 +10,6 @@ import { searchNews } from './newsview.js';
 import { initScreener } from './screener.js';
 import { initNewsView, onSymbol as newsOnSymbol } from './newsview.js';
 import { initTradesView } from './tradesview.js';
-import { initImageView } from './imageview.js';
 import { initOrderflow } from './orderflow.js';
 
 const DEFAULT_FAVS = {
@@ -58,7 +57,6 @@ const TABS = [
   ['screener', '候補', '可能性のある候補', ICON('<path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>')],
   ['news', 'ニュース', 'ニュース・ファンダ', ICON('<path d="M4 4h13v16H6a2 2 0 0 1-2-2z"/><path d="M17 8h3v10a2 2 0 0 1-2 2"/><path d="M8 8h5M8 12h5M8 16h3"/>')],
   ['trades', '取引分析', '自分の取引の分析', ICON('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>')],
-  ['image', '画像分析', '画像に線を引く', ICON('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 15l5-5 4 4 3-3 6 6"/><path d="M3 9h18"/>')],
 ];
 
 let currentTab = 'chart';
@@ -106,20 +104,14 @@ async function openSettings() {
   $('fav-mode').textContent = MODE_NAMES[getMode()];
   seg($('refresh-seg'), [['on', '1分ごとに自動更新'], ['off', '自動更新しない']], store.get('autoRefresh', 'on'));
   $('fav-edit').value = favs.map((f) => `${f.code},${f.name}`).join('\n');
-  $('api-key').value = store.get('apiKey', '');
   seg($('candle-seg'), [['jp', '日本式（陽線=赤）'], ['global', '海外式（陽線=緑）']], store.get('candle', 'jp'));
   seg($('theme-seg'), [['auto', '自動'], ['dark', 'ダーク'], ['light', 'ライト']], store.get('theme', 'auto'));
-  try {
-    const st = await api('/api/status');
-    $('api-status').textContent = st.aiServerKey ? 'サーバーにAPIキーが設定済みです（ここは空欄でOK）。' : 'サーバーにAPIキーが未設定です。AI機能を使うにはここに入力してください。';
-  } catch { /* 表示できなくても続ける */ }
   $('settings').showModal();
 }
 
 function saveSettings() {
   const favs = parseFavs($('fav-edit').value);
   store.set(`favs_${getMode()}`, favs.length ? favs : DEFAULT_FAVS[getMode()]);
-  store.set('apiKey', $('api-key').value.trim());
   store.set('candle', segValue($('candle-seg')) || 'jp');
   store.set('theme', segValue($('theme-seg')) || 'auto');
   store.set('autoRefresh', segValue($('refresh-seg')) || 'on');
@@ -144,7 +136,6 @@ function startApp() {
   initStockScreener(openChart);
   initNewsView();
   initTradesView();
-  initImageView();
   initOrderflow();
   onSymbolChange((st) => {
     if (currentTab === 'news') newsOnSymbol(st);

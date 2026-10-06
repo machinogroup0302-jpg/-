@@ -16,6 +16,7 @@ const same = prev && JSON.stringify(prev.items) === JSON.stringify(next.items) &
 if (same) {
   console.log(`変更なし（${items.length}社）`);
 } else {
+  await fs.mkdir(new URL('../data/', import.meta.url), { recursive: true });
   await fs.writeFile(FILE, JSON.stringify({ ...next, fetchedAt: Date.now() }));
   console.log(`保存しました（${items.length}社・上場予定 ${upcoming.length}社）`);
 }

@@ -12,7 +12,6 @@ import { usName, searchUs } from './lib/usstocks.js';
 import { getRatings } from './lib/ratings.js';
 import { INDEX_NAMES } from './lib/market.js';
 import { startScan, scanStatus } from './lib/scanner.js';
-import { analyzeChartImage, extractTradesFromImage, coachTrades, researchMarket, scenarioForecast, analyzeOrderBookImage, aiErrorMessage } from './lib/ai.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(here, 'public');
@@ -98,27 +97,12 @@ function samePassword(input) {
   return crypto.timingSafeEqual(a, b);
 }
 
-// 予想シナリオに渡すデータを、決まった形と大きさにそろえる
-function scenarioInput(b) {
-  const n = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
-  const mc = b.mc || {};
-  return {
-    symbol: String(b.symbol || '').slice(0, 30),
-    name: String(b.name || '').slice(0, 60),
-    price: n(b.price),
-    closes: (Array.isArray(b.closes) ? b.closes : []).slice(-60).map(n),
-    technical: String(b.technical || '').slice(0, 20),
-    levels: (Array.isArray(b.levels) ? b.levels : []).slice(0, 10).map((l) => String(l).slice(0, 40)),
-    mc: { p05: n(mc.p05), p50: n(mc.p50), p95: n(mc.p95) },
-  };
-}
-
 // ---- API ----
 async function handleApi(req, res, url) {
   const route = `${req.method} ${url.pathname}`;
 
   if (route === 'GET /api/status') {
-    return json(res, 200, { loginRequired: !!SITE_PASSWORD, loggedIn: authed(req), aiServerKey: !!process.env.ANTHROPIC_API_KEY });
+    return json(res, 200, { loginRequired: !!SITE_PASSWORD, loggedIn: authed(req) });
   }
   if (route === 'POST /api/login') {
     const body = await readBody(req);
@@ -192,26 +176,6 @@ async function handleApi(req, res, url) {
     }
   }
 
-  const userKey = String(req.headers['x-anthropic-key'] || '');
-  const aiRoutes = {
-    'POST /api/ai/chart-image': (b) => analyzeChartImage(userKey, b.image, String(b.memo || '').slice(0, 500)),
-    'POST /api/ai/trades-image': (b) => extractTradesFromImage(userKey, b.image),
-    'POST /api/ai/coach': (b) => coachTrades(userKey, b.stats),
-    'POST /api/ai/orderbook-image': (b) => analyzeOrderBookImage(userKey, b.image),
-    'POST /api/ai/scenario': (b) => scenarioForecast(userKey, scenarioInput(b)),
-    'POST /api/ai/research': (b) => researchMarket(userKey, { symbol: String(b.symbol || '').slice(0, 30), name: String(b.name || '').slice(0, 60) }),
-  };
-  if (aiRoutes[route]) {
-    try {
-      const body = await readBody(req);
-      return json(res, 200, await aiRoutes[route](body));
-    } catch (e) {
-      if (e.expose) return json(res, e.status, { error: e.message });
-      const { status, message } = aiErrorMessage(e);
-      console.error(route, e);
-      return json(res, status, { error: message });
-    }
-  }
   return json(res, 404, { error: 'not found' });
 }
 
