@@ -11,7 +11,7 @@ const isFxTrade = (sym) => /[A-Z]{3}\s*\/?\s*[A-Z]{3}/i.test(sym || '') || /円|
   store.set('trades_fx', old.filter((t) => isFxTrade(t.symbol)));
   store.set('trades_stock', old.filter((t) => !isFxTrade(t.symbol)));
 })();
-let tradeMode = store.get('mode', 'fx') === 'stock' ? 'stock' : 'fx';
+let tradeMode = ['fx', 'stock', 'us'].includes(store.get('mode', 'fx')) ? store.get('mode', 'fx') : 'fx';
 let trades = store.get(`trades_${tradeMode}`, []);
 
 export function setTradesMode(mode) {

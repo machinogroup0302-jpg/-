@@ -14,7 +14,7 @@ const LC = window.LightweightCharts;
 export const TF_LABELS = { '5m': '5分足', '15m': '15分足', '1h': '1時間足', '4h': '4時間足', '1d': '日足', '1wk': '週足' };
 const TF_SPAN = { '5m': '約1時間40分', '15m': '約5時間', '1h': '約1日', '4h': '約3〜4日', '1d': '約1か月', '1wk': '約5か月' };
 const LAYERS = [
-  ['ma', '平均線'], ['bb', 'いつもの範囲'], ['ichi', '雲（一目）'], ['levels', '壁と支え'], ['trend', '流れの線'], ['pivot', '今日の目安'], ['forecast', '予想の幅'], ['ai', 'AI予想'], ['vol', '売買の量', 'stock'],
+  ['ma', '平均線'], ['bb', 'いつもの範囲'], ['ichi', '雲（一目）'], ['levels', '壁と支え'], ['trend', '流れの線'], ['pivot', '今日の目安'], ['forecast', '予想の幅'], ['ai', 'AI予想'], ['vol', '売買の量', 'equity'],
 ];
 const SUBS = [['rsi', '買われすぎ度（RSI）'], ['macd', '勢い（MACD）'], ['none', 'なし']];
 
@@ -22,8 +22,9 @@ const SUBS = [['rsi', '買われすぎ度（RSI）'], ['macd', '勢い（MACD）
 const MODE_DEFAULTS = {
   fx: { symbol: 'USDJPY=X', name: 'ドル円', tf: '1h' },
   stock: { symbol: '7203.T', name: 'トヨタ自動車', tf: '1d' },
+  us: { symbol: 'AAPL', name: 'アップル', tf: '1d' },
 };
-let mode = store.get('mode', 'fx') === 'stock' ? 'stock' : 'fx';
+let mode = ['fx', 'stock', 'us'].includes(store.get('mode', 'fx')) ? store.get('mode', 'fx') : 'fx';
 const saved = (k) => store.get(`${mode}_${k}`, mode === 'fx' && k !== 'tf' ? store.get(k === 'name' ? 'symbolName' : k, MODE_DEFAULTS.fx[k]) : MODE_DEFAULTS[mode][k]);
 
 export const state = {
@@ -103,7 +104,7 @@ function render() {
   const tf = state.tf;
   const candles = raw.map((c) => ({ ...c, time: c.time + JST }));
   const last = candles[candles.length - 1];
-  const digits = mode === 'stock' ? 1 : digitsFor(last.close);
+  const digits = mode === 'stock' ? 1 : mode === 'us' ? 2 : digitsFor(last.close);
   const up = cssVar('--up'), down = cssVar('--down');
 
   if (candleSeries) {
@@ -250,7 +251,8 @@ function render() {
 
   $('legend').innerHTML = legend.map(([c, l]) => `<span><i style="background:${c}"></i>${esc(l)}</span>`).join('');
   const visible = Math.min(candles.length, window.innerWidth < 600 ? 90 : 160);
-  main.timeScale().setVisibleLogicalRange({ from: candles.length - visible, to: candles.length + Math.max(L.forecast ? 22 : 4, scenarioLen + 3) });
+  if (keepRange) main.timeScale().setVisibleLogicalRange(keepRange);
+  else main.timeScale().setVisibleLogicalRange({ from: candles.length - visible, to: candles.length + Math.max(L.forecast ? 22 : 4, scenarioLen + 3) });
 
   renderQuote(raw, digits);
   renderTech(raw);
@@ -449,9 +451,14 @@ function renderForecast(fc, digits) {
     <p class="small muted" style="margin:8px 0 0">過去の値動きのくせを使って、これからの動きを2,000通り計算した結果です。ニュースなどの急な動きは入っていません。</p>`;
 }
 
-export async function loadChart(symbol = state.symbol, name, tf = state.tf) {
-  $('chart-msg').hidden = false;
-  $('chart-msg').textContent = '読み込み中…';
+let keepRange = null;
+let lastLoaded = 0;
+
+export async function loadChart(symbol = state.symbol, name, tf = state.tf, { silent = false } = {}) {
+  if (!silent) {
+    $('chart-msg').hidden = false;
+    $('chart-msg').textContent = '読み込み中…';
+  }
   try {
     const data = await api(`/api/chart?symbol=${encodeURIComponent(symbol)}&tf=${tf}`);
     if (!data.candles?.length) throw new Error('データがありません（市場が休みの可能性があります）');
@@ -466,12 +473,29 @@ export async function loadChart(symbol = state.symbol, name, tf = state.tf) {
     if (mode === 'stock' && !name && /\.T$/.test(state.symbol)) lookupStockName(state.symbol);
     $('chart-msg').hidden = true;
     renderControls();
+    // 自動更新のときは、見ている範囲（拡大・スクロール）をそのままにする
+    keepRange = silent ? main.timeScale().getVisibleLogicalRange() : null;
     render();
-    listeners.forEach((fn) => fn(state));
+    keepRange = null;
+    lastLoaded = Date.now();
+    $('q-updated').textContent = `${new Date().toLocaleTimeString('ja-JP')} 時点${store.get('autoRefresh', 'on') === 'on' ? '（1分ごとに自動で更新）' : ''}`;
+    if (!silent) listeners.forEach((fn) => fn(state));
   } catch (e) {
+    if (silent) return; // 自動更新の失敗は表示しない（次の更新で取り直す）
     $('chart-msg').hidden = false;
     $('chart-msg').textContent = e.message;
   }
+}
+
+// 1分ごと・アプリに戻ったときに、最新の値段に入れ替える
+export function startAutoRefresh() {
+  const tick = () => {
+    if (store.get('autoRefresh', 'on') !== 'on' || document.visibilityState !== 'visible') return;
+    if ($('view-chart').hidden || !state.data || Date.now() - lastLoaded < 50 * 1000) return;
+    loadChart(state.symbol, state.name, state.tf, { silent: true });
+  };
+  setInterval(tick, 60 * 1000);
+  document.addEventListener('visibilitychange', tick);
 }
 
 // 株は会社名を日本語で表示する（上場企業の一覧から探す）
@@ -521,7 +545,7 @@ function markFav() {
 function renderControls() {
   // ボタンは狭いので「足」を省いて短く表示する
   $('tf-seg').innerHTML = Object.entries(TF_LABELS).map(([k, v]) => `<button data-tf="${k}" aria-pressed="${k === state.tf}">${/^\d/.test(v) ? v.replace(/足$/, '') : v}</button>`).join('');
-  $('layer-chips').innerHTML = LAYERS.filter(([, , only]) => !only || only === mode).map(([k, v]) => `<button class="chip" data-layer="${k}" aria-pressed="${!!state.layers[k]}">${v}</button>`).join('');
+  $('layer-chips').innerHTML = LAYERS.filter(([, , only]) => !only || (only === 'equity' ? mode !== 'fx' : only === mode)).map(([k, v]) => `<button class="chip" data-layer="${k}" aria-pressed="${!!state.layers[k]}">${v}</button>`).join('');
   $('sub-seg').innerHTML = SUBS.map(([k, v]) => `<button data-sub="${k}" aria-pressed="${k === state.sub}">${v}</button>`).join('');
   markFav();
 }
@@ -536,6 +560,19 @@ export function initChartView() {
     if (!v) return;
     $('symbol-input').value = '';
     $('symbol-input').blur();
+    // 米国株は「AAPL アップル」のような候補や、カタカナでも探せる
+    if (mode === 'us') {
+      const tick = v.match(/^([\^A-Za-z.\-]{1,10})(\s|$)/);
+      if (tick) {
+        v = tick[1];
+      } else {
+        try {
+          const { items } = await api(`/api/us/search?q=${encodeURIComponent(v)}`);
+          if (!items.length) { $('chart-msg').hidden = false; $('chart-msg').textContent = `「${v}」は一覧にありませんでした。ティッカー（例: AAPL）で入力してください`; return; }
+          return loadChart(items[0].symbol, items[0].name);
+        } catch (err) { $('chart-msg').hidden = false; $('chart-msg').textContent = err.message; return; }
+      }
+    }
     // 株は「7203 トヨタ自動車」のような候補や、会社名でも探せる
     if (mode === 'stock') {
       const code = v.match(/^([0-9][0-9A-Za-z]{3})(\s|$)/);
@@ -555,14 +592,19 @@ export function initChartView() {
   // 株は入力中に候補を出す
   let timer;
   $('symbol-input').addEventListener('input', () => {
-    if (mode !== 'stock') return;
+    if (mode === 'fx') return;
     clearTimeout(timer);
     const q = $('symbol-input').value.trim();
-    if (!q || /^[0-9][0-9A-Za-z]{3} /.test(q)) return;
+    if (!q || /^\S+ \S/.test(q)) return;
     timer = setTimeout(async () => {
       try {
-        const { items } = await api(`/api/stocks/search?q=${encodeURIComponent(q)}`);
-        $('symbol-list').innerHTML = items.map((x) => `<option value="${esc(x.code)} ${esc(x.name)}">${esc(x.market)}・${esc(x.sector)}</option>`).join('');
+        if (mode === 'us') {
+          const { items } = await api(`/api/us/search?q=${encodeURIComponent(q)}`);
+          $('symbol-list').innerHTML = items.map((x) => `<option value="${esc(x.symbol)} ${esc(x.name)}">${esc(x.sector)}</option>`).join('');
+        } else {
+          const { items } = await api(`/api/stocks/search?q=${encodeURIComponent(q)}`);
+          $('symbol-list').innerHTML = items.map((x) => `<option value="${esc(x.code)} ${esc(x.name)}">${esc(x.market)}・${esc(x.sector)}</option>`).join('');
+        }
       } catch { /* 候補が出せなくても入力はできる */ }
     }, 250);
   });

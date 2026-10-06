@@ -42,7 +42,8 @@ export function parseListingRows(rows) {
     const sector = String(r[ci.sector] ?? '').trim();
     items.push({
       code,
-      name: String(r[ci.name] ?? '').trim(),
+      // 全角の英数字（ＫＤＤＩ など）は読みやすい半角にする
+      name: String(r[ci.name] ?? '').normalize('NFKC').trim(),
       market,
       sector: sector && sector !== '-' ? sector : 'その他',
       size: String(r[ci.size] ?? '').trim().replace(/^-$/, ''),
@@ -119,6 +120,11 @@ export async function getListings() {
   if (!state) await loading; // 初回は読み込み終わるまで待つ
   else if (loading) loading.catch((e) => console.error('上場銘柄一覧の更新に失敗:', e.message));
   return state;
+}
+
+// 読み込み済みの一覧から会社名を引く（待たずにすぐ返す）
+export function nameFromCache(code) {
+  return state?.items?.find((x) => x.code === code)?.name?.normalize('NFKC') || null;
 }
 
 const norm = (s) => String(s || '').normalize('NFKC').toLowerCase().replace(/\s+/g, '');

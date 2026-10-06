@@ -31,7 +31,8 @@
     <header class="topbar">
       <div class="seg mode-seg" id="mode-seg" role="tablist" aria-label="為替と株の切り替え">
         <button type="button" data-mode="fx" aria-pressed="true">為替</button>
-        <button type="button" data-mode="stock" aria-pressed="false">株</button>
+        <button type="button" data-mode="stock" aria-pressed="false">日本株</button>
+        <button type="button" data-mode="us" aria-pressed="false">米国株</button>
       </div>
       <h1 id="title">チャート分析</h1>
       <button class="icon-btn" id="open-glossary" aria-label="用語集"><b style="font-size:17px">?</b></button>
@@ -56,6 +57,7 @@
             <span class="qprice" id="q-price">—</span>
             <span id="q-change" class="num"></span>
           </div>
+          <p class="small muted" id="q-updated" style="margin:-4px 0 6px"></p>
           <div class="chart-box" id="chart-main"><div class="chart-msg" id="chart-msg">読み込み中…</div></div>
           <div class="legend" id="legend"></div>
           <div class="chips" id="layer-chips" style="margin-top:8px"></div>
@@ -69,9 +71,19 @@
           <div id="stop-box"></div>
         </div>
 
+        <div class="card only-stock">
+          <h2><button type="button" class="term" data-term="pts">PTS（夜間などの取引）<span class="q" aria-hidden="true">?</span></button></h2>
+          <div id="pts-box"></div>
+        </div>
+
+        <div class="card only-equity">
+          <h2><button type="button" class="term" data-term="rating">レーティング<span class="q" aria-hidden="true">?</span></button><span class="sub">アナリストの評価・目標株価</span></h2>
+          <div id="rating-box"></div>
+        </div>
+
         <div class="card">
-          <h2><button type="button" class="term" data-term="aiForecast">AI予想（理由つき）<span class="q" aria-hidden="true">?</span></button><span class="sub only-fx">為替介入・イベント考慮</span><span class="sub only-stock">決算・イベント考慮</span></h2>
-          <p class="small muted">AIが今後1か月の大事な予定（<span class="only-fx">金利の発表・経済指標・<button type="button" class="term" data-term="intervention">為替介入<span class="q" aria-hidden="true">?</span></button>の可能性など</span><span class="only-stock">決算発表・業界のニュースなど</span>）を調べ、値動きの予想と「なぜ上がる／下がるのか」をチャートに書き込みます。AIのキーが必要です（1回あたり数十円程度）。</p>
+          <h2><button type="button" class="term" data-term="aiForecast">AI予想（理由つき）<span class="q" aria-hidden="true">?</span></button><span class="sub only-fx">為替介入・イベント考慮</span><span class="sub only-equity">決算・イベント考慮</span></h2>
+          <p class="small muted">AIが今後1か月の大事な予定（<span class="only-fx">金利の発表・経済指標・<button type="button" class="term" data-term="intervention">為替介入<span class="q" aria-hidden="true">?</span></button>の可能性など</span><span class="only-equity">決算発表・業界のニュースなど</span>）を調べ、値動きの予想と「なぜ上がる／下がるのか」をチャートに書き込みます。AIのキーが必要です（1回あたり数十円程度）。</p>
           <button class="btn primary block" id="scenario-run">「<span id="scenario-name">—</span>」の予想を作る</button>
           <div id="scenario-box"></div>
         </div>
@@ -90,7 +102,7 @@
           <h2><button type="button" class="term" data-term="forecast">予想チャート<span class="q" aria-hidden="true">?</span></button><span class="sub">計算による予想</span></h2>
           <div id="forecast-box"></div>
         </div>
-        <div class="card only-stock">
+        <div class="card only-equity">
           <h2>注文・約定分析<span class="sub">売買の量から見る</span></h2>
           <div id="orderflow-box"></div>
           <h3><button type="button" class="term" data-term="board">板<span class="q" aria-hidden="true">?</span></button>・<button type="button" class="term" data-term="ticks">歩み値<span class="q" aria-hidden="true">?</span></button>から分析（AI）</h3>
@@ -103,27 +115,27 @@
         </div>
         <div class="card">
           <h2><button type="button" class="term" data-term="fundamental">ファンダメンタルズ<span class="q" aria-hidden="true">?</span></button>・ニュース</h2>
-          <p class="small muted"><span class="only-fx">金利・経済指標・要人の発言</span><span class="only-stock">決算・業績・業界の動き</span>やSNSの話題は「ニュース」タブで確認できます。</p>
+          <p class="small muted"><span class="only-fx">金利・経済指標・要人の発言</span><span class="only-equity">決算・業績・業界の動き</span>やSNSの話題は「ニュース」タブで確認できます。</p>
           <button class="btn block" id="goto-news">この銘柄のニュースを見る</button>
         </div>
       </section>
 
       <!-- ===== 候補リスト ===== -->
       <section class="view" id="view-screener" hidden>
-        <!-- 為替 -->
-        <div class="only-fx">
+        <!-- 為替・米国株 -->
+        <div class="only-list">
           <div class="card">
-            <h2>可能性のある通貨ペア</h2>
-            <p class="small muted">登録した通貨ペアを日足でまとめてチェックし、上がりそう・下がりそうなサインが強い順に並べます。</p>
+            <h2>可能性のある<span class="only-fx">通貨ペア</span><span class="only-us">米国株</span></h2>
+            <p class="small muted">登録した<span class="only-fx">通貨ペア</span><span class="only-us">米国株</span>を日足でまとめてチェックし、上がりそう・下がりそうなサインが強い順に並べます。</p>
             <div class="seg" id="scr-filter" style="margin:8px 0"></div>
             <button class="btn primary block" id="scr-run">チェック開始</button>
             <p class="small muted" id="scr-status" style="margin:8px 0 0"></p>
           </div>
           <div class="card"><ul class="list" id="scr-list"><li class="empty">「チェック開始」を押してください</li></ul></div>
           <div class="card">
-            <h2>チェックする通貨ペア</h2>
+            <h2>チェックする<span class="only-fx">通貨ペア</span><span class="only-us">米国株</span></h2>
             <textarea class="input" id="watchlist" rows="5"></textarea>
-            <p class="small muted">1行に1つ。例: USDJPY、EURJPY、GBPJPY</p>
+            <p class="small muted">1行に1つ。<span class="only-fx">例: USDJPY、EURJPY、GBPJPY</span><span class="only-us">例: AAPL（アップル）、NVDA（エヌビディア）</span></p>
             <button class="btn block" id="watch-save">保存</button>
           </div>
         </div>
@@ -186,11 +198,11 @@
       <!-- ===== 取引分析 ===== -->
       <section class="view" id="view-trades" hidden>
         <div class="card stack">
-          <h2>取引履歴を読み込む（<span class="only-fx">為替</span><span class="only-stock">株</span>）</h2>
-          <p class="small muted">為替と株の取引は別々に保存・分析されます。上の切り替えで<span class="only-fx">「株」にすると株の取引</span><span class="only-stock">「為替」にすると為替の取引</span>を見られます。</p>
+          <h2>取引履歴を読み込む（<span class="only-fx">為替</span><span class="only-stock">日本株</span><span class="only-us">米国株</span>）</h2>
+          <p class="small muted">為替・日本株・米国株の取引は別々に保存・分析されます。上の切り替えで、それぞれの取引を見られます。</p>
           <label class="drop">
             <strong>CSVファイルを選ぶ</strong>
-            <span class="only-fx">LION FX（ヒロセ通商）などの取引履歴CSV</span><span class="only-stock">iSPEED（楽天証券）などの取引履歴CSV</span>
+            <span class="only-fx">LION FX（ヒロセ通商）などの取引履歴CSV</span><span class="only-stock">iSPEED（楽天証券）などの取引履歴CSV</span><span class="only-us">楽天証券などの米国株の取引履歴CSV</span>
             <input type="file" id="csv-file" accept=".csv,.txt,text/csv" hidden>
           </label>
           <label class="drop">
@@ -245,6 +257,11 @@
         <label>お気に入り（チャート画面の上に並ぶボタン・<span id="fav-mode">為替</span>）</label>
         <textarea class="input" id="fav-edit" rows="4"></textarea>
         <p class="small muted">1行に「コード,表示名」。例: USDJPY,ドル円 ／ 7203,トヨタ。為替と株は別々に保存されます。</p>
+      </div>
+      <div class="field">
+        <label>値段の自動更新</label>
+        <div class="seg" id="refresh-seg"></div>
+        <p class="small muted">チャートを開いている間、1分ごとに最新の値段に入れ替えます（ニュースは10分ごと）。</p>
       </div>
       <div class="field">
         <label>ローソク足の色</label>

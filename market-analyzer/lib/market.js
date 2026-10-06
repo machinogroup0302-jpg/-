@@ -17,6 +17,9 @@ export const TIMEFRAMES = {
 const cache = new Map();
 const CACHE_MS = 60 * 1000;
 
+// 日本語の名前（指数）
+export const INDEX_NAMES = { '^N225': '日経平均', '^TOPX': 'TOPIX', '1306.T': 'TOPIX連動ETF' };
+
 export function normalizeSymbol(raw) {
   const s = String(raw || '').trim().toUpperCase().replace(/\s+/g, '');
   if (!s) throw new Error('銘柄が空です');

@@ -7,7 +7,10 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { getChart } from './lib/market.js';
 import { getNews } from './lib/news.js';
-import { searchListings, listingMeta } from './lib/listings.js';
+import { searchListings, listingMeta, nameFromCache, getListings } from './lib/listings.js';
+import { usName, searchUs } from './lib/usstocks.js';
+import { getRatings } from './lib/ratings.js';
+import { INDEX_NAMES } from './lib/market.js';
 import { startScan, scanStatus } from './lib/scanner.js';
 import { analyzeChartImage, extractTradesFromImage, coachTrades, researchMarket, scenarioForecast, analyzeOrderBookImage, aiErrorMessage } from './lib/ai.js';
 
@@ -131,7 +134,10 @@ async function handleApi(req, res, url) {
 
   if (route === 'GET /api/chart') {
     try {
-      return json(res, 200, await getChart(url.searchParams.get('symbol'), url.searchParams.get('tf') || '1h'));
+      const data = await getChart(url.searchParams.get('symbol'), url.searchParams.get('tf') || '1h');
+      // 会社名を日本語（米国株はカタカナ）にする
+      const jpName = /\.T$/.test(data.symbol) ? nameFromCache(data.symbol.replace(/\.T$/, '')) : null;
+      return json(res, 200, { ...data, name: INDEX_NAMES[data.symbol] || jpName || usName(data.symbol) || data.name });
     } catch (e) {
       return json(res, 502, { error: e.message });
     }
@@ -139,6 +145,18 @@ async function handleApi(req, res, url) {
   if (route === 'GET /api/stocks/search') {
     try {
       return json(res, 200, { items: await searchListings(String(url.searchParams.get('q') || '').slice(0, 40)) });
+    } catch (e) {
+      return json(res, 502, { error: e.message });
+    }
+  }
+  if (route === 'GET /api/us/search') {
+    return json(res, 200, { items: searchUs(String(url.searchParams.get('q') || '').slice(0, 40)) });
+  }
+  if (route === 'GET /api/ratings') {
+    try {
+      const symbol = String(url.searchParams.get('symbol') || '').toUpperCase().slice(0, 20);
+      if (!/^[A-Z0-9^.=\-]{1,20}$/.test(symbol)) return json(res, 400, { error: '銘柄コードが正しくありません' });
+      return json(res, 200, await getRatings(symbol, String(url.searchParams.get('name') || '').slice(0, 60)));
     } catch (e) {
       return json(res, 502, { error: e.message });
     }
@@ -225,6 +243,9 @@ const server = http.createServer(async (req, res) => {
     if (!res.headersSent) json(res, e.status || 500, { error: e.message || 'サーバーエラー' });
   }
 });
+
+// 起動したら上場企業の一覧を先に読み込んでおく（会社名を日本語で出すため）
+getListings().catch((e) => console.error('上場銘柄一覧の読み込みに失敗:', e.message));
 
 server.listen(PORT, () => {
   console.log(`分析サイトを起動しました: http://localhost:${PORT}`);

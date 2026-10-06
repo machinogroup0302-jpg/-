@@ -243,9 +243,12 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .drop.busy { opacity: .5; pointer-events: none; }
 
 /* ---------- 為替・株の切り替え ---------- */
-body[data-mode="fx"] .only-stock, body[data-mode="stock"] .only-fx { display: none !important; }
+body[data-mode="fx"] :is(.only-stock, .only-us, .only-equity),
+body[data-mode="stock"] :is(.only-fx, .only-us, .only-list),
+body[data-mode="us"] :is(.only-fx, .only-stock) { display: none !important; }
 .mode-seg { grid-auto-columns: auto; padding: 3px; }
-.mode-seg button { min-height: 34px; padding: 0 14px; font-size: 14px; }
+.mode-seg button { min-height: 34px; padding: 0 10px; font-size: 13px; white-space: nowrap; }
+@media (max-width: 480px) { .topbar h1 { display: none; } .topbar .mode-seg { flex: 1; } .topbar { gap: 8px; } }
 .mode-seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); }
 .topbar h1 { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
@@ -266,3 +269,6 @@ body[data-mode="fx"] .only-stock, body[data-mode="stock"] .only-fx { display: no
 .progress span { display: block; height: 100%; width: 0; background: var(--accent); transition: width .4s; }
 .stop-bar { position: relative; height: 12px; border-radius: 999px; background: linear-gradient(90deg, var(--sell), var(--surface-2) 50%, var(--buy)); margin: 10px 0 4px; }
 .stop-bar span { position: absolute; top: -4px; width: 4px; height: 20px; border-radius: 2px; background: var(--text); transform: translateX(-50%); }
+
+a.btn { text-decoration: none; color: var(--text); }
+.btn { max-width: 100%; white-space: normal; text-align: center; }

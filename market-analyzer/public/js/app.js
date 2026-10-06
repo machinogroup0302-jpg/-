@@ -1,9 +1,12 @@
 // 画面全体の動き：ログイン・タブ切り替え・設定
 import { api, $, esc, store, toast } from './util.js';
-import { initChartView, loadChart, renderFavorites, onSymbolChange, refreshTheme, setMode, getMode, state as chartState } from './chartview.js';
+import { initChartView, loadChart, renderFavorites, onSymbolChange, refreshTheme, setMode, getMode, startAutoRefresh, state as chartState } from './chartview.js';
 import { initStockScreener, showStockScreener } from './stockscreener.js';
 import { initGlossary } from './glossary.js';
 import { setTradesMode } from './tradesview.js';
+import { setScreenerMode } from './screener.js';
+import { updateRatings, updatePts } from './ratingsview.js';
+import { searchNews } from './newsview.js';
 import { initScreener } from './screener.js';
 import { initNewsView, onSymbol as newsOnSymbol } from './newsview.js';
 import { initTradesView } from './tradesview.js';
@@ -19,7 +22,12 @@ const DEFAULT_FAVS = {
     { code: '^N225', name: '日経平均' }, { code: '7203', name: 'トヨタ自動車' }, { code: '9984', name: 'ソフトバンクG' },
     { code: '6758', name: 'ソニーG' }, { code: '8306', name: '三菱UFJ' }, { code: '7974', name: '任天堂' },
   ],
+  us: [
+    { code: '^GSPC', name: 'S&P500' }, { code: '^IXIC', name: 'ナスダック' }, { code: 'AAPL', name: 'アップル' },
+    { code: 'NVDA', name: 'エヌビディア' }, { code: 'MSFT', name: 'マイクロソフト' }, { code: 'TSLA', name: 'テスラ' }, { code: 'AMZN', name: 'アマゾン' },
+  ],
 };
+const MODE_NAMES = { fx: '為替', stock: '日本株', us: '米国株' };
 const isFxCode = (c) => /^[A-Z]{6}(=X)?$/i.test(c);
 
 // お気に入りは為替と株で別々。以前の共通のお気に入りは振り分けて引き継ぐ
@@ -27,7 +35,7 @@ function favsFor(mode) {
   const own = store.get(`favs_${mode}`, null);
   if (own) return own;
   const old = store.get('favs', null);
-  if (old) {
+  if (old && mode !== 'us') {
     const mine = old.filter((f) => (mode === 'fx' ? isFxCode(f.code) : !isFxCode(f.code)));
     if (mine.length) return mine;
   }
@@ -37,10 +45,11 @@ function favsFor(mode) {
 function applyMode(mode) {
   document.body.dataset.mode = mode;
   document.querySelectorAll('#mode-seg button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === mode)));
-  $('symbol-input').placeholder = mode === 'fx' ? '例: USDJPY（ドル円）' : '例: 7203 または トヨタ';
-  $('news-q').placeholder = mode === 'fx' ? '例: ドル円' : '例: トヨタ';
+  $('symbol-input').placeholder = { fx: '例: USDJPY（ドル円）', stock: '例: 7203 または トヨタ', us: '例: AAPL または アップル' }[mode];
+  $('news-q').placeholder = { fx: '例: ドル円', stock: '例: トヨタ', us: '例: エヌビディア' }[mode];
   renderFavorites(favsFor(mode));
   setTradesMode(mode);
+  setScreenerMode(mode);
 }
 
 const ICON = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
@@ -94,7 +103,8 @@ function parseFavs(text) {
 
 async function openSettings() {
   const favs = favsFor(getMode());
-  $('fav-mode').textContent = getMode() === 'fx' ? '為替' : '株';
+  $('fav-mode').textContent = MODE_NAMES[getMode()];
+  seg($('refresh-seg'), [['on', '1分ごとに自動更新'], ['off', '自動更新しない']], store.get('autoRefresh', 'on'));
   $('fav-edit').value = favs.map((f) => `${f.code},${f.name}`).join('\n');
   $('api-key').value = store.get('apiKey', '');
   seg($('candle-seg'), [['jp', '日本式（陽線=赤）'], ['global', '海外式（陽線=緑）']], store.get('candle', 'jp'));
@@ -112,6 +122,7 @@ function saveSettings() {
   store.set('apiKey', $('api-key').value.trim());
   store.set('candle', segValue($('candle-seg')) || 'jp');
   store.set('theme', segValue($('theme-seg')) || 'auto');
+  store.set('autoRefresh', segValue($('refresh-seg')) || 'on');
   renderFavorites(favsFor(getMode()));
   applyTheme();
   $('settings').close();
@@ -135,7 +146,16 @@ function startApp() {
   initTradesView();
   initImageView();
   initOrderflow();
-  onSymbolChange((st) => { if (currentTab === 'news') newsOnSymbol(st); });
+  onSymbolChange((st) => {
+    if (currentTab === 'news') newsOnSymbol(st);
+    updateRatings(st, getMode());
+    updatePts(st, getMode());
+  });
+  startAutoRefresh();
+  // ニュースタブを開いている間は10分ごとに最新にする
+  setInterval(() => {
+    if (currentTab === 'news' && document.visibilityState === 'visible' && store.get('autoRefresh', 'on') === 'on' && $('news-q').value) searchNews($('news-q').value);
+  }, 10 * 60 * 1000);
 
   $('goto-news').addEventListener('click', () => showTab('news'));
   $('mode-seg').addEventListener('click', (e) => {

@@ -262,3 +262,42 @@ test('まとめて取得した株価（spark）を読み、判定する', () => 
   assert.ok(r.reasons.every((x) => x.key));
   assert.equal(closesToCandles([1, 2, 3], [10, null, 12]).length, 2);
 });
+
+import { searchUs, usName } from '../lib/usstocks.js';
+import { parseSummary, gradeJa, firmJa } from '../lib/ratings.js';
+import { ptsSession } from '../public/js/ratingsview.js';
+
+test('米国株のカタカナ名と検索', () => {
+  assert.equal(usName('nvda'), 'エヌビディア');
+  assert.equal(searchUs('えぬびでぃあ')[0].symbol, 'NVDA'); // ひらがなでも探せる
+  assert.equal(searchUs('AAPL')[0].name, 'アップル');
+  assert.ok(searchUs('グーグル').some((x) => x.symbol === 'GOOGL'));
+  assert.equal(usName('ZZZZ'), null);
+});
+
+test('レーティングの読み取りと日本語化', () => {
+  const json = { quoteSummary: { result: [{
+    financialData: { currentPrice: { raw: 180 }, targetMeanPrice: { raw: 210 }, targetHighPrice: { raw: 250 }, targetLowPrice: { raw: 150 }, recommendationMean: { raw: 1.9 }, numberOfAnalystOpinions: { raw: 40 } },
+    recommendationTrend: { trend: [{ period: '0m', strongBuy: 10, buy: 20, hold: 8, sell: 1, strongSell: 1 }] },
+    upgradeDowngradeHistory: { history: [{ epochGradeDate: 1790000000, firm: 'Morgan Stanley', toGrade: 'Overweight', fromGrade: 'Equal-Weight', action: 'up' }] },
+  }] } };
+  const r = parseSummary(json);
+  assert.equal(r.consensus, '買い');
+  assert.equal(r.target.mean, 210);
+  assert.equal(r.counts.buy, 20);
+  assert.equal(r.history[0].firm, 'モルガン・スタンレー');
+  assert.equal(r.history[0].to, '買い');
+  assert.equal(r.history[0].from, '中立');
+  assert.equal(r.history[0].action, '格上げ');
+  assert.equal(gradeJa('Underperform'), '売り');
+  assert.equal(firmJa('Unknown Capital'), 'Unknown Capital');
+  assert.equal(parseSummary({}), null);
+});
+
+test('PTSの取引時間', () => {
+  const at = (h, m, day = 6) => new Date(Date.UTC(2026, 9, day, h - 9, m)); // 日本時間で指定（10/6は火曜）
+  assert.equal(ptsSession(at(9, 0)).open, true);
+  assert.equal(ptsSession(at(16, 10)).open, false);
+  assert.match(ptsSession(at(20, 0)).label, /ナイトタイム/);
+  assert.equal(ptsSession(at(12, 0, 4)).open, false); // 日曜
+});

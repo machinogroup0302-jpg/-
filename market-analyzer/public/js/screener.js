@@ -4,11 +4,15 @@ import { technicalSummary } from './indicators.js';
 import { supportResistance } from './levels.js';
 import { monteCarlo } from './forecast.js';
 
-const DEFAULT_WATCH = ['USDJPY', 'EURJPY', 'GBPJPY', 'AUDJPY', 'NZDJPY', 'CADJPY', 'CHFJPY', 'ZARJPY', 'MXNJPY', 'EURUSD', 'GBPUSD', 'AUDUSD'].join('\n');
+const DEFAULT_WATCH = {
+  fx: ['USDJPY', 'EURJPY', 'GBPJPY', 'AUDJPY', 'NZDJPY', 'CADJPY', 'CHFJPY', 'ZARJPY', 'MXNJPY', 'EURUSD', 'GBPUSD', 'AUDUSD'].join('\n'),
+  us: ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'AMZN', 'META', 'TSLA', 'AVGO', 'AMD', 'NFLX', 'PLTR', 'JPM', 'V', 'LLY', 'COST', 'KO', 'SPY', 'QQQ'].join('\n'),
+};
+let listMode = 'fx';
+let results = [];
 // 以前の一覧から、通貨ペアだけを引き継ぐ
 const oldWatch = () => (store.get('watchlist', '') || '').split('\n').filter((c) => /^[A-Z]{6}(=X)?$/i.test(c.trim())).join('\n');
 const FILTERS = [['all', 'すべて'], ['buy', '買い候補'], ['sell', '売り候補']];
-let results = [];
 let filter = 'all';
 
 function scoreOf(candles) {
@@ -49,7 +53,7 @@ async function run(onPick) {
   results = [];
   let done = 0;
   const queue = [...codes];
-  const names = Object.fromEntries((store.get('favs_fx', store.get('favs', [])) || []).map((f) => [f.code.toUpperCase(), f.name]));
+  const names = Object.fromEntries((store.get(`favs_${listMode}`, listMode === 'fx' ? store.get('favs', []) : []) || []).map((f) => [f.code.toUpperCase(), f.name]));
   async function worker() {
     while (queue.length) {
       const code = queue.shift();
@@ -75,8 +79,18 @@ async function run(onPick) {
   };
 }
 
+// 為替と米国株で、チェックする一覧を切り替える
+export function setScreenerMode(mode) {
+  if (mode === 'stock') return;
+  listMode = mode;
+  $('watchlist').value = store.get(`watchlist_${mode}`, (mode === 'fx' && oldWatch()) || DEFAULT_WATCH[mode]);
+  results = [];
+  $('scr-list').innerHTML = '<li class="empty">「チェック開始」を押してください</li>';
+  $('scr-status').textContent = '';
+}
+
 export function initScreener(onPick) {
-  $('watchlist').value = store.get('watchlist_fx', oldWatch() || DEFAULT_WATCH);
+  setScreenerMode(store.get('mode', 'fx') === 'us' ? 'us' : 'fx');
   $('scr-filter').innerHTML = FILTERS.map(([k, v]) => `<button data-f="${k}" aria-pressed="${k === filter}">${v}</button>`).join('');
   $('scr-filter').addEventListener('click', (e) => {
     const b = e.target.closest('button');
@@ -86,7 +100,7 @@ export function initScreener(onPick) {
     render();
   });
   $('watch-save').addEventListener('click', () => {
-    store.set('watchlist_fx', $('watchlist').value);
+    store.set(`watchlist_${listMode}`, $('watchlist').value);
     $('scr-status').textContent = '保存しました';
   });
   $('scr-run').addEventListener('click', () => run(onPick));
