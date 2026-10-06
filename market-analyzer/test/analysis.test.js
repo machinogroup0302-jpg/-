@@ -593,3 +593,15 @@ test('お気に入りの共有：新しい値を保存し、時刻が進む', as
   assert.equal(p.items.favs_fx.value[0].code, 'EURJPY');
   await assert.rejects(() => putPref('secret', []));
 });
+
+test('勝つ確率の目安：銘柄の回数が少ないときは全体の勝率に近づく', async () => {
+  const { signalOdds } = await import('../public/js/strategies.js');
+  const pool = [];
+  for (let i = 0; i < 40; i++) pool.push({ symbol: 'A', side: 1, strength: 0.7, pnl: i % 2 ? 100 : -100, ret: i % 2 ? 0.03 : -0.02, exitDate: `2026-0${1 + (i % 8)}-10` });
+  pool.push({ symbol: 'B', side: 1, strength: 0.7, pnl: 100, ret: 0.03, exitDate: '2026-05-01' });
+  const o = signalOdds(pool, { symbol: 'B', side: 1, strength: 0.7 });
+  assert.ok(o.p > 0.5 && o.p < 0.6, `p=${o.p}`);
+  assert.equal(signalOdds(pool, { symbol: 'A', side: -1, strength: 0.7 }), null);
+  const past = signalOdds(pool, { symbol: 'A', side: 1, strength: 0.7, before: '2026-02-01' });
+  assert.ok(past.base < 40);
+});

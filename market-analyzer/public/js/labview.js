@@ -2,8 +2,8 @@
 import { api, $, esc, store, fmtPrice, digitsFor, fmtYen, cssVar, JST } from './util.js';
 import { term } from './glossary.js';
 import { evaluateForecasts } from './backtest.js';
-import { runStrategy, regimeLookup, STRATEGIES, pickAndTrade } from './strategies.js';
-import { FX_PAIRS } from './fxpairs.js';
+import { runStrategy, regimeLookup, STRATEGIES, pickAndTrade, signalOdds, oddsLabel, oddsText } from './strategies.js';
+import { baseUniverse } from './universe.js';
 import { pagedList } from './stockscreener.js';
 import { futureTimes } from './forecast.js';
 import { getFavs } from './favorites.js';
@@ -158,8 +158,28 @@ async function prepare(st, mode) {
   return { symbol: data.symbol, name: st.name || data.name, mode, candles: data.candles, regime, fundRatio: fund?.rows?.length ? fund.ratio : null, digits: mode === 'stock' ? 1 : mode === 'us' ? 2 : digitsFor(last) };
 }
 
+// 成績タブの中の切り替え（今のサイン・売買の一覧・この銘柄の売買・予想の答え合わせ・銘柄選び）
+let labSub = store.get('lab_sub', 'now');
+let getModeFn = () => 'fx';
+let lastSt = null;
+
+function applySub() {
+  document.querySelectorAll('#lab-sub button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.sub === labSub)));
+  document.querySelectorAll('[data-labpanel]').forEach((el) => { el.hidden = !el.dataset.labpanel.split(' ').includes(labSub); });
+  document.querySelectorAll('[data-labsub]').forEach((el) => { el.hidden = el.dataset.labsub !== labSub; });
+}
+
 export async function updateLab(st, mode) {
+  if (st) lastSt = st;
   if ($('view-lab').hidden) return;
+  applySub();
+  if (labSub === 'now') return showNow(mode);
+  if (labSub === 'list') return showList(mode);
+  if (labSub === 'more' || !lastSt) return;
+  return updateSymbol(lastSt, mode);
+}
+
+async function updateSymbol(st, mode) {
   const key = `${st.symbol}|${mode}`;
   if (ctx && `${ctx.symbol}|${ctx.mode}` === key) return;
   $('lab-name').textContent = st.name || st.symbol;
@@ -205,15 +225,8 @@ async function runBatch(mode) {
 }
 
 // ---------------- 勝率の高い銘柄だけを選んで売買 ----------------
-const CORE = {
-  stock: [['7203', 'トヨタ自動車'], ['6758', 'ソニーG'], ['9984', 'ソフトバンクG'], ['8306', '三菱UFJ'], ['7974', '任天堂'], ['6861', 'キーエンス'], ['8035', '東京エレクトロン'], ['9432', 'NTT'], ['9433', 'KDDI'], ['6098', 'リクルート'],
-    ['4063', '信越化学'], ['8058', '三菱商事'], ['8001', '伊藤忠商事'], ['6501', '日立製作所'], ['7267', 'ホンダ'], ['4502', '武田薬品'], ['8316', '三井住友FG'], ['9983', 'ファーストリテイリング'], ['6367', 'ダイキン'], ['6857', 'アドバンテスト']],
-  us: [['AAPL', 'アップル'], ['MSFT', 'マイクロソフト'], ['NVDA', 'エヌビディア'], ['GOOGL', 'アルファベット'], ['AMZN', 'アマゾン'], ['META', 'メタ'], ['TSLA', 'テスラ'], ['AVGO', 'ブロードコム'], ['AMD', 'AMD'], ['NFLX', 'ネットフリックス'],
-    ['JPM', 'JPモルガン'], ['V', 'ビザ'], ['LLY', 'イーライリリー'], ['COST', 'コストコ'], ['KO', 'コカ・コーラ'], ['WMT', 'ウォルマート'], ['XOM', 'エクソンモービル'], ['PLTR', 'パランティア'], ['ORCL', 'オラクル'], ['CRM', 'セールスフォース']],
-};
-
 function universe(mode) {
-  const base = mode === 'fx' ? FX_PAIRS.map((p) => [p.code, p.name]) : CORE[mode];
+  const base = baseUniverse(mode);
   const favs = getFavs(mode).filter((f) => !/^\^/.test(f.code)).map((f) => [f.code, f.name]);
   const seen = new Set();
   return [...favs, ...base].filter(([c]) => (seen.has(c.toUpperCase()) ? false : seen.add(c.toUpperCase())));
@@ -272,12 +285,28 @@ async function logUniverse(mode) {
 }
 
 const whyList = (arr) => (arr?.length ? `<ul class="why">${arr.map((w) => `<li>${esc(w)}</li>`).join('')}</ul>` : '');
+const sideBadge = (s) => `<span class="badge ${s > 0 ? 'buy' : 'sell'}">${s > 0 ? '買い' : '売り'}</span>`;
+const digitsOf = (mode) => (mode === 'stock' ? 1 : mode === 'us' ? 2 : 3);
+const ymd = (x) => esc(`${Number(String(x).slice(5, 7))}/${Number(String(x).slice(8, 10))}`);
 
-async function runLog(mode) {
-  const out = $('lab-log');
-  const btn = $('lab-log-run');
-  btn.disabled = true;
-  try {
+// 勝つ確率の目安を、色つきのメーターで見せる
+function oddsHtml(o, { compact = false } = {}) {
+  if (!o) return '<div class="odds muted small">勝つ確率：過去の取引が少なく、まだ出せません</div>';
+  const v = Math.round(o.p * 100);
+  const cls = o.p >= 0.6 ? 'hi' : o.p >= 0.5 ? 'mid' : 'lo';
+  return `<div class="odds ${cls}"><div class="odds-head"><span>勝つ確率の目安</span><b>${v}%</b><span class="badge ${cls === 'hi' ? 'ok' : cls === 'mid' ? 'warn' : 'danger'}">${oddsLabel(o)}</span></div>
+    <div class="odds-bar"><i style="width:${v}%"></i></div>${compact ? '' : `<div class="small muted" style="margin-top:4px">${esc(oddsText(o))}</div>`}</div>`;
+}
+
+const logCache = {};
+let logRunning = null;
+
+// 全銘柄を「総合判断」で計算する（「今のサイン」と「売買の一覧」で共通）
+async function computeLog(mode, out, force = false) {
+  const hit = logCache[mode];
+  if (hit && !force && Date.now() - hit.at < 30 * 60 * 1000) return hit.data;
+  if (logRunning?.mode === mode) return logRunning.p;
+  const p = (async () => {
     const regime = await loadRegime();
     const list = await loadCandles(await logUniverse(mode), out);
     out.innerHTML = '<p class="small muted"><span class="spinner"></span> 計算しています…</p>';
@@ -286,58 +315,115 @@ async function runLog(mode) {
     const trades = [], holding = [], next = [];
     for (const x of list) {
       const r = runStrategy(x.candles, 'combo', { kind, pair: x.symbol.replace(/=X$/, ''), regime });
-      const last = x.candles[x.candles.length - 1].close;
+      const last = x.candles[x.candles.length - 1];
       for (const t of r.trades) trades.push({ ...t, name: x.name, symbol: x.symbol });
-      if (r.open) holding.push({ ...r.open, name: x.name, symbol: x.symbol, last });
-      if (r.next) next.push({ ...r.next, name: x.name, symbol: x.symbol, holdingSide: r.open?.side || 0 });
+      if (r.open) holding.push({ ...r.open, name: x.name, symbol: x.symbol, last: last.close });
+      if (r.next) next.push({ ...r.next, name: x.name, symbol: x.symbol, open: r.open, last: last.close, date: dayKeyOf(last.time) });
     }
-    renderLog({ trades, holding, next, count: list.length }, mode);
-  } catch (e) {
-    out.innerHTML = `<p class="error">${esc(e.message)}</p>`;
-  } finally {
-    btn.disabled = false;
-  }
+    // 確率：これからの売買は全部の取引から、過去の売買は「その日より前に終わった取引」だけから計算する
+    for (const x of next) if (x.type === 'open') x.odds = signalOdds(trades, { symbol: x.symbol, side: x.side, strength: x.strength });
+    for (const x of holding) x.odds = signalOdds(trades, { symbol: x.symbol, side: x.side, strength: x.strength, before: x.entryDate });
+    for (const t of trades) t.odds = signalOdds(trades, { symbol: t.symbol, side: t.side, strength: t.strength, before: t.entryDate });
+    const data = { trades, holding, next, count: list.length, at: Date.now() };
+    logCache[mode] = { at: Date.now(), data };
+    return data;
+  })();
+  logRunning = { mode, p };
+  try { return await p; } finally { logRunning = null; }
+}
+
+const dayKeyOf = (t) => new Date((t + 9 * 3600) * 1000).toISOString().slice(0, 10);
+
+function refreshBtn(id) {
+  return `<button class="btn block" id="${id}" style="margin-top:10px">最新にする</button>`;
+}
+
+async function showNow(mode, force = false) {
+  const out = $('lab-now');
+  try {
+    const r = await computeLog(mode, out, force);
+    if (getModeFn() !== mode) return;
+    renderNow(r, mode);
+  } catch (e) { out.innerHTML = `<p class="error">${esc(e.message)}</p>`; }
+}
+
+async function showList(mode, force = false) {
+  const out = $('lab-log');
+  try {
+    const r = await computeLog(mode, out, force);
+    if (getModeFn() !== mode) return;
+    renderLog(r, mode);
+  } catch (e) { out.innerHTML = `<p class="error">${esc(e.message)}</p>`; }
+}
+
+function renderNow(r, mode) {
+  const d = digitsOf(mode);
+  const opens = r.next.filter((x) => x.type === 'open').sort((a, b) => (b.odds?.p || 0) - (a.odds?.p || 0));
+  const closes = r.next.filter((x) => x.type === 'close');
+  const when = r.next[0]?.date ? `${ymd(r.next[0].date)}の終わりの値段で判断` : '';
+  $('lab-now').innerHTML = `
+    <h3>🟢 新しく入るサイン<span class="sub">${opens.length}件・${when}</span></h3>
+    ${opens.length ? `<ul class="list">${opens.map((x) => `<li>
+      <div class="li-head"><span class="name">${esc(x.name)}</span>${sideBadge(x.side)}</div>
+      <div class="small"><b>次の取引日の始まりに${x.side > 0 ? '買う' : '売る'}</b>（今 ${fmtPrice(x.last, d)}）</div>
+      ${oddsHtml(x.odds)}
+      <details class="why-box"><summary>理由を見る</summary>${whyList(x.why)}</details></li>`).join('')}</ul>` : '<p class="small muted">今は新しく入るサインはありません。</p>'}
+    <h3>🔴 決済するサイン<span class="sub">${closes.length}件</span></h3>
+    ${closes.length ? `<ul class="list">${closes.map((x) => {
+      const g = x.open ? x.open.side * (x.last / x.open.entryPrice - 1) : 0;
+      return `<li><div class="li-head"><span class="name">${esc(x.name)}</span>${x.open ? sideBadge(x.open.side) : ''}<b class="${g >= 0 ? 'plus' : 'minus'}">${g >= 0 ? '+' : ''}${(g * 100).toFixed(1)}%</b></div>
+      <div class="small"><b>次の取引日の始まりに決済</b>：${esc(x.reason)}</div>
+      ${x.open ? `<div class="small muted">${ymd(x.open.entryDate)}に${fmtPrice(x.open.entryPrice, d)}で${x.open.side > 0 ? '買い' : '売り'} → 今 ${fmtPrice(x.last, d)}</div>` : ''}
+      <details class="why-box"><summary>理由を見る</summary>${whyList(x.why)}</details></li>`;
+    }).join('')}</ul>` : '<p class="small muted">今は決済するサインはありません。</p>'}
+    <h3>📦 今持っている銘柄<span class="sub">${r.holding.length}件</span></h3>
+    ${r.holding.length ? `<ul class="list">${r.holding.map((x) => {
+      const g = x.side * (x.last / x.entryPrice - 1);
+      return `<li><div class="li-head"><span class="name">${esc(x.name)}</span>${sideBadge(x.side)}<b class="${g >= 0 ? 'plus' : 'minus'}">${g >= 0 ? '+' : ''}${(g * 100).toFixed(1)}%</b></div>
+      <div class="small">${ymd(x.entryDate)}に ${fmtPrice(x.entryPrice, d)} で${x.side > 0 ? '買い' : '売り'} → 今 ${fmtPrice(x.last, d)}</div>
+      <div class="small muted">損切りの線 ${fmtPrice(x.stop, d)}${x.take ? `・利益確定の目標 ${fmtPrice(x.take, d)}` : ''}</div>
+      ${oddsHtml(x.odds, { compact: true })}
+      <details class="why-box"><summary>入った理由を見る</summary>${whyList(x.why)}</details></li>`;
+    }).join('')}</ul>` : '<p class="small muted">今持っている銘柄はありません。</p>'}
+    <p class="notice" style="margin-top:8px">「勝つ確率の目安」は過去の成績からの見積もりで、当たる保証はありません。${r.count}銘柄を計算・${new Date(r.at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}時点。</p>
+    ${refreshBtn('lab-now-refresh')}`;
+  $('lab-now-refresh').onclick = () => showNow(mode, true);
 }
 
 let logFilter = 'all';
 function renderLog(r, mode) {
-  const d = mode === 'stock' ? 1 : mode === 'us' ? 2 : 3;
-  const md = (x) => esc(String(x).slice(5).replace('-', '/'));
-  const yd = (x) => esc(String(x).slice(2).replace(/-/g, '/'));
-  const side = (s) => `<span class="badge ${s > 0 ? 'buy' : 'sell'}">${s > 0 ? '買い' : '売り'}</span>`;
+  const d = digitsOf(mode);
   const wins = r.trades.filter((t) => t.pnl > 0);
   const total = r.trades.reduce((a, t) => a + t.pnl, 0);
   const sorted = r.trades.slice().sort((a, b) => b.entryDate.localeCompare(a.entryDate));
+  // 確率の目安ごとに、実際どれくらい勝てたか（目安が当てになるかの確認）
+  const band = (lo, hi) => { const g = r.trades.filter((t) => t.odds && t.odds.p >= lo && t.odds.p < hi); return { n: g.length, w: g.filter((t) => t.pnl > 0).length }; };
+  const bands = [['60%以上', band(0.6, 2)], ['50〜60%', band(0.5, 0.6)], ['50%未満', band(0, 0.5)]];
   $('lab-log').innerHTML = `
     <div class="grid2">
       <div class="stat"><div class="label">取引の回数（${r.count}銘柄）</div><div class="value">${r.trades.length}回</div></div>
       <div class="stat"><div class="label">勝率</div><div class="value">${pct(r.trades.length ? wins.length / r.trades.length : null)}</div></div>
       <div class="stat"><div class="label">合計の損益（決済した分）</div><div class="value ${total >= 0 ? 'plus' : 'minus'}">${fmtYen(total)}</div></div>
-      <div class="stat"><div class="label">今持っている銘柄</div><div class="value">${r.holding.length}</div></div>
+      <div class="stat"><div class="label">1回あたりの平均</div><div class="value ${total >= 0 ? 'plus' : 'minus'}">${fmtYen(r.trades.length ? total / r.trades.length : 0)}</div></div>
     </div>
-    <h3>次の取引日にやること</h3>
-    ${r.next.length ? `<ul class="list">${r.next.map((x) => `<li>
-      <div class="li-head"><span class="name">${esc(x.name)}</span>${x.type === 'open' ? `${side(x.side)}<span class="badge neutral">新しく入る</span>` : `<span class="badge warn">決済する</span>`}</div>
-      <div class="small"><b>${esc(x.reason)}</b></div>${whyList(x.why)}</li>`).join('')}</ul>` : '<p class="small muted">次の取引日に予定している売買はありません。</p>'}
-    <h3>今持っている銘柄</h3>
-    ${r.holding.length ? `<ul class="list">${r.holding.map((x) => {
-      const g0 = x.side * (x.last / x.entryPrice - 1);
-      const g = Math.abs(g0) < 0.0005 ? 0 : g0;
-      return `<li><div class="li-head"><span class="name">${esc(x.name)}</span>${side(x.side)}<span class="${g >= 0 ? 'plus' : 'minus'} num">${g >= 0 ? '+' : ''}${(g * 100).toFixed(1)}%</span></div>
-      <div class="small">${yd(x.entryDate)} に ${fmtPrice(x.entryPrice, d)} で${x.side > 0 ? '買い' : '売り'}　→　今 ${fmtPrice(x.last, d)}</div>${whyList(x.why)}</li>`;
-    }).join('')}</ul>` : '<p class="small muted">今持っている銘柄はありません。</p>'}
-    <h3>売買の一覧<span class="sub">新しい順</span></h3>
+    <h3>確率の目安は当たっていた？</h3>
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>入ったときの目安</th><th class="r">回数</th><th class="r">実際の勝率</th></tr></thead><tbody>
+      ${bands.map(([k, b]) => `<tr><td class="small">${k}</td><td class="r">${b.n}</td><td class="r">${b.n ? pct(b.w / b.n) : '—'}</td></tr>`).join('')}</tbody></table></div>
+    <h3>売買の一覧<span class="sub">新しい順・10件ずつ</span></h3>
     <div class="seg" id="lab-log-seg" style="margin-bottom:8px">${[['all', 'すべて'], ['win', '勝ち'], ['loss', '負け'], ['buy', '買い'], ['sell', '売り']].map(([k, v]) => `<button data-f="${k}" aria-pressed="${k === logFilter}">${v}</button>`).join('')}</div>
     <div id="lab-log-list"></div>
-    <p class="small muted" style="margin-top:6px">判断はその日の終わりの値段まで見て行い、売買は次の日の始まりの値段で行っています。1回の取引は100万円分で、手数料などの費用も差し引いています。過去の成績で、これからも同じになるとは限りません。</p>`;
+    ${refreshBtn('lab-log-refresh')}`;
+  $('lab-log-refresh').onclick = () => showList(mode, true);
   const draw = () => {
     const f = { all: () => true, win: (t) => t.pnl > 0, loss: (t) => t.pnl <= 0, buy: (t) => t.side > 0, sell: (t) => t.side < 0 }[logFilter];
     pagedList($('lab-log-list'), sorted.filter(f), (t) => `<li class="log-item">
-      <div class="li-head"><span class="name">${esc(t.name)}</span>${side(t.side)}<b class="${t.pnl >= 0 ? 'plus' : 'minus'}">${fmtYen(t.pnl)}</b></div>
-      <div class="log-leg"><div class="small"><b>${t.side > 0 ? '買った' : '売った'}：${yd(t.entryDate)}</b>　${fmtPrice(t.entryPrice, d)}</div>
-        <div class="small">${esc(t.reasonIn)}</div>${whyList(t.whyIn)}</div>
-      <div class="log-leg"><div class="small"><b>決済：${yd(t.exitDate)}</b>　${fmtPrice(t.exitPrice, d)}（${t.days}日間・${t.ret >= 0 ? '+' : ''}${(t.ret * 100).toFixed(1)}%）</div>
-        <div class="small">${esc(t.reasonOut)}</div>${whyList(t.whyOut)}</div></li>`,
+      <div class="li-head"><span class="name">${esc(t.name)}</span>${sideBadge(t.side)}<b class="${t.pnl >= 0 ? 'plus' : 'minus'}" style="font-size:16px">${t.pnl >= 0 ? '勝ち ' : '負け '}${fmtYen(t.pnl)}</b></div>
+      <div class="timeline">
+        <div class="tl-step"><span class="tl-dot in"></span><div><b>${ymd(t.entryDate)} ${t.side > 0 ? '買った' : '売った'}</b>　<span class="num">${fmtPrice(t.entryPrice, d)}</span><div class="small muted">${esc(t.reasonIn)}</div></div></div>
+        <div class="tl-step"><span class="tl-dot out"></span><div><b>${ymd(t.exitDate)} 決済</b>　<span class="num">${fmtPrice(t.exitPrice, d)}</span>（${t.days}日間・<span class="${t.ret >= 0 ? 'plus' : 'minus'}">${t.ret >= 0 ? '+' : ''}${(t.ret * 100).toFixed(1)}%</span>）<div class="small muted">${esc(t.reasonOut)}</div></div></div>
+      </div>
+      ${oddsHtml(t.odds, { compact: true })}
+      <details class="why-box"><summary>くわしい理由を見る</summary><div class="small"><b>入った理由</b></div>${whyList(t.whyIn)}<div class="small" style="margin-top:4px"><b>決済した理由</b></div>${whyList(t.whyOut)}</details></li>`,
     { empty: '該当する取引はありません', tag: 'div', wrap: (b) => `<ul class="list">${b}</ul>` });
   };
   draw();
@@ -396,8 +482,15 @@ function renderPicks(r, mode) {
 }
 
 export function initLab(getMode) {
+  getModeFn = getMode;
+  $('lab-sub').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-sub]');
+    if (!b) return;
+    labSub = b.dataset.sub;
+    store.set('lab_sub', labSub);
+    updateLab(null, getMode());
+  });
   $('lab-pick-run').addEventListener('click', () => runPicks(getMode()));
-  $('lab-log-run').addEventListener('click', () => runLog(getMode()));
   $('lab-h-seg').addEventListener('click', (e) => {
     const b = e.target.closest('button[data-h]');
     if (!b || !ctx) return;

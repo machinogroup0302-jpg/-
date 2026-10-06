@@ -92,7 +92,7 @@ export function runStrategy(candles, id, { kind = 'stock', pair = '', regime = n
     // 1) 前の日に決めた売買を、今日の始まりの値段で行う
     if (pending) {
       if (pending.type === 'open' && !pos) {
-        pos = { side: pending.side, entryIdx: i, entryPrice: c.open, reason: pending.reason, why: pending.why || [], peak: c.open, trough: c.open };
+        pos = { side: pending.side, entryIdx: i, entryPrice: c.open, reason: pending.reason, why: pending.why || [], strength: pending.strength ?? null, peak: c.open, trough: c.open };
         const a = a14[i - 1] || c.open * 0.01;
         pos.stop = c.open - pos.side * a * (id === 'rebound' ? 2 : 2);
         pos.take = id === 'combo' ? c.open + pos.side * a * 3 : null;
@@ -102,7 +102,7 @@ export function runStrategy(candles, id, { kind = 'stock', pair = '', regime = n
         const ret = pos.side * (c.open / pos.entryPrice - 1) - cost(kind);
         const pnl = CAPITAL * ret;
         realized += pnl;
-        trades.push({ side: pos.side, entryDate: dayKey(candles[pos.entryIdx].time), entryTime: candles[pos.entryIdx].time, entryPrice: pos.entryPrice, exitDate: dayKey(c.time), exitTime: c.time, exitPrice: c.open, ret, pnl, reasonIn: pos.reason, reasonOut: pending.reason, whyIn: pos.why, whyOut: pending.why || [], days: i - pos.entryIdx });
+        trades.push({ side: pos.side, entryDate: dayKey(candles[pos.entryIdx].time), entryTime: candles[pos.entryIdx].time, entryPrice: pos.entryPrice, exitDate: dayKey(c.time), exitTime: c.time, exitPrice: c.open, ret, pnl, reasonIn: pos.reason, reasonOut: pending.reason, strength: pos.strength, whyIn: pos.why, whyOut: pending.why || [], days: i - pos.entryIdx });
         events.push(`決済（${pending.reason}）`);
         pos = null;
       }
@@ -148,7 +148,7 @@ export function runStrategy(candles, id, { kind = 'stock', pair = '', regime = n
       // 最後の日に決めたことは「次の取引日の予定」として残る
       if (exit) pending = { type: 'close', reason: exit, why };
     } else {
-      let side = 0, reason = '', why = [];
+      let side = 0, reason = '', why = [], strength = null;
       if (id === 'trend' && ma25[i] && ma75[i]) {
         const hi20 = Math.max(...candles.slice(i - 20, i).map((x) => x.high));
         const lo20 = Math.min(...candles.slice(i - 20, i).map((x) => x.low));
@@ -171,10 +171,10 @@ export function runStrategy(candles, id, { kind = 'stock', pair = '', regime = n
             ...(fundamentalRatio != null && sig === '買い' ? ['会社の業績など（ファンダメンタルズ）も悪くない'] : []),
           ];
         };
-        if (/買い/.test(t) && rg.score >= 0 && fundOk) { side = 1; why = explain('買い'); reason = `テクニカル判定が「${t}」で、世界の情勢も逆風ではない`; }
-        else if (canShort && /売り/.test(t) && rg.score <= 0) { side = -1; why = explain('売り'); reason = `テクニカル判定が「${t}」で、世界の情勢も追い風ではない`; }
+        if (/買い/.test(t) && rg.score >= 0 && fundOk) { side = 1; why = explain('買い'); strength = ts.rows.filter((r) => r.signal === '買い').length / ts.rows.length; reason = `テクニカル判定が「${t}」で、世界の情勢も逆風ではない`; }
+        else if (canShort && /売り/.test(t) && rg.score <= 0) { side = -1; why = explain('売り'); strength = ts.rows.filter((r) => r.signal === '売り').length / ts.rows.length; reason = `テクニカル判定が「${t}」で、世界の情勢も追い風ではない`; }
       }
-      if (side) pending = { type: 'open', side, reason, why };
+      if (side) pending = { type: 'open', side, reason, why, strength };
     }
 
     const unreal = pos ? CAPITAL * (pos.side * (price / pos.entryPrice - 1)) : 0;
@@ -190,7 +190,7 @@ export function runStrategy(candles, id, { kind = 'stock', pair = '', regime = n
     id,
     trades,
     daily,
-    open: pos ? { side: pos.side, entryDate: dayKey(candles[pos.entryIdx].time), entryTime: candles[pos.entryIdx].time, entryPrice: pos.entryPrice, reason: pos.reason, why: pos.why, stop: pos.stop, take: pos.take, unreal: last ? last.equity - realized : 0 } : null,
+    open: pos ? { side: pos.side, entryDate: dayKey(candles[pos.entryIdx].time), entryTime: candles[pos.entryIdx].time, entryPrice: pos.entryPrice, reason: pos.reason, why: pos.why, strength: pos.strength, stop: pos.stop, take: pos.take, unreal: last ? last.equity - realized : 0 } : null,
     next: pending,
     stats: {
       trades: trades.length,
@@ -277,4 +277,35 @@ export function pickAndTrade(list, { kind = 'stock', regime = null, days = 250, 
     periods, trades, daily, current,
     stats: { trades: trades.length, winRate: trades.length ? wins / trades.length : null, total: equity, maxDrawdown: maxDD, from: calendar[0], to: today, universe: runs.length, allAvg: allAvg * topK },
   };
+}
+
+// ---------------- 勝つ確率の目安 ----------------
+// その銘柄の過去の同じ向きの取引と、全銘柄の「似た強さのサイン」の取引をまぜて、勝つ確率を見積もる。
+// （その銘柄の回数が少ないときは、全銘柄の数字に近づける）
+const bucketOf = (st) => (st == null ? 'x' : st >= 0.67 ? 'high' : st >= 0.5 ? 'mid' : 'low');
+export function signalOdds(pool, { symbol, side, strength, before = null }, K = 8) {
+  const past = before ? pool.filter((t) => t.exitDate < before) : pool;
+  const same = past.filter((t) => t.side === side);
+  const b = bucketOf(strength);
+  let base = same.filter((t) => bucketOf(t.strength) === b);
+  if (base.length < 10) base = same;
+  if (base.length < 5) return null;
+  const baseRate = base.filter((t) => t.pnl > 0).length / base.length;
+  const mine = same.filter((t) => t.symbol === symbol);
+  const myWins = mine.filter((t) => t.pnl > 0).length;
+  const p = (myWins + K * baseRate) / (mine.length + K);
+  const wins = base.filter((t) => t.pnl > 0), losses = base.filter((t) => t.pnl <= 0);
+  const avgWin = wins.length ? wins.reduce((a, t) => a + t.ret, 0) / wins.length : 0;
+  const avgLoss = losses.length ? losses.reduce((a, t) => a + t.ret, 0) / losses.length : 0;
+  return { p, mine: mine.length, myWins, base: base.length, baseRate, avgWin, avgLoss, expect: p * avgWin + (1 - p) * avgLoss };
+}
+
+export function oddsLabel(o) {
+  if (!o) return '';
+  return o.p >= 0.6 ? '高め' : o.p >= 0.5 ? 'ふつう' : '低め';
+}
+
+export function oddsText(o) {
+  if (!o) return '過去の取引が少ないため、確率はまだ出せません';
+  return `この銘柄の過去${o.mine}回（${o.myWins}勝）と、全銘柄の似たサイン${o.base}回（勝率${Math.round(o.baseRate * 100)}%）から計算。勝ったときは平均+${(o.avgWin * 100).toFixed(1)}%、負けたときは平均${(o.avgLoss * 100).toFixed(1)}%`;
 }

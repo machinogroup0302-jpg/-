@@ -227,23 +227,38 @@
 
       <!-- ===== 成績（答え合わせ・自動売買） ===== -->
       <section class="view" id="view-lab" hidden>
+        <div class="lab-subnav" id="lab-sub" role="tablist">
+          <button data-sub="now">今のサイン</button>
+          <button data-sub="list">売買の一覧</button>
+          <button data-sub="trade">この銘柄の売買</button>
+          <button data-sub="fc">予想の答え合わせ</button>
+          <button data-sub="more">銘柄選び・まとめ</button>
+        </div>
+
+        <div data-labpanel="now" hidden>
+          <div class="card">
+            <h2>今のサイン<span class="sub">次の取引日にやること</span></h2>
+            <p class="small muted" style="margin-top:-4px">「総合判断」のやり方で、<span class="only-fx">主な通貨ペア25種類すべて</span><span class="only-stock">日本の代表的な20社・お気に入り・候補チェックで上位の銘柄</span><span class="only-us">米国の代表的な20社とお気に入り</span>を毎日チェックした結果です。「勝つ確率の目安」は、過去約1年の同じような場面の勝ち負けから計算しています。</p>
+            <div id="lab-now"></div>
+          </div>
+        </div>
+
+        <div data-labpanel="list" hidden>
+          <div class="card">
+            <h2>売買の一覧<span class="sub">いつ・なぜ買った／売ったか</span></h2>
+            <p class="small muted" style="margin-top:-4px">約1年分、それぞれ仮想の100万円で売買した記録です。判断はその日の終わりの値段まで見て行い、売買は次の日の始まりの値段で行っています。</p>
+            <div id="lab-log"></div>
+          </div>
+        </div>
+
+        <div data-labpanel="trade fc" hidden>
         <div class="card">
           <h2>「<span id="lab-name">—</span>」の成績</h2>
           <p class="small muted">チャート画面で見ている銘柄について、過去約1年分の「予想の答え合わせ」と「自動売買の練習」の結果を出します。別の銘柄はチャート画面で選んでから開いてください。</p>
           <p class="small" id="lab-status"></p>
         </div>
-        <div id="lab-body" hidden>
-          <div class="card">
-            <h2>予想の答え合わせ<span class="sub">1日ずつ</span></h2>
-            <p class="small muted" style="margin-top:-4px">毎日、その日までのデータだけで<button type="button" class="term" data-term="forecast">予想<span class="q" aria-hidden="true">?</span></button>を出し、実際の値段と比べました。まだ結果が出ていない最近の予想は「答え合わせ待ち」として残ります（＝これからの予想の記録）。</p>
-            <div class="seg" id="lab-h-seg" style="margin:8px 0"></div>
-            <div id="lab-fc-stats"></div>
-            <div class="lab-chart" id="lab-fc-chart"></div>
-            <div class="legend"><span><i style="background:var(--text)"></i>実際の値段</span><span><i style="background:#f2c94c"></i>その日に出していた予想</span><span><i style="background:#a0aec0"></i>予想の幅（90%）</span></div>
-            <h3>1日ずつの答え合わせ</h3>
-            <div class="tbl-wrap lab-table" id="lab-fc-table"></div>
-          </div>
-          <div class="card">
+          <div id="lab-body" hidden>
+          <div class="card" data-labsub="trade">
             <h2>自動売買の練習<span class="sub">仮想の100万円</span></h2>
             <p class="small muted" style="margin-top:-4px">私が決めたルールで、毎日の終わりに「買う・売る・待つ」を判断し、次の日の始まりの値段で売買したらどうなったかの記録です。本物のお金は使っていません。</p>
             <div class="chips" id="lab-s-chips"></div>
@@ -260,13 +275,20 @@
             <div class="tbl-wrap lab-table" id="lab-s-daily"></div>
             <p class="notice" style="margin-top:8px">過去のデータで試した結果です。これから同じように儲かるとは限りません。ファンダメンタルズは「今の数字」しか手に入らないため、過去の判断にも今の数字を使っています。</p>
           </div>
+          <div class="card" data-labsub="fc">
+            <h2>予想の答え合わせ<span class="sub">1日ずつ</span></h2>
+            <p class="small muted" style="margin-top:-4px">毎日、その日までのデータだけで<button type="button" class="term" data-term="forecast">予想<span class="q" aria-hidden="true">?</span></button>を出し、実際の値段と比べました。まだ結果が出ていない最近の予想は「答え合わせ待ち」として残ります（＝これからの予想の記録）。</p>
+            <div class="seg" id="lab-h-seg" style="margin:8px 0"></div>
+            <div id="lab-fc-stats"></div>
+            <div class="lab-chart" id="lab-fc-chart"></div>
+            <div class="legend"><span><i style="background:var(--text)"></i>実際の値段</span><span><i style="background:#f2c94c"></i>その日に出していた予想</span><span><i style="background:#a0aec0"></i>予想の幅（90%）</span></div>
+            <h3>1日ずつの答え合わせ</h3>
+            <div class="tbl-wrap lab-table" id="lab-fc-table"></div>
+          </div>
+          </div>
         </div>
-        <div class="card">
-          <h2>全銘柄の売買一覧<span class="sub">いつ・なぜ買った／売ったか</span></h2>
-          <p class="small muted" style="margin-top:-4px">「総合判断」のやり方で、<span class="only-fx">主な通貨ペア25種類すべて</span><span class="only-stock">日本の代表的な20社・お気に入り・候補チェックで上位の銘柄</span><span class="only-us">米国の代表的な20社とお気に入り</span>を約1年分、それぞれ仮想の100万円で売買した記録です。入った理由・出た理由をすべて書いています（判断はその日の終わりの値段まで、売買は次の日の始まりの値段）。</p>
-          <button class="btn primary block" id="lab-log-run">一覧を作る（30秒〜1分）</button>
-          <div id="lab-log" style="margin-top:10px"></div>
-        </div>
+
+        <div data-labpanel="more" hidden>
         <div class="card">
           <h2>私が選んだ銘柄で運用<span class="sub">勝率の高い銘柄だけ</span></h2>
           <p class="small muted" style="margin-top:-4px">「どの銘柄を売買するかも自分で選べる」としたら、という練習です。20取引日ごとに、その時点までの過去半年で「総合判断」のやり方の勝率が高かった銘柄を最大3つ選び、次の20日間だけ売買します（あとから結果を見て選ぶことはしません）。候補は<span class="only-fx">主な通貨ペア25種類</span><span class="only-stock">日本の代表的な20社とお気に入り</span><span class="only-us">米国の代表的な20社とお気に入り</span>です。</p>
@@ -278,6 +300,7 @@
           <p class="small muted">今の切り替え（<span class="only-fx">為替</span><span class="only-stock">日本株</span><span class="only-us">米国株</span>）のお気に入りすべてで、予想の的中率と3つのやり方の損益を一覧にします。</p>
           <button class="btn primary block" id="lab-batch-run">まとめて計算する</button>
           <div id="lab-batch" style="margin-top:10px"></div>
+        </div>
         </div>
       </section>
     </main>
