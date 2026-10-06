@@ -1,0 +1,27 @@
+# market-analyzer を更新したら、Render に新しい版の公開を自動で依頼する
+# 事前準備: Render の Deploy Hook の URL を、GitHub の Secrets に
+#           RENDER_DEPLOY_HOOK_URL という名前で登録しておく
+name: Render 自動更新
+
+on:
+  push:
+    branches:
+      - claude/trusting-planck-dsasvf
+    paths:
+      - 'market-analyzer/**'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Render に更新を依頼
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "RENDER_DEPLOY_HOOK_URL が未登録のため、自動更新をスキップしました"
+            exit 0
+          fi
+          curl -fsS -X POST "$HOOK" > /dev/null
+          echo "Render に更新を依頼しました"
