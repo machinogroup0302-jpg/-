@@ -172,3 +172,78 @@ export function runStrategy(candles, id, { kind = 'stock', pair = '', regime = n
     },
   };
 }
+
+// ---------------- 勝率の高い銘柄だけを選んで売買する ----------------
+// 20取引日ごとに「その時点までの過去約半年で、総合判断のやり方の勝率が高かった銘柄」を最大3つ選び、
+// 次の20日間はその銘柄だけで売買する。選ぶときに未来の成績は使わない。
+export function pickAndTrade(list, { kind = 'stock', regime = null, days = 250, block = 20, lookbackDays = 180, topK = 3, minWin = 0.5 } = {}) {
+  const runs = list.map((s) => ({
+    ...s,
+    run: runStrategy(s.candles, 'combo', { kind, pair: s.symbol.replace(/=X$/, ''), regime, fundamentalRatio: s.fundRatio, days: s.candles.length }),
+  }));
+  const calendar = [...new Set(runs.flatMap((r) => r.candles.map((c) => dayKey(c.time))))].sort().slice(-days);
+  const shift = (d, n) => new Date(new Date(d + 'T00:00:00Z').getTime() + n * 86400000).toISOString().slice(0, 10);
+
+  const rank = (date) => runs.map((r) => {
+    const past = r.run.trades.filter((t) => t.exitDate < date && t.exitDate >= shift(date, -lookbackDays));
+    const wins = past.filter((t) => t.pnl > 0).length;
+    return { symbol: r.symbol, name: r.name, trades: past.length, winRate: past.length ? wins / past.length : 0, pnl: past.reduce((a, t) => a + t.pnl, 0) };
+  }).filter((x) => x.trades >= 2 && x.winRate >= minWin && x.pnl > 0)
+    .sort((a, b) => b.winRate - a.winRate || b.pnl - a.pnl)
+    .slice(0, topK);
+
+  const periods = [];
+  for (let i = 0; i < calendar.length; i += block) {
+    const from = calendar[i], to = calendar[Math.min(i + block, calendar.length) - 1];
+    periods.push({ from, to, picks: rank(from) });
+  }
+
+  const trades = [];
+  for (const p of periods) {
+    for (const pk of p.picks) {
+      const r = runs.find((x) => x.symbol === pk.symbol);
+      for (const t of r.run.trades) {
+        if (t.entryDate >= p.from && t.entryDate <= p.to) trades.push({ ...t, symbol: r.symbol, name: r.name });
+      }
+    }
+  }
+
+  // 1日ずつの損益（持っている間は毎日の値動きで評価し、決済した日に確定する）
+  const byDate = new Map(calendar.map((d) => [d, { pnl: 0, events: [] }]));
+  for (const t of trades) {
+    const r = runs.find((x) => x.symbol === t.symbol);
+    let prev = 0;
+    for (const c of r.candles) {
+      const d = dayKey(c.time);
+      if (d < t.entryDate || d > t.exitDate || !byDate.has(d)) continue;
+      const v = d === t.exitDate ? t.pnl : 1_000_000 * t.side * (c.close / t.entryPrice - 1);
+      byDate.get(d).pnl += v - prev;
+      prev = v;
+    }
+    byDate.get(t.entryDate)?.events.push(`${t.name}を${t.side > 0 ? '買い' : '売り'}`);
+    byDate.get(t.exitDate)?.events.push(`${t.name}を決済（${t.pnl >= 0 ? '+' : ''}${Math.round(t.pnl).toLocaleString()}円）`);
+  }
+  let equity = 0;
+  const daily = calendar.map((d) => {
+    const x = byDate.get(d);
+    equity += x.pnl;
+    return { date: d, pnl: x.pnl, equity, events: x.events };
+  });
+
+  // 今の選び方（明日からの20日間に使う銘柄）と、その銘柄の今の状態
+  const today = calendar[calendar.length - 1];
+  const current = rank(shift(today, 1)).map((pk) => {
+    const r = runs.find((x) => x.symbol === pk.symbol);
+    return { ...pk, open: r.run.open, next: r.run.next };
+  });
+
+  const wins = trades.filter((t) => t.pnl > 0).length;
+  let peak = 0, maxDD = 0;
+  for (const d of daily) { peak = Math.max(peak, d.equity); maxDD = Math.max(maxDD, peak - d.equity); }
+  // 比べるための目安：選ばずに全部の銘柄で同じやり方をした場合（1銘柄あたりの平均）
+  const allAvg = runs.length ? runs.reduce((a, r) => a + r.run.trades.filter((t) => t.entryDate >= calendar[0]).reduce((b, t) => b + t.pnl, 0), 0) / runs.length : 0;
+  return {
+    periods, trades, daily, current,
+    stats: { trades: trades.length, winRate: trades.length ? wins / trades.length : null, total: equity, maxDrawdown: maxDD, from: calendar[0], to: today, universe: runs.length, allAvg: allAvg * topK },
+  };
+}

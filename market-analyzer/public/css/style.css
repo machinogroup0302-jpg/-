@@ -300,3 +300,7 @@ a.btn { text-decoration: none; color: var(--text); }
 @media (min-width: 720px) { .lab-chart { margin: 10px 0 4px; } }
 .lab-table td.r, .lab-table th.r { white-space: nowrap; }
 .lab-table .tbl { font-size: 12px; }
+
+/* ---------- もっと見る ---------- */
+.more-btn { margin-top: 8px; }
+details > summary { cursor: pointer; padding: 6px 0; color: var(--accent); font-weight: 600; }

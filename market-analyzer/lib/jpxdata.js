@@ -53,7 +53,8 @@ export function parseEarningsRows(rows) {
     if (/^[0-9][0-9A-Z]{3}0$/.test(code)) code = code.slice(0, 4); // 5けた表記（末尾0）は4けたにする
     const date = toDate(r[ci.date]);
     if (!/^[0-9][0-9A-Z]{3}$/.test(code) || !date) continue;
-    const period = ci.period >= 0 ? String(r[ci.period] ?? '').normalize('NFKC').trim() : '';
+    const rawPeriod = ci.period >= 0 ? r[ci.period] : '';
+    const period = toDate(rawPeriod) || String(rawPeriod ?? '').normalize('NFKC').trim();
     out.push({
       date,
       code,
@@ -90,15 +91,29 @@ export function parseMarginRows(rows) {
   return out;
 }
 
-// 信用残のPDF（行ごとの文字）から読む。並び方を確認してから仕上げる
+// 信用残のPDF（日本取引所「銘柄別信用取引残高」）から読む。
+// ページが横向きなので、1社分（株数の行）が1列にまとまっている。並びは上から：
+//  [0]買残の内訳1の前日比 [1]内訳1 [2]内訳2の前日比 [3]内訳2 [4]売残の内訳1の前日比 [5]内訳1 [6]内訳2の前日比 [7]内訳2
+//  [8]上場比 [9]買残高の前日比 [10]買残高 [11]上場比 [12]売残高の前日比 [13]売残高、そのあとに「株数」・コード・貸借/制度・市場・種類・銘柄名
 export function parseMarginLines(lines) {
   const out = [];
   for (const l of lines) {
-    const code = l.find((x) => /^[0-9][0-9A-Z]{3}0?$/.test(x));
-    if (!code) continue;
-    const nums = l.map((x) => num(x)).filter((v) => v != null);
-    if (nums.length < 4) continue;
-    out.push({ code: code.slice(0, 4), raw: l });
+    const mark = l.findIndex((x) => /株数\s*Shs/.test(x));
+    if (mark !== 14) continue;
+    const code5 = l[mark + 1];
+    if (!/^[0-9][0-9A-Z]{3}0$/.test(code5 || '')) continue;
+    const v = l.slice(0, 14).map(num);
+    const buy = v[10], sell = v[13];
+    if (buy == null || sell == null) continue;
+    // 内訳の合計が合っているか確かめる（読み違いを防ぐ）
+    if (v[1] != null && v[3] != null && v[1] + v[3] !== buy) continue;
+    if (v[5] != null && v[7] != null && v[5] + v[7] !== sell) continue;
+    out.push({
+      code: code5.slice(0, 4),
+      buy, buyChg: v[9], sell, sellChg: v[12],
+      type: l[mark + 2] === '貸' ? '貸借銘柄' : l[mark + 2] === '制' ? '制度信用銘柄' : '',
+      buyRatio: l[8], sellRatio: l[11],
+    });
   }
   return out;
 }

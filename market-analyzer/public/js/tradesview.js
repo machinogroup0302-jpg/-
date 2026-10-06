@@ -1,7 +1,7 @@
 // 取引分析画面：CSV またはスクリーンショットから取引を読み込み、成績を分析する
 import { $, esc, store, fmtYen, toast } from './util.js';
 import { term } from './glossary.js';
-import { parseCsv, findHeader, guessMapping, rowsToTrades, decodeFile, computeStats, insights, FIELD_LABELS } from './trades.js';
+import { parseCsv, findHeader, guessMapping, rowsToTrades, decodeFile, computeStats, insights, FIELD_LABELS, detectFormat, fileId } from './trades.js';
 
 // 為替と株の取引は別々に保存する
 const isFxTrade = (sym) => /[A-Z]{3}\s*\/?\s*[A-Z]{3}/i.test(sym || '') || /円|ドル|ユーロ|ポンド|ランド|ペソ|リラ|フラン/.test(sym || '');
@@ -106,50 +106,71 @@ function render() {
   };
 }
 
-function addTrades(list, label, batch = Date.now()) {
-  // 同じ取引を二重に読み込まないようにする
-  const key = (t) => `${t.date}|${t.symbol}|${t.side}|${t.qty}|${t.price}|${t.pnl}`;
-  const seen = new Set(trades.map(key));
-  const fresh = list.filter((t) => !seen.has(key(t))).map((t) => ({ ...t, batch }));
-  trades = [...trades, ...fresh].sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+// 読み込んだ結果を分かりやすく表示する（最初の数件と、合計の確認）
+function showLoaded(list, format, fileName) {
+  const closed = list.filter((t) => t.pnl != null && t.pnl !== 0);
+  const total = closed.reduce((a, t) => a + t.pnl, 0);
+  const days = list.map((t) => t.date).filter(Boolean).sort();
+  $('trade-status').innerHTML = `
+    <div class="notice" style="margin-top:4px">
+      <p style="margin:0 0 6px"><b>✓ 「${esc(fileName)}」を${esc(format.name)}として読み込みました</b></p>
+      <div class="grid2" style="margin-bottom:6px">
+        <div class="stat"><div class="label">損益が確定した取引</div><div class="value">${closed.length}件</div></div>
+        <div class="stat"><div class="label">損益の合計</div><div class="value ${total >= 0 ? 'plus' : 'minus'}">${fmtYen(total)}</div></div>
+      </div>
+      <p class="small" style="margin:0 0 6px">期間：${days.length ? `${new Date(days[0]).toLocaleDateString('ja-JP')} 〜 ${new Date(days[days.length - 1]).toLocaleDateString('ja-JP')}` : '—'}</p>
+      <p class="small muted" style="margin:0">証券会社・FX会社の画面に出ている「損益の合計」と同じになっているか確認してください。違う場合は、下の「うまく読めないとき」で列を選び直せます。</p>
+    </div>`;
+}
+
+function addTrades(list, fileKey, format, fileName) {
+  // 同じファイルを読み込み直したときは、前回の分を入れ替える（同じ値の取引も別々に数える）
+  trades = [...trades.filter((t) => t.file !== fileKey), ...list.map((t) => ({ ...t, file: fileKey }))]
+    .sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
   save();
-  $('trade-status').textContent = `${label}: ${fresh.length}件を追加しました（重複${list.length - fresh.length}件は除外）。合計${trades.length}件。`;
+  showLoaded(list, format, fileName);
   render();
 }
 
-function showMapping(rows, headerIndex, map, batch) {
+function showMapping(rows, headerIndex, map, fileKey, format, fileName, open = false) {
   const header = rows[headerIndex];
   const opts = (sel) => `<option value="">（使わない）</option>${header.map((h, i) => `<option value="${i}" ${sel === i ? 'selected' : ''}>${esc(h || `列${i + 1}`)}</option>`).join('')}`;
+  const sample = rows.slice(headerIndex + 1, headerIndex + 4);
   $('map-box').innerHTML = `
-    <div class="notice">
-      <p style="margin:0 0 8px"><b>列の割り当てを確認してください</b>（自動で判別しました）</p>
-      ${Object.entries(FIELD_LABELS).map(([k, label]) => `<div class="row" style="margin-bottom:6px"><span class="small" style="width:96px">${label}</span><select class="input grow" data-field="${k}">${opts(map[k])}</select></div>`).join('')}
-      <button class="btn primary block" id="map-ok">この割り当てで読み込む</button>
-    </div>`;
+    <details ${open ? 'open' : ''} class="small">
+      <summary>${open ? '<b>列を選んでください（自動で判別できませんでした）</b>' : 'うまく読めないとき（列を選び直す）'}</summary>
+      <div class="notice" style="margin-top:6px">
+        ${Object.entries(FIELD_LABELS).map(([k, label]) => `<div class="row" style="margin-bottom:6px"><span class="small" style="width:96px">${label}</span><select class="input grow" data-field="${k}">${opts(map[k])}</select></div>`).join('')}
+        <p class="small muted">ファイルの最初の行：</p>
+        <div class="tbl-wrap"><table class="tbl"><tr>${header.map((h) => `<th class="small">${esc(h)}</th>`).join('')}</tr>${sample.map((r) => `<tr>${r.map((c) => `<td class="small">${esc(c)}</td>`).join('')}</tr>`).join('')}</table></div>
+        <button class="btn primary block" id="map-ok" style="margin-top:8px">この列で読み込む</button>
+      </div>
+    </details>`;
   $('map-ok').onclick = () => {
     const m = {};
-    $('map-box').querySelectorAll('select').forEach((s) => { if (s.value !== '') m[s.dataset.field] = Number(s.value); });
-    if (m.pnl == null) { toast('「損益」の列を選んでください'); return; }
-    // 同じファイルを読み込み直すときは、前回の読み込み分を入れ替える
-    if (batch) trades = trades.filter((t) => t.batch !== batch);
-    addTrades(rowsToTrades(rows, headerIndex, m), 'CSV', batch);
-    $('map-box').innerHTML = '';
+    $('map-box').querySelectorAll('select').forEach((x) => { if (x.value !== '') m[x.dataset.field] = Number(x.value); });
+    if (m.pnl == null || m.date == null) { toast('「日時」と「損益」の列を選んでください'); return; }
+    addTrades(rowsToTrades(rows, headerIndex, m), fileKey, format, fileName);
+    showMapping(rows, headerIndex, m, fileKey, format, fileName);
   };
 }
 
 async function onCsv(file) {
-  const rows = parseCsv(decodeFile(await file.arrayBuffer()));
+  const text = decodeFile(await file.arrayBuffer());
+  const rows = parseCsv(text);
   if (rows.length < 2) { toast('CSVの中身が読み取れませんでした'); return; }
   const h = findHeader(rows);
   const map = guessMapping(rows[h]);
-  const batch = Date.now();
-  if (map.pnl != null && map.date != null && map.symbol != null) {
-    addTrades(rowsToTrades(rows, h, map), 'CSV', batch);
-    // 割り当てが違っていたときに直せるよう、確認欄も出しておく
-    showMapping(rows, h, map, batch);
-    $('map-box').querySelector('.notice p b').textContent = '読み込みました。結果がおかしい場合は、列の割り当てを直して読み込み直せます';
+  const format = detectFormat(rows[h]);
+  const fileKey = fileId(text);
+  if (map.pnl != null && map.date != null) {
+    const list = rowsToTrades(rows, h, map);
+    if (!list.length) { showMapping(rows, h, map, fileKey, format, file.name, true); return; }
+    addTrades(list, fileKey, format, file.name);
+    showMapping(rows, h, map, fileKey, format, file.name);
   } else {
-    showMapping(rows, h, map, batch);
+    $('trade-status').textContent = '';
+    showMapping(rows, h, map, fileKey, format, file.name, true);
   }
 }
 

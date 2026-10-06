@@ -26,12 +26,12 @@ export function parseCsv(text) {
 
 // 列名の候補（上にあるものほど優先）
 export const FIELD_HINTS = {
-  date: ['決済日時', '約定日時', '約定日', '取引日時', '取引日', '日時', '受渡日', '注文日時', 'date', 'time'],
+  date: ['決済約定日時', '決済日時', '約定日時', '約定日', '取引日時', '取引日', '日時', '受渡日', '注文日時', 'date', 'time'],
   symbol: ['通貨ペア', '銘柄名', '銘柄', '銘柄コード', 'シンボル', 'symbol'],
-  side: ['売買', '売買区分', '取引区分', '売/買', '売買方向', '区分', 'side', 'type'],
-  qty: ['約定数量', '数量', '取引数量', '株数', 'Lot', 'ロット', '枚数', 'quantity'],
-  price: ['決済レート', '約定レート', '約定価格', '約定単価', '単価', '価格', 'レート', 'price'],
-  pnl: ['決済損益', '実現損益', '売買損益', '損益金額', '確定損益', '損益', 'profit', 'pnl'],
+  side: ['売買', '売買区分', '取引区分', '売/買', '売買方向', '取引', '区分', 'side', 'type'],
+  qty: ['Lot数', '約定数量', '数量', '取引数量', '株数', 'Lot', 'ロット', '枚数', 'quantity'],
+  price: ['決済約定値', '決済レート', '売却/決済単価', '約定レート', '約定価格', '約定単価', '約定値', '単価', '価格', 'price'],
+  pnl: ['決済損益', '実現損益[円]', '実現損益', '損益合計', '売買損益', '損益金額', '確定損益', '損益', 'profit', 'pnl'],
   swap: ['スワップ', 'スワップ損益', 'swap'],
   fee: ['手数料', '手数料等', 'commission', 'fee'],
 };
@@ -51,13 +51,30 @@ export function findHeader(rows) {
 export function guessMapping(header) {
   const map = {};
   const used = new Set();
+  const norm = (c) => String(c).normalize('NFKC').toLowerCase().replace(/\s/g, '');
   for (const [field, hints] of Object.entries(FIELD_HINTS)) {
     for (const h of hints) {
-      const idx = header.findIndex((c, i) => !used.has(i) && c.toLowerCase().includes(h.toLowerCase()));
+      const hh = norm(h);
+      // まず列名がぴったり同じもの、なければ含むもの
+      let idx = header.findIndex((c, i) => !used.has(i) && norm(c) === hh);
+      if (idx < 0) idx = header.findIndex((c, i) => !used.has(i) && norm(c).includes(hh));
       if (idx >= 0) { map[field] = idx; used.add(idx); break; }
     }
   }
   return map;
+}
+
+// どの会社のCSVかを見分ける
+export function detectFormat(header) {
+  const h = header.join('|');
+  if (/ポジション番号|pip損益|新規約定値/.test(h)) return { id: 'lion', name: 'LION FX（ヒロセ通商）の決済履歴' };
+  if (/実現損益/.test(h)) return { id: 'rakuten', name: '楽天証券の実現損益' };
+  return { id: 'generic', name: '取引履歴' };
+}
+
+// 損益の列が「合計の損益」（スワップや手数料をすでに含む）かどうか
+export function isTotalPnl(headerText) {
+  return /決済損益|実現損益|損益合計/.test(String(headerText || ''));
 }
 
 export function toNumber(s) {
@@ -69,7 +86,12 @@ export function toNumber(s) {
 
 export function parseDate(s) {
   const t = String(s || '').trim();
-  const m = t.match(/(\d{2,4})[\/\-.年](\d{1,2})[\/\-.月](\d{1,2})日?(?:[\sT]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  let m = t.match(/(\d{2,4})[\/\-.年](\d{1,2})[\/\-.月](\d{1,2})日?(?:[\sT]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  // 20260901 や 20260901103000 のような詰めた書き方
+  if (!m) {
+    const c = t.match(/^(20\d{2})(\d{2})(\d{2})(?:(\d{2})(\d{2})(\d{2})?)?$/);
+    if (c) m = [c[0], c[1], c[2], c[3], c[4], c[5], c[6]];
+  }
   if (!m) return null;
   let y = Number(m[1]);
   if (y < 100) y += 2000;
@@ -84,23 +106,43 @@ function normSide(s) {
 }
 
 export function rowsToTrades(rows, headerIndex, map) {
+  const header = rows[headerIndex] || [];
+  // 「決済損益」「実現損益」はスワップ・手数料を含んだ合計なので、足し引きしない
+  const total = isTotalPnl(header[map.pnl]);
+  // LION FX は新規と決済の値段から、買いで持っていたか売りで持っていたかを判定する
+  const entryCol = header.findIndex((c) => /新規約定値|取得価額|取得単価/.test(c));
   const trades = [];
   for (const r of rows.slice(headerIndex + 1)) {
+    if (r.some((c) => /^(総?合計|小計|計)$/.test(String(c).trim()))) continue; // 合計の行は取引ではない
+    const date = map.date != null ? parseDate(r[map.date]) : null;
+    if (!date) continue;
     const pnl = map.pnl != null ? toNumber(r[map.pnl]) : NaN;
     const swap = map.swap != null ? toNumber(r[map.swap]) : NaN;
     const fee = map.fee != null ? toNumber(r[map.fee]) : NaN;
-    const date = map.date != null ? parseDate(r[map.date]) : null;
-    if (!date && Number.isNaN(pnl)) continue;
+    const price = map.price != null ? toNumber(r[map.price]) || 0 : 0;
+    const entry = entryCol >= 0 ? toNumber(r[entryCol]) : NaN;
+    let side = map.side != null ? normSide(r[map.side]) : '不明';
+    if (!Number.isNaN(entry) && price && !Number.isNaN(pnl) && pnl !== 0 && price !== entry && /新規約定値/.test(header[entryCol])) {
+      side = (price - entry) * pnl > 0 ? '買' : '売';
+    }
     trades.push({
-      date: date ? date.toISOString() : null,
-      symbol: map.symbol != null ? r[map.symbol] : '',
-      side: map.side != null ? normSide(r[map.side]) : '不明',
+      date: date.toISOString(),
+      symbol: map.symbol != null ? String(r[map.symbol] || '').normalize('NFKC') : '',
+      side,
       qty: map.qty != null ? toNumber(r[map.qty]) || 0 : 0,
-      price: map.price != null ? toNumber(r[map.price]) || 0 : 0,
-      pnl: Number.isNaN(pnl) ? null : pnl + (Number.isNaN(swap) ? 0 : swap) - (Number.isNaN(fee) ? 0 : Math.abs(fee)),
+      price,
+      entry: Number.isNaN(entry) ? null : entry,
+      pnl: Number.isNaN(pnl) ? null : total ? pnl : pnl + (Number.isNaN(swap) ? 0 : swap) - (Number.isNaN(fee) ? 0 : Math.abs(fee)),
     });
   }
   return trades;
+}
+
+// ファイルの中身から、同じファイルかどうかを見分ける印を作る
+export function fileId(text) {
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return (h >>> 0).toString(36);
 }
 
 export function decodeFile(buffer) {

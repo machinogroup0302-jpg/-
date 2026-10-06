@@ -114,7 +114,7 @@ export function lastSession(candles) {
 export function flowBreakdown(candles) {
   const list = candles.filter((c) => c.volume > 0);
   if (list.length < 5) return null;
-  let buy = 0, sell = 0, aggBuy = 0, aggSell = 0, flat = 0, bigBuy = 0, bigSell = 0, small = 0;
+  let buy = 0, sell = 0, aggBuy = 0, aggSell = 0, flat = 0, bigBuy = 0, bigSell = 0, midBuy = 0, midSell = 0, small = 0;
   const vols = list.map((c) => c.volume).sort((a, b) => a - b);
   const median = vols[Math.floor(vols.length / 2)];
   list.forEach((c, i) => {
@@ -124,9 +124,10 @@ export function flowBreakdown(candles) {
     if (c.close > prev) aggBuy += c.volume;
     else if (c.close < prev) aggSell += c.volume;
     else flat += c.volume;
-    if (c.volume >= median * 3) {
-      bigBuy += s.buy; bigSell += s.sell;
-    } else small += c.volume;
+    // 大口：ふつう（真ん中の値）の3倍以上／中口：1.5倍以上／小口：それより少ない
+    if (c.volume >= median * 3) { bigBuy += s.buy; bigSell += s.sell; }
+    else if (c.volume >= median * 1.5) { midBuy += s.buy; midSell += s.sell; }
+    else small += c.volume;
   });
   const total = buy + sell;
   return {
@@ -134,6 +135,7 @@ export function flowBreakdown(candles) {
     buySell: { buy: buy / total, sell: sell / total },
     aggressive: { buy: aggBuy / total, sell: aggSell / total, flat: flat / total },
     big: { buy: bigBuy / total, sell: bigSell / total, small: small / total },
+    size: { bigBuy: bigBuy / total, bigSell: bigSell / total, midBuy: midBuy / total, midSell: midSell / total, small: small / total },
     from: list[0].time, to: list[list.length - 1].time,
   };
 }

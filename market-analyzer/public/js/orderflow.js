@@ -11,7 +11,7 @@ function donut(parts, center) {
   let offset = 0;
   const arcs = parts.filter((p) => p.value > 0).map((p) => {
     const len = p.value * C;
-    const arc = `<circle r="${R}" cx="70" cy="70" fill="none" stroke="${p.color}" stroke-width="22" stroke-dasharray="${len} ${C - len}" stroke-dashoffset="${-offset}" transform="rotate(-90 70 70)"/>`;
+    const arc = `<circle r="${R}" cx="70" cy="70" fill="none" style="stroke:${p.color}" stroke-width="22" stroke-dasharray="${len} ${C - len}" stroke-dashoffset="${-offset}" transform="rotate(-90 70 70)"/>`;
     offset += len;
     return arc;
   }).join('');
@@ -49,9 +49,35 @@ export function renderFlow(f) {
     <div class="flow-grid">
       ${block('買いと売り', [{ label: '買い', value: f.buySell.buy, color: BUY }, { label: '売り', value: f.buySell.sell, color: SELL }], [`買い${Math.round(f.buySell.buy * 100)}%`, v1])}
       ${block(term('aggressive', '積極買い・積極売り'), [{ label: '積極買い', value: f.aggressive.buy, color: BUY }, { label: '積極売り', value: f.aggressive.sell, color: SELL }, { label: '値段変わらず', value: f.aggressive.flat, color: GRAY }], [`積極買い${Math.round(f.aggressive.buy * 100)}%`, v2])}
-      ${block(term('bigTrade', '大口の買い・売り'), [{ label: '大口の買い', value: f.big.buy, color: BUY }, { label: '大口の売り', value: f.big.sell, color: SELL }, { label: '小口（ふつうの量）', value: f.big.small, color: GRAY }], [`大口${Math.round(bigTotal * 100)}%`, v3])}
+      ${block(term('bigTrade', '大口・中口・小口'), [
+        { label: '大口の買い', value: f.size.bigBuy, color: BUY }, { label: '中口の買い', value: f.size.midBuy, color: 'color-mix(in srgb, var(--buy) 55%, transparent)' },
+        { label: '大口の売り', value: f.size.bigSell, color: SELL }, { label: '中口の売り', value: f.size.midSell, color: 'color-mix(in srgb, var(--sell) 55%, transparent)' },
+        { label: '小口（ふつうの量）', value: f.size.small, color: GRAY }], [`大口${Math.round(bigTotal * 100)}%`, v3])}
     </div>
     <p class="notice" style="margin-top:8px">証券会社の板や歩み値（1件ごとの売買の記録）は無料では手に入らないため、5分ごとの値動きと売買の量から推定しています。正確な数字ではなく「傾向」として見てください。</p>`;
+}
+
+const shares = (v) => (v >= 1e8 ? `${(v / 1e8).toFixed(2)}億株` : v >= 1e4 ? `${(v / 1e4).toFixed(1)}万株` : `${Math.round(v).toLocaleString()}株`);
+const diff = (v) => (v == null ? '' : `<span class="${v >= 0 ? 'plus' : 'minus'}">（前日比 ${v >= 0 ? '+' : '−'}${shares(Math.abs(v))}）</span>`);
+
+// 信用取引の残り（日本取引所が毎日公表している銘柄別の残高）
+export function renderMargin(m, date, todayVolume) {
+  if (!m) return '<p class="small muted">この銘柄の信用取引の残高データはありません（信用取引ができない銘柄や、ETFなど）。</p>';
+  const ratio = m.sell > 0 ? m.buy / m.sell : null;
+  const BUY = 'var(--buy)', SELL = 'var(--sell)';
+  const total = m.buy + m.sell || 1;
+  const days = todayVolume > 0 ? m.buy / todayVolume : null;
+  const d = date ? `${date.slice(4, 6)}/${date.slice(6, 8)}` : '';
+  return `
+    <div class="flow-item"><div class="flow-row">${donut([{ label: '信用買い残', value: m.buy / total, color: BUY }, { label: '信用売り残', value: m.sell / total, color: SELL }], [ratio == null ? '—' : `${ratio.toFixed(1)}倍`, '信用倍率'])}
+      <div class="small" style="display:grid;gap:4px">
+        <div><b>${term('marginBuy', '信用買い残')}</b> ${shares(m.buy)}${diff(m.buyChg)}</div>
+        <div><b>信用売り残</b> ${shares(m.sell)}${diff(m.sellChg)}</div>
+        <div><b>${term('marginRatio', '信用倍率')}</b> ${ratio == null ? '売り残なし' : `${ratio.toFixed(2)}倍`}</div>
+        ${days != null ? `<div class="muted">信用買い残は、今日の売買量の${days.toFixed(1)}日分</div>` : ''}
+      </div></div></div>
+    <p class="small muted" style="margin:6px 0 0">${d ? `${d}時点・` : ''}日本取引所の公表データ（${esc(m.type || '')}）。信用買い残が多いほど「あとで売られる株」が多く、上値が重くなりやすいと言われます。</p>
+    <p class="notice" style="margin-top:6px">「今日の売買のうち、信用買いと現物買いがそれぞれ何%か」は、どこからも公表されていないため出せません。代わりに、信用取引で買われてまだ残っている株数を表示しています。</p>`;
 }
 
 export async function updateOrderflow(st, mode) {
@@ -63,10 +89,17 @@ export async function updateOrderflow(st, mode) {
   box.dataset.loaded = '';
   box.innerHTML = '<p class="small muted"><span class="spinner"></span> 読み込み中…</p>';
   try {
-    const data = await api(`/api/chart?symbol=${encodeURIComponent(st.symbol)}&tf=5m`);
+    const code = /\.T$/.test(st.symbol) ? st.symbol.replace(/\.T$/, '') : null;
+    const [data, mg] = await Promise.all([
+      api(`/api/chart?symbol=${encodeURIComponent(st.symbol)}&tf=5m`),
+      code ? api(`/api/stocks/margin?code=${encodeURIComponent(code)}`).catch(() => null) : null,
+    ]);
     if (key !== lastKey) return;
-    const f = flowBreakdown(lastSession(data.candles));
-    box.innerHTML = f ? renderFlow(f) : '<p class="small muted">売買の量のデータがありません（指数や、取引が少ない銘柄では表示できません）。</p>';
+    const session = lastSession(data.candles);
+    const f = flowBreakdown(session);
+    const vol = session.reduce((a, c) => a + (c.volume || 0), 0);
+    box.innerHTML = (f ? renderFlow(f) : '<p class="small muted">売買の量のデータがありません（指数や、取引が少ない銘柄では表示できません）。</p>')
+      + (code ? `<h3>${term('margin', '信用取引の残り')}</h3>${renderMargin(mg?.item, mg?.date, vol)}` : '');
     box.dataset.loaded = '1';
   } catch (e) {
     if (key === lastKey) box.innerHTML = `<p class="error">${esc(e.message)}</p>`;

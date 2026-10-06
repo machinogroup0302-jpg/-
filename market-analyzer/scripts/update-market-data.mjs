@@ -1,6 +1,6 @@
 // 日本取引所（JPX）の公開データを取ってきて data/ に保存する（GitHub Actions で実行）
 // ・決算発表予定日（Excel） → data/earnings.json
-// ・銘柄別信用取引週末残高（ファイルの形式を確認して、読めれば data/margin.json）
+// ・銘柄別信用取引残高（毎日のPDF） → data/margin.json
 import fs from 'node:fs/promises';
 import * as XLSX from 'xlsx';
 import { parseEarningsRows, parseMarginRows, parseMarginLines } from '../lib/jpxdata.js';
@@ -101,13 +101,8 @@ try {
     console.log('信用残: PDFを読みます', pdfs[0]);
     if (pdfs.length) {
       const lines = await pdfLines(await get(pdfs[0], false));
-      console.log(`  ${lines.length}列。先頭12列:`);
-      lines.slice(0, 12).forEach((l) => console.log('  |', l.join(' | ')));
-      const toyota = lines.findIndex((l) => l.includes('72030'));
-      console.log('  トヨタ(72030)の前後:');
-      lines.slice(Math.max(0, toyota - 2), toyota + 3).forEach((l) => console.log('  |', l.join(' | ')));
       const items = parseMarginLines(lines);
-      console.log(`  読み取れた銘柄: ${items.length}件`, JSON.stringify(items.slice(0, 3)));
+      console.log(`  読み取れた銘柄: ${items.length}件`, JSON.stringify(items.filter((x) => x.code === '7203')));
       if (items.length > 500) await save('margin.json', { items, source: pdfs[0], date: (pdfs[0].match(/(\d{8})_mtall/) || [])[1] });
     }
   }

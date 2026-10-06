@@ -11,6 +11,7 @@ import { searchListings, listingMeta, nameFromCache, getListings } from './lib/l
 import { usName, searchUs } from './lib/usstocks.js';
 import { getRatings } from './lib/ratings.js';
 import { getFundamentals } from './lib/fundamentals.js';
+import { loadRepoData } from './lib/jpxdata.js';
 import { INDEX_NAMES } from './lib/market.js';
 import { fxName } from './public/js/fxpairs.js';
 import { startScan, scanStatus } from './lib/scanner.js';
@@ -155,6 +156,25 @@ async function handleApi(req, res, url) {
     } catch (e) {
       return json(res, 502, { error: e.message });
     }
+  }
+  if (route === 'GET /api/stocks/earnings') {
+    // 決算発表の予定（日本取引所の公開データ。GitHub Actions で毎回更新）
+    const d = await loadRepoData('earnings.json');
+    if (!d) return json(res, 502, { error: '決算発表予定日のデータを読み込めませんでした' });
+    const today = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
+    const from = url.searchParams.get('from') || today;
+    const to = url.searchParams.get('to') || '9999-12-31';
+    const codes = (url.searchParams.get('codes') || '').split(',').filter(Boolean);
+    const q = String(url.searchParams.get('q') || '').normalize('NFKC').toLowerCase();
+    const items = d.items.filter((x) => x.date >= from && x.date <= to && (!codes.length || codes.includes(x.code))
+      && (!q || x.code.toLowerCase().startsWith(q) || x.name.normalize('NFKC').toLowerCase().includes(q)));
+    return json(res, 200, { updatedAt: d.fetchedAt, total: items.length, items: items.slice(0, 500) });
+  }
+  if (route === 'GET /api/stocks/margin') {
+    const d = await loadRepoData('margin.json');
+    const code = String(url.searchParams.get('code') || '').toUpperCase();
+    const hit = d?.items?.find((x) => x.code === code && x.buy != null);
+    return json(res, 200, { date: d?.date || null, item: hit || null });
   }
   if (route === 'GET /api/stocks/meta') {
     try {

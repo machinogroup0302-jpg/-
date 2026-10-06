@@ -93,13 +93,13 @@ test('楽天証券っぽいCSVを読み込める', () => {
   assert.equal(map.pnl, 5);
   const trades = rowsToTrades(rows, h, map);
   assert.equal(trades.length, 3);
-  assert.equal(trades[0].pnl, 3210);
+  assert.equal(trades[0].pnl, 3200); // 決済損益はスワップ込みの合計なので足さない
   assert.equal(trades[1].pnl, -5000);
   assert.equal(trades[0].side, '売');
   const s = computeStats(trades);
   assert.equal(s.count, 3);
   assert.equal(Math.round(s.winRate * 100), 67);
-  assert.equal(s.totalPnl, 3210 - 5000 + 1480);
+  assert.equal(s.totalPnl, 3200 - 5000 + 1500);
   assert.equal(s.maxDrawdown, 5000);
   assert.ok(Array.isArray(insights(s)));
 });
@@ -400,4 +400,90 @@ test('情勢の点数', () => {
   const sc = regimeScore(r, 'fx', 'USDJPY');
   assert.ok(sc.notes.some((n) => /恐怖指数/.test(n)));
   assert.ok(sc.notes.some((n) => /金利が上昇/.test(n)));
+});
+
+import { detectFormat, fileId } from '../public/js/trades.js';
+
+test('LION FX の決済履歴：合計の損益をそのまま使い、売り買いを判定する', () => {
+  const csv = [
+    '決済約定日時,ポジション番号,通貨ペア,両建,注文手法,約定区分,執行条件,指定レート,売買,Lot数,新規約定日時,新規約定値,決済約定値,pip損益,円換算レート,売買損益,手数料,スワップ損益,決済損益',
+    '2026/09/01 10:15:30,1001,USD/JPY,,通常,決済,成行,0,売,1,2026/08/30 09:00:00,146.500,146.800,30.0,1,3000,0,120,3120',
+    '2026/09/02 22:40:10,1002,EUR/JPY,,通常,決済,成行,0,買,2,2026/09/01 21:00:00,157.200,157.000,20.0,1,4000,0,-50,3950',
+    '2026/09/03 09:05:00,1003,GBP/JPY,,通常,決済,成行,0,売,1,2026/09/02 10:00:00,197.000,196.500,-50.0,1,-5000,0,10,-4990',
+    ',,,,,,,,,,,,,,,,合計,,2080',
+  ].join('\n');
+  const rows = parseCsv(csv);
+  const h = findHeader(rows);
+  assert.equal(detectFormat(rows[h]).id, 'lion');
+  const map = guessMapping(rows[h]);
+  assert.equal(rows[h][map.price], '決済約定値');
+  const t = rowsToTrades(rows, h, map);
+  assert.equal(t.length, 3); // 合計の行は数えない
+  assert.deepEqual(t.map((x) => x.pnl), [3120, 3950, -4990]);
+  assert.deepEqual(t.map((x) => x.side), ['買', '売', '買']); // 値段の動きと損益から判定
+  assert.equal(computeStats(t).totalPnl, 2080);
+});
+
+test('楽天証券の実現損益：合計の行を除き、円の損益を使う', () => {
+  const csv = [
+    '約定日,受渡日,銘柄コード,銘柄名,口座,取引,数量［株］,売却/決済単価［円］,売却/決済額［円］,平均取得価額［円］,実現損益［円］',
+    '"2026/9/1","2026/9/3","7203","トヨタ自動車","特定","売付","100","3,100","310,000","3,000","10,000"',
+    '"2026/9/2","2026/9/4","4588","オンコリスバイオファーマ","特定","売付","200","800","160,000","900","-20,000"',
+    '"合計","","","","","","","","","","-10,000"',
+  ].join('\r\n');
+  const rows = parseCsv(csv);
+  const h = findHeader(rows);
+  assert.equal(detectFormat(rows[h]).id, 'rakuten');
+  const t = rowsToTrades(rows, h, guessMapping(rows[h]));
+  assert.equal(t.length, 2);
+  assert.equal(computeStats(t).totalPnl, -10000);
+  assert.equal(t[1].symbol, 'オンコリスバイオファーマ');
+  assert.equal(fileId(csv), fileId(csv));
+  assert.notEqual(fileId(csv), fileId(csv + ' '));
+});
+
+import { parseEarningsRows, parseMarginLines, toDate } from '../lib/jpxdata.js';
+import { pickAndTrade } from '../public/js/strategies.js';
+
+test('決算発表予定日のExcel（実物と同じ並び）を読む', () => {
+  const rows = [
+    ['９月に四半期末又は期末を迎えた決算発表予定会社の一覧', '', ''],
+    ['2026年10月1日 現在'],
+    ['決算発表予定日\nScheduled Dates for Earnings Announcements', 'コード\nCode', '会社名', 'Issue Name', '決算期末\nFiscal Year-end', '業種名', 'Industry', '種別', 'Fiscal Year/Quarter', '市場区分', 'Market Segment'],
+    [new Date('2026-10-05T00:00:00.000Z'), 2753, 'あみやき亭', 'AMIYAKI TEI', new Date('2027-03-31T00:00:00.000Z'), '小売業', 'Retail', '第２四半期', 'Second quarter', 'プライム', 'Prime'],
+    ['2026/10/28', '7203', 'トヨタ自動車', 'TOYOTA', '2027/3/31', '輸送用機器', '', '第２四半期', '', 'プライム', ''],
+  ];
+  const e = parseEarningsRows(rows);
+  assert.equal(e.length, 2);
+  assert.deepEqual([e[0].date, e[0].code, e[0].period, e[0].kind], ['2026-10-05', '2753', '2027-03', '第2四半期']);
+  assert.equal(e[1].date, '2026-10-28');
+  assert.equal(toDate(46000), '2025-12-09'); // Excel の日付番号
+});
+
+test('信用残高のPDF（1社分の列）を読む', () => {
+  const col = (code, v) => [...v, `JP000 株数 Shs.`, code, '貸', 'プライム', '普通株式', '会社', 'B'];
+  const lines = [
+    col('72030', ['▲ 592,200', '10,563,400', '▲ 512,000', '8,249,100', '5,400', '1,524,800', '8,900', '139,500', '0.1%', '▲ 1,104,200', '18,812,500', '0.0%', '14,300', '1,664,300']),
+    col('13010', ['900', '122,900', '300', '38,400', '0', '9,400', '100', '100', '1.3%', '1,200', '999,999', '0.1%', '100', '9,500']), // 合計が合わない行は使わない
+  ];
+  const m = parseMarginLines(lines);
+  assert.equal(m.length, 1);
+  assert.deepEqual([m[0].code, m[0].buy, m[0].sell, m[0].buyChg], ['7203', 18812500, 1664300, -1104200]);
+});
+
+test('勝率の高い銘柄だけを選ぶ売買：選ぶときに未来を使わず、損益が合う', () => {
+  const list = [1, 2, 3, 4, 5].map((i) => ({ symbol: `S${i}`, name: `銘柄${i}`, candles: walk(500, i * 11) }));
+  const r = pickAndTrade(list, { kind: 'fx' });
+  for (const p of r.periods) {
+    for (const pk of p.picks) {
+      assert.ok(pk.winRate >= 0.5 && pk.trades >= 2);
+    }
+  }
+  for (const t of r.trades) {
+    const p = r.periods.find((x) => t.entryDate >= x.from && t.entryDate <= x.to);
+    assert.ok(p.picks.some((x) => x.symbol === t.symbol)); // 選んだ期間に選んだ銘柄だけ
+  }
+  const daily = r.daily.reduce((a, d) => a + d.pnl, 0);
+  const sum = r.trades.reduce((a, t) => a + t.pnl, 0);
+  assert.ok(Math.abs(daily - sum) < 1e-6);
 });

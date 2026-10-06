@@ -1,6 +1,7 @@
 // 候補リスト：登録した銘柄を日足でまとめてチェック
 import { api, $, esc, store, fmtPrice, digitsFor, signalClass } from './util.js';
 import { technicalSummary } from './indicators.js';
+import { pagedList } from './stockscreener.js';
 import { supportResistance } from './levels.js';
 import { monteCarlo } from './forecast.js';
 
@@ -33,7 +34,7 @@ function render() {
     .filter((r) => (filter === 'buy' ? r.total > 10 : filter === 'sell' ? r.total < -10 : true))
     .sort((a, b) => (filter === 'sell' ? a.total - b.total : Math.abs(b.total) - Math.abs(a.total)));
   if (!results.length) return;
-  $('scr-list').innerHTML = list.map((r) => {
+  pagedList($('scr-list'), list, (r) => {
     if (r.error) return `<li><div class="li-head"><span class="name">${esc(r.code)}</span><span class="badge neutral">取得失敗</span></div><div class="small muted">${esc(r.error)}</div></li>`;
     const d = digitsFor(r.price);
     const reasons = r.tech.rows.filter((x) => x.signal !== '中立').slice(0, 3).map((x) => `${x.name}:${x.signal}`).join('、');
@@ -43,7 +44,7 @@ function render() {
       <div class="small num">現在 ${fmtPrice(r.price, d)}　上昇確率 ${r.upProb != null ? Math.round(r.upProb * 100) + '%' : '—'}　点数 ${Math.round(r.total)}</div>
       <div class="small muted">${r.res ? `上の壁 ${fmtPrice(r.res.price, d)}` : ''}${r.sup ? `　下の支え ${fmtPrice(r.sup.price, d)}` : ''}${r.room != null ? `　上値余地/下値余地 ${r.room.toFixed(1)}倍` : ''}</div>
       <div class="small muted">${esc(reasons)}</div></li>`;
-  }).join('') || '<li class="empty">条件に合う候補はありません</li>';
+  }, { empty: '条件に合う候補はありません' });
 }
 
 async function run(onPick) {
