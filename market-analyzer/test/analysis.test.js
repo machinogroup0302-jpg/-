@@ -282,4 +282,61 @@ test('PTSの取引時間', () => {
   assert.equal(ptsSession(at(16, 10)).open, false);
   assert.match(ptsSession(at(20, 0)).label, /ナイトタイム/);
   assert.equal(ptsSession(at(12, 0, 4)).open, false); // 日曜
+  assert.equal(ptsSession(at(3, 0, 7)).open, true); // 水曜の夜中（火曜のナイトタイムの続き）
+  assert.equal(ptsSession(at(3, 0, 5)).open, false); // 月曜の夜中はお休み
+  assert.equal(ptsSession(at(16, 40)).open, false); // 16:00〜17:00はお休み
+});
+
+import { flowBreakdown, lastSession } from '../public/js/volume.js';
+import { parseRatingHeadline } from '../lib/ratings.js';
+import { stockRows, fxRows } from '../lib/fundamentals.js';
+import { searchFx, fxName } from '../public/js/fxpairs.js';
+import { findListLink } from '../lib/listings.js';
+
+test('今日の売買の割合（円グラフ用）', () => {
+  const old = { time: 0, open: 1, high: 1, low: 1, close: 1, volume: 1 };
+  const day = Array.from({ length: 30 }, (_, i) => ({ time: 100000 + i * 300, open: 100, high: 102, low: 98, close: i % 2 ? 101.5 : 99, volume: i === 15 ? 10000 : 100 }));
+  const s = lastSession([old, ...day]);
+  assert.equal(s.length, 30);
+  const f = flowBreakdown(s);
+  assert.ok(Math.abs(f.buySell.buy + f.buySell.sell - 1) < 1e-9);
+  assert.ok(Math.abs(f.aggressive.buy + f.aggressive.sell + f.aggressive.flat - 1) < 1e-9);
+  assert.ok(Math.abs(f.big.buy + f.big.sell + f.big.small - 1) < 1e-9);
+  assert.ok(f.big.buy + f.big.sell > 0.5); // 大口の1本が大部分
+  assert.equal(flowBreakdown([old]), null);
+});
+
+test('レーティングのニュース見出しを表にする', () => {
+  const a = parseRatingHeadline('トヨタ、野村が目標株価引き上げ 3,000円→3,500円');
+  assert.equal(a.firm, '野村証券');
+  assert.equal(a.targetFrom, 3000);
+  assert.equal(a.targetTo, 3500);
+  assert.equal(a.up, true);
+  const b = parseRatingHeadline('楽天Ｇ、ＳＭＢＣ日興が格下げ 中立に');
+  assert.equal(b.firm, 'SMBC日興証券');
+  assert.equal(b.to, '中立');
+  assert.equal(b.down, true);
+  assert.equal(parseRatingHeadline('きょうの株式市場は全面高'), null);
+});
+
+test('ファンダメンタルズの判定', () => {
+  const rows = stockRows({ trailingPE: { raw: 40 } }, { priceToBook: { raw: 0.8 } }, { earningsGrowth: { raw: -0.2 }, debtToEquity: { raw: 30 } });
+  const by = Object.fromEntries(rows.map((r) => [r.key + r.name, r.signal]));
+  assert.equal(by['per株価の割安さ（PER）'], '下がる要因');
+  assert.equal(by['pbr会社の財産に比べた株価（PBR）'], '上がる要因');
+  assert.equal(rows.find((r) => r.name.startsWith('利益の伸び')).signal, '下がる要因');
+  assert.equal(rows.find((r) => r.key === 'debt').signal, '上がる要因');
+  // 米金利が上がる → ドル円は上がる要因、ユーロドルは下がる要因
+  assert.equal(fxRows({ pair: 'USDJPY', tnx: { last: 4.5, change: 0.3 } })[0].signal, '上がる要因');
+  assert.equal(fxRows({ pair: 'EURUSD', tnx: { last: 4.5, change: 0.3 } })[0].signal, '下がる要因');
+  // 恐怖指数が高い → クロス円は下がる要因
+  assert.equal(fxRows({ pair: 'AUDJPY', vix: { last: 30 } })[0].signal, '下がる要因');
+});
+
+test('通貨ペアの日本語検索と、一覧ファイルの場所探し', () => {
+  assert.equal(searchFx('どるえん')[0].code, 'USDJPY');
+  assert.equal(searchFx('ポンド')[0].code, 'GBPJPY');
+  assert.equal(fxName('EURJPY=X'), 'ユーロ円');
+  assert.equal(findListLink('<a href="/markets/x/data_j.xlsx">一覧</a>'), 'https://www.jpx.co.jp/markets/x/data_j.xlsx');
+  assert.equal(findListLink('<p>なし</p>'), null);
 });

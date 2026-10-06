@@ -46,16 +46,17 @@
       <section class="view" id="view-chart">
         <div class="card">
           <form class="row" id="symbol-form">
-            <input class="input grow" id="symbol-input" list="symbol-list" placeholder="例: USDJPY" autocomplete="off" autocapitalize="characters">
+            <input class="input grow" id="symbol-input" placeholder="例: USDJPY" autocomplete="off" autocapitalize="characters">
             <button class="btn primary" type="submit">表示</button>
           </form>
-          <datalist id="symbol-list"></datalist>
+          <ul class="suggest" id="suggest" hidden></ul>
           <div class="chips" id="fav-chips" style="margin-top:8px"></div>
           <div class="seg" id="tf-seg" style="margin-top:8px"></div>
           <div class="quote">
             <span class="qname" id="q-name">—</span>
             <span class="qprice" id="q-price">—</span>
             <span id="q-change" class="num"></span>
+            <button type="button" class="chip fav-star" id="fav-star" aria-pressed="false">☆ お気に入りに追加</button>
           </div>
           <p class="small muted" id="q-updated" style="margin:-4px 0 6px"></p>
           <div class="chart-box" id="chart-main"><div class="chart-msg" id="chart-msg">読み込み中…</div></div>
@@ -97,13 +98,14 @@
           <div id="forecast-box"></div>
         </div>
         <div class="card only-equity">
-          <h2>注文・約定分析<span class="sub">売買の量から見る</span></h2>
+          <h2>注文・約定分析<span class="sub">今日の買いと売りの割合</span></h2>
           <div id="orderflow-box"></div>
         </div>
         <div class="card">
-          <h2><button type="button" class="term" data-term="fundamental">ファンダメンタルズ<span class="q" aria-hidden="true">?</span></button>・ニュース</h2>
-          <p class="small muted"><span class="only-fx">金利・経済指標・要人の発言</span><span class="only-equity">決算・業績・業界の動き</span>やSNSの話題は「ニュース」タブで確認できます。</p>
-          <button class="btn block" id="goto-news">この銘柄のニュースを見る</button>
+          <h2><button type="button" class="term" data-term="fundamental">ファンダメンタルズ分析<span class="q" aria-hidden="true">?</span></button><span class="sub">上がる要因・下がる要因</span></h2>
+          <p class="small muted" style="margin-top:-4px"><span class="only-fx">金利・世界の不安の大きさ・株価の流れ・介入のニュース</span><span class="only-equity">会社の割安さ・成長・稼ぐ力・借金・ニュース</span>から、値段が上がりそうか下がりそうかを判定します。</p>
+          <div id="fund-box"></div>
+          <button class="btn block" id="goto-news" style="margin-top:10px">この銘柄のニュースを見る</button>
         </div>
       </section>
 
@@ -168,6 +170,10 @@
             <button class="btn primary" type="submit">検索</button>
           </form>
           <div id="news-summary" style="margin-top:10px"></div>
+        </div>
+        <div class="card">
+          <h2><button type="button" class="term" data-term="fundamental">ファンダメンタルズ分析<span class="q" aria-hidden="true">?</span></button><span class="sub">ニュースや数字が値段にどう効くか</span></h2>
+          <div id="fund-box-news"></div>
         </div>
         <div class="card">
           <h2>ニュース一覧<span class="sub"><button type="button" class="term" data-term="credibility">信頼度<span class="q" aria-hidden="true">?</span></button>つき</span></h2>

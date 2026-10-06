@@ -17,34 +17,43 @@ function countsBar(c) {
     <div class="small muted">${parts.filter(([k]) => c[k]).map(([k, label]) => `${label} ${c[k]}人`).join('　')}</div>`;
 }
 
+function firmTable(rows, isUs) {
+  if (!rows?.length) return '';
+  const tp = (r) => {
+    if (r.targetTo == null) return '<span class="muted">—</span>';
+    const from = r.targetFrom != null && r.targetFrom !== r.targetTo ? `<span class="muted">${money(r.targetFrom, isUs)} → </span>` : '';
+    return `${from}<b class="${r.up ? 'plus' : r.down ? 'minus' : ''}">${money(r.targetTo, isUs)}</b>`;
+  };
+  return `<h3>各社の評価と${term('target', '目標株価')}</h3>
+    <div class="tbl-wrap"><table class="tbl rating-tbl"><thead><tr><th>日付</th><th>証券会社</th><th>評価</th><th class="r">目標株価</th></tr></thead><tbody>
+    ${rows.map((r) => `<tr>
+      <td class="small">${esc((r.date || '').slice(5).replace('-', '/'))}</td>
+      <td class="small">${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener noreferrer" style="color:var(--text)">${esc(r.firm)}</a>` : esc(r.firm)}</td>
+      <td class="small"><span class="badge ${r.up ? 'buy' : r.down ? 'sell' : 'neutral'}">${esc(r.to || r.action || '—')}</span>${r.to && r.action ? `<div class="muted" style="font-size:11px">${esc(r.action)}</div>` : ''}</td>
+      <td class="r small">${tp(r)}</td></tr>`).join('')}
+    </tbody></table></div>`;
+}
+
 function render(d, isUs) {
   const s = d.summary;
   const box = $('rating-box');
   let html = '';
-  if (s && (s.consensus || s.target?.mean || s.history?.length)) {
+  if (s && (s.consensus || s.target?.mean)) {
     const upside = s.target?.mean && s.price ? (s.target.mean / s.price - 1) * 100 : null;
     html += `
       ${s.consensus ? `<div class="li-head" style="margin-bottom:4px"><span class="name">アナリスト${s.analysts ? `${s.analysts}人` : ''}の${term('consensus', '平均の評価')}</span>
         <span class="badge ${/買い/.test(s.consensus) ? 'buy' : /売り/.test(s.consensus) ? 'sell' : 'neutral'}">${esc(s.consensus)}</span></div>` : ''}
       ${s.counts ? countsBar(s.counts) : ''}
       ${s.target?.mean ? `<div class="grid2" style="margin-top:10px">
-        <div class="stat"><div class="label">${term('target', '目標株価')}（平均）</div><div class="value">${money(s.target.mean, isUs)}</div></div>
+        <div class="stat"><div class="label">目標株価の平均</div><div class="value">${money(s.target.mean, isUs)}</div></div>
         <div class="stat"><div class="label">今の値段との差</div><div class="value ${upside >= 0 ? 'plus' : 'minus'}">${upside == null ? '—' : `${upside >= 0 ? '+' : ''}${upside.toFixed(1)}%`}</div></div>
         <div class="stat"><div class="label">一番高い目標</div><div class="value small num">${money(s.target.high, isUs)}</div></div>
         <div class="stat"><div class="label">一番低い目標</div><div class="value small num">${money(s.target.low, isUs)}</div></div>
-      </div>` : ''}
-      ${s.history?.length ? `<h3>最近の評価の変更</h3><ul class="list">${s.history.map((h) => `
-        <li><div class="li-head"><span class="name small">${esc(h.date)}　${esc(h.firm)}</span>
-          <span class="badge ${h.up ? 'buy' : h.down ? 'sell' : 'neutral'}">${esc(h.action)}</span></div>
-          <div class="small">${h.from && h.from !== h.to ? `${esc(h.from)} → ` : ''}<b>${esc(h.to)}</b></div></li>`).join('')}</ul>` : ''}`;
+      </div>` : ''}`;
   }
-  if (d.news?.length) {
-    html += `<h3>レーティングのニュース</h3><ul class="list">${d.news.map((n) => `
-      <li><a href="${esc(n.url)}" target="_blank" rel="noopener noreferrer" style="color:var(--text);font-weight:600;text-decoration:none">${esc(n.title)}</a>
-      <div class="small muted">${esc(n.source)}・${esc(n.date ? new Date(n.date).toLocaleDateString('ja-JP') : '')}</div></li>`).join('')}</ul>`;
-  }
+  html += firmTable(d.table, isUs);
   box.innerHTML = html || '<p class="small muted">この銘柄のレーティング情報は見つかりませんでした（アナリストが評価していない銘柄もあります）。</p>';
-  box.insertAdjacentHTML('beforeend', '<p class="notice" style="margin-top:8px">レーティングは証券会社のアナリストの意見で、当たるとは限りません。参考の一つにしてください。</p>');
+  box.insertAdjacentHTML('beforeend', `<p class="notice" style="margin-top:8px">${isUs ? '' : '日本株の各社の評価は、ニュースの見出しから自動で読み取っています（証券会社名をタップすると元の記事が開きます）。'}レーティングはアナリストの意見で、当たるとは限りません。</p>`);
 }
 
 export async function updateRatings(st, mode) {
@@ -63,31 +72,42 @@ export async function updateRatings(st, mode) {
 }
 
 // ---------------- PTS ----------------
-// ジャパンネクスト証券の取引時間（デイタイム 8:20〜16:00 / ナイトタイム 16:30〜23:59）
+// ジャパンネクスト証券の取引時間（デイタイム 8:20〜16:00 / ナイトタイム 17:00〜翌6:00）
 export function ptsSession(now = new Date()) {
   const jst = new Date(now.getTime() + 9 * 3600 * 1000);
   const day = jst.getUTCDay();
   const m = jst.getUTCHours() * 60 + jst.getUTCMinutes();
-  if (day === 0 || day === 6) return { open: false, label: '土日はお休みです' };
-  if (m >= 8 * 60 + 20 && m < 16 * 60) return { open: true, label: 'デイタイム取引中（8:20〜16:00）' };
-  if (m >= 16 * 60 + 30) return { open: true, label: 'ナイトタイム取引中（16:30〜23:59）' };
-  return { open: false, label: m < 8 * 60 + 20 ? '朝8:20から取引できます' : '16:30からナイトタイムが始まります' };
+  const weekday = (d) => d >= 1 && d <= 5;
+  if (weekday(day) && m >= 8 * 60 + 20 && m < 16 * 60) return { open: true, label: 'デイタイム取引中（8:20〜16:00）' };
+  if (weekday(day) && m >= 17 * 60) return { open: true, label: 'ナイトタイム取引中（17:00〜翌6:00）' };
+  // 夜中〜朝6時は前の日のナイトタイムの続き（月曜の朝は休み）
+  if (m < 6 * 60 && weekday(day - 1 < 0 ? 6 : day - 1) && day !== 1) return { open: true, label: 'ナイトタイム取引中（17:00〜翌6:00）' };
+  if (!weekday(day)) return { open: false, label: '土日はお休みです' };
+  return { open: false, label: m < 8 * 60 + 20 ? '朝8:20から取引できます' : '17:00からナイトタイムが始まります' };
 }
 
 export function updatePts(st, mode) {
   if (mode !== 'stock') return;
   const box = $('pts-box');
   const code = (st.symbol || '').replace(/\.T$/, '');
+  const s = ptsSession();
+  const rankings = `
+    <h3>今夜のPTSで動いている株（ランキング）</h3>
+    <div class="stack">
+      <a class="btn block" href="https://kabutan.jp/warning/pts_night_trading_value_ranking" target="_blank" rel="noopener noreferrer">売買の金額が多い株の一覧 ↗</a>
+      <a class="btn block" href="https://kabutan.jp/warning/pts_night_volume_ranking" target="_blank" rel="noopener noreferrer">たくさん売買された株の一覧 ↗</a>
+    </div>`;
   if (!/^[0-9][0-9A-Z]{3}$/.test(code)) {
-    box.innerHTML = '<p class="small muted">個別の会社の株を表示すると、PTSの値段を確認できます（指数にはPTSはありません）。</p>';
+    box.innerHTML = `<div class="li-head" style="margin-bottom:8px"><span class="name small">今のPTS</span><span class="badge ${s.open ? 'ok' : 'neutral'}">${esc(s.label)}</span></div>
+      <p class="small muted">個別の会社の株を表示すると、その株のPTSの値段のページを開けます（指数にはPTSはありません）。</p>${rankings}`;
     return;
   }
-  const s = ptsSession();
   box.innerHTML = `
     <div class="li-head" style="margin-bottom:8px"><span class="name small">今のPTS</span><span class="badge ${s.open ? 'ok' : 'neutral'}">${esc(s.label)}</span></div>
     <div class="stack">
-      <a class="btn block" href="https://kabutan.jp/stock/?code=${encodeURIComponent(code)}" target="_blank" rel="noopener noreferrer">株探でPTSの値段を見る ↗</a>
-      <a class="btn block" href="https://finance.yahoo.co.jp/quote/${encodeURIComponent(code)}.T" target="_blank" rel="noopener noreferrer">Yahoo!ファイナンスで見る ↗</a>
+      <a class="btn primary block" href="https://finance.yahoo.co.jp/quote/${encodeURIComponent(code)}.T" target="_blank" rel="noopener noreferrer">${esc(st.name || code)} のPTSの値段を見る ↗</a>
+      <a class="btn block" href="https://kabutan.jp/stock/?code=${encodeURIComponent(code)}" target="_blank" rel="noopener noreferrer">株探で見る ↗</a>
     </div>
-    <p class="small muted" style="margin:8px 0 0">PTSの値段は無料で自動取得できる公式の仕組みがないため、ボタンから各サイトのページを開いて確認します。iSPEED でも「PTS」の値段を確認できます。</p>`;
+    ${rankings}
+    <p class="small muted" style="margin:8px 0 0">PTSの値段を載せているサイトは、どこも利用規約でプログラムによる自動取得を禁止しているため、このサイトの中には直接表示できません。ボタンを押すと、その株のページ（PTSの値段が載っている場所）がすぐ開きます。</p>`;
 }

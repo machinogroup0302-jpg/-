@@ -10,7 +10,9 @@ import { getNews } from './lib/news.js';
 import { searchListings, listingMeta, nameFromCache, getListings } from './lib/listings.js';
 import { usName, searchUs } from './lib/usstocks.js';
 import { getRatings } from './lib/ratings.js';
+import { getFundamentals } from './lib/fundamentals.js';
 import { INDEX_NAMES } from './lib/market.js';
+import { fxName } from './public/js/fxpairs.js';
 import { startScan, scanStatus } from './lib/scanner.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -121,7 +123,7 @@ async function handleApi(req, res, url) {
       const data = await getChart(url.searchParams.get('symbol'), url.searchParams.get('tf') || '1h');
       // 会社名を日本語（米国株はカタカナ）にする
       const jpName = /\.T$/.test(data.symbol) ? nameFromCache(data.symbol.replace(/\.T$/, '')) : null;
-      return json(res, 200, { ...data, name: INDEX_NAMES[data.symbol] || jpName || usName(data.symbol) || data.name });
+      return json(res, 200, { ...data, name: INDEX_NAMES[data.symbol] || fxName(data.symbol) || jpName || usName(data.symbol) || data.name });
     } catch (e) {
       return json(res, 502, { error: e.message });
     }
@@ -141,6 +143,15 @@ async function handleApi(req, res, url) {
       const symbol = String(url.searchParams.get('symbol') || '').toUpperCase().slice(0, 20);
       if (!/^[A-Z0-9^.=\-]{1,20}$/.test(symbol)) return json(res, 400, { error: '銘柄コードが正しくありません' });
       return json(res, 200, await getRatings(symbol, String(url.searchParams.get('name') || '').slice(0, 60)));
+    } catch (e) {
+      return json(res, 502, { error: e.message });
+    }
+  }
+  if (route === 'GET /api/fundamentals') {
+    try {
+      const symbol = String(url.searchParams.get('symbol') || '').toUpperCase().slice(0, 20);
+      if (!/^[A-Z0-9^.=\-]{1,20}$/.test(symbol)) return json(res, 400, { error: '銘柄コードが正しくありません' });
+      return json(res, 200, await getFundamentals(symbol, String(url.searchParams.get('name') || '').slice(0, 60)));
     } catch (e) {
       return json(res, 502, { error: e.message });
     }

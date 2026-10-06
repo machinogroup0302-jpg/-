@@ -4,9 +4,10 @@ import { sma, bollinger, rsi, macd, ichimoku, technicalSummary } from './indicat
 import { supportResistance, trendlines, pivots } from './levels.js';
 import { monteCarlo, futureTimes } from './forecast.js';
 import { vwap } from './volume.js';
-import { renderOrderflow } from './orderflow.js';
 import { term } from './glossary.js';
 import { stopInfo } from './limits.js';
+import { getFavs, isFav, toggleFav, removeFav, favCode } from './favorites.js';
+import { searchFx } from './fxpairs.js';
 
 const LC = window.LightweightCharts;
 
@@ -233,7 +234,6 @@ function render() {
   renderLevels(levels, tls, pv, last.close, digits);
   renderForecast(fc, digits);
   renderStop(raw, digits);
-  renderOrderflow(state.data);
 }
 
 // ---------------- ストップ高・ストップ安 ----------------
@@ -422,17 +422,42 @@ export function setMode(next) {
   loadChart();
 }
 
-export function renderFavorites(favs) {
-  $('fav-chips').innerHTML = favs.map((f) => `<button class="chip" data-code="${esc(f.code)}" data-name="${esc(f.name)}">${esc(f.name)}</button>`).join('');
-  $('symbol-list').innerHTML = favs.map((f) => `<option value="${esc(f.code)}">${esc(f.name)}</option>`).join('');
+let editingFavs = false;
+
+export function renderFavorites() {
+  const favs = getFavs(mode);
+  $('fav-chips').innerHTML = favs.map((f) => `<button class="chip${editingFavs ? ' editing' : ''}" data-code="${esc(f.code)}" data-name="${esc(f.name)}">${esc(f.name)}${editingFavs ? '<span class="x" aria-label="消す">×</span>' : ''}</button>`).join('')
+    + `<button class="chip" data-edit="1">${editingFavs ? '✓ 編集を終わる' : '✎ 編集'}</button>`;
   markFav();
 }
 
 function markFav() {
-  document.querySelectorAll('#fav-chips .chip').forEach((b) => {
-    const code = b.dataset.code.toUpperCase();
-    b.setAttribute('aria-pressed', String(state.symbol === code || state.symbol === `${code}=X` || state.symbol === `${code}.T`));
+  document.querySelectorAll('#fav-chips .chip[data-code]').forEach((b) => {
+    b.setAttribute('aria-pressed', String(!editingFavs && favCode(b.dataset.code) === favCode(state.symbol)));
   });
+  const star = $('fav-star');
+  const on = isFav(mode, state.symbol);
+  star.setAttribute('aria-pressed', String(on));
+  star.textContent = on ? '★ お気に入り登録済み' : '☆ お気に入りに追加';
+}
+
+// ---------------- 検索の候補 ----------------
+function showSuggest(items) {
+  const ul = $('suggest');
+  if (!items.length) { ul.hidden = true; return; }
+  ul.innerHTML = items.map((x) => `<li tabindex="0" data-symbol="${esc(x.symbol)}" data-name="${esc(x.name)}"><span class="code">${esc(x.code)}</span><b>${esc(x.name)}</b><span class="sub">${esc(x.sub || '')}</span></li>`).join('');
+  ul.hidden = false;
+}
+
+async function suggestFor(q) {
+  if (mode === 'fx') return searchFx(q).map((p) => ({ code: p.code, symbol: p.symbol, name: p.name }));
+  if (!q) return [];
+  if (mode === 'us') {
+    const { items } = await api(`/api/us/search?q=${encodeURIComponent(q)}`);
+    return items.map((x) => ({ code: x.symbol, symbol: x.symbol, name: x.name, sub: x.sector }));
+  }
+  const { items } = await api(`/api/stocks/search?q=${encodeURIComponent(q)}`);
+  return items.map((x) => ({ code: x.code, symbol: `${x.code}.T`, name: x.name, sub: `${x.market}・${x.sector}` }));
 }
 
 function renderControls() {
@@ -452,6 +477,12 @@ export function initChartView() {
     if (!v) return;
     $('symbol-input').value = '';
     $('symbol-input').blur();
+    $('suggest').hidden = true;
+    // 為替は「どるえん」「ドル円」でも探せる
+    if (mode === 'fx' && !/^[A-Za-z]{6}(=X)?$/.test(v)) {
+      const hit = searchFx(v)[0];
+      if (hit) return loadChart(hit.symbol, hit.name);
+    }
     // 米国株は「AAPL アップル」のような候補や、カタカナでも探せる
     if (mode === 'us') {
       const tick = v.match(/^([\^A-Za-z.\-]{1,10})(\s|$)/);
@@ -481,28 +512,39 @@ export function initChartView() {
     const fav = [...document.querySelectorAll('#fav-chips .chip')].find((b) => b.dataset.code.toUpperCase() === v.toUpperCase());
     loadChart(v, fav?.dataset.name);
   });
-  // 株は入力中に候補を出す
+  // 入力中に候補を出す（ひらがな・カタカナ・コードの一部でもOK）
   let timer;
-  $('symbol-input').addEventListener('input', () => {
-    if (mode === 'fx') return;
+  const refreshSuggest = () => {
     clearTimeout(timer);
     const q = $('symbol-input').value.trim();
-    if (!q || /^\S+ \S/.test(q)) return;
     timer = setTimeout(async () => {
-      try {
-        if (mode === 'us') {
-          const { items } = await api(`/api/us/search?q=${encodeURIComponent(q)}`);
-          $('symbol-list').innerHTML = items.map((x) => `<option value="${esc(x.symbol)} ${esc(x.name)}">${esc(x.sector)}</option>`).join('');
-        } else {
-          const { items } = await api(`/api/stocks/search?q=${encodeURIComponent(q)}`);
-          $('symbol-list').innerHTML = items.map((x) => `<option value="${esc(x.code)} ${esc(x.name)}">${esc(x.market)}・${esc(x.sector)}</option>`).join('');
-        }
-      } catch { /* 候補が出せなくても入力はできる */ }
-    }, 250);
+      try { showSuggest(await suggestFor(q)); } catch { /* 候補が出せなくても入力はできる */ }
+    }, mode === 'fx' ? 0 : 200);
+  };
+  $('symbol-input').addEventListener('input', refreshSuggest);
+  $('symbol-input').addEventListener('focus', () => { if (mode === 'fx' || $('symbol-input').value.trim()) refreshSuggest(); });
+  $('suggest').addEventListener('click', (e) => {
+    const li = e.target.closest('li[data-symbol]');
+    if (!li) return;
+    $('suggest').hidden = true;
+    $('symbol-input').value = '';
+    $('symbol-input').blur();
+    loadChart(li.dataset.symbol, li.dataset.name);
+  });
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#symbol-form') && !e.target.closest('#suggest')) $('suggest').hidden = true;
+  });
+  // お気に入りの追加・削除
+  $('fav-star').addEventListener('click', () => {
+    toggleFav(mode, state.symbol, state.name);
+    renderFavorites();
   });
   $('fav-chips').addEventListener('click', (e) => {
     const b = e.target.closest('.chip');
-    if (b) loadChart(b.dataset.code, b.dataset.name);
+    if (!b) return;
+    if (b.dataset.edit) { editingFavs = !editingFavs; renderFavorites(); return; }
+    if (editingFavs) { removeFav(mode, b.dataset.code); renderFavorites(); return; }
+    loadChart(b.dataset.code, b.dataset.name);
   });
   $('tf-seg').addEventListener('click', (e) => {
     const b = e.target.closest('button');

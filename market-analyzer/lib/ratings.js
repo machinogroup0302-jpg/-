@@ -50,13 +50,16 @@ export function parseSummary(json) {
   if (!r) return null;
   const fd = r.financialData || {};
   const trend = (r.recommendationTrend?.trend || []).find((t) => t.period === '0m') || r.recommendationTrend?.trend?.[0] || null;
-  const history = (r.upgradeDowngradeHistory?.history || []).slice(0, 12).map((h) => ({
+  const history = (r.upgradeDowngradeHistory?.history || []).slice(0, 20).map((h) => ({
     date: new Date(raw(h.epochGradeDate) * 1000).toISOString().slice(0, 10),
     firm: firmJa(h.firm),
     from: h.fromGrade ? gradeJa(h.fromGrade) : '',
     to: gradeJa(h.toGrade),
     action: ACTIONS[h.action] || '評価',
     up: h.action === 'up', down: h.action === 'down',
+    // 各社の目標株価（変更前 → 変更後）
+    targetFrom: raw(h.priorPriceTarget) || null,
+    targetTo: raw(h.currentPriceTarget) || null,
   }));
   const mean = raw(fd.recommendationMean);
   return {
@@ -71,8 +74,8 @@ export function parseSummary(json) {
   };
 }
 
-async function fetchSummary(symbol) {
-  const modules = 'financialData,recommendationTrend,upgradeDowngradeHistory';
+// Yahoo の詳しいデータ（モジュールを選んで取得）
+export async function fetchQuoteSummary(symbol, modules) {
   for (let attempt = 0; attempt < 2; attempt++) {
     const s = await getSession(attempt > 0);
     const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=${modules}&crumb=${encodeURIComponent(s.crumb)}`;
@@ -80,9 +83,36 @@ async function fetchSummary(symbol) {
     if (res.status === 401 || res.status === 403) continue; // 通行証の期限切れ → 取り直す
     if (res.status === 404) return null;
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return parseSummary(await res.json());
+    return res.json();
   }
   return null;
+}
+
+async function fetchSummary(symbol) {
+  const json = await fetchQuoteSummary(symbol, 'financialData,recommendationTrend,upgradeDowngradeHistory');
+  return json ? parseSummary(json) : null;
+}
+
+// 日本の証券会社の名前（ニュースの見出しから探す）
+const JP_FIRMS = ['三菱UFJモルガン・スタンレー', 'モルガン・スタンレーMUFG', 'モルガンS', 'SMBC日興', 'ＳＭＢＣ日興', '野村', '大和', 'みずほ', 'ゴールドマン', 'GS', 'JPモルガン', 'ＪＰモルガン', 'シティ', 'BofA', 'ＢｏｆＡ', 'UBS', 'ＵＢＳ', 'マッコーリー', 'ジェフリーズ', '岩井コスモ', '東海東京', 'いちよし', '岡三', '水戸', 'SBI', 'ＳＢＩ', '楽天', 'マネックス', 'CLSA', 'ＣＬＳＡ', 'バークレイズ', 'ドイツ', 'HSBC', 'ＨＳＢＣ', 'BNP', 'みずほ証券', 'アイザワ', 'Ｔ＆Ｄ'];
+const JP_GRADES = [[/強気|買い|オーバーウエート|アウトパフォーム|Buy|1/, '買い'], [/中立|ニュートラル|イコールウエート|ホールド|3/, '中立'], [/弱気|売り|アンダーウエート|アンダーパフォーム/, '売り']];
+
+// 「みずほ証券、トヨタの目標株価を3000円→3500円に引き上げ」のような見出しを表の1行にする
+export function parseRatingHeadline(title) {
+  const t = String(title).normalize('NFKC');
+  const firm = JP_FIRMS.map((f) => f.normalize('NFKC')).find((f) => t.includes(f)) || '';
+  const prices = [...t.matchAll(/(\d{1,3}(?:,\d{3})+|\d{2,7})円/g)].map((m) => Number(m[1].replace(/,/g, '')));
+  const action = /格上げ/.test(t) ? '格上げ' : /格下げ/.test(t) ? '格下げ' : /新規/.test(t) ? '新しく評価を開始' : /引き上げ|引上げ/.test(t) ? '目標株価を引き上げ' : /引き下げ|引下げ/.test(t) ? '目標株価を引き下げ' : /据え置/.test(t) ? '据え置き' : '';
+  const grade = (JP_GRADES.find(([re]) => re.test(t.replace(/\d/g, ''))) || [])[1] || '';
+  if (!firm && !prices.length) return null;
+  return {
+    firm: firm ? (/証券|銀行/.test(firm) ? firm : `${firm}証券`.replace(/(GS|BofA|UBS|CLSA|HSBC|BNP|ドイツ|シティ|バークレイズ|マッコーリー|ジェフリーズ|ゴールドマン|JPモルガン|モルガンS)証券/, '$1')) : '（見出しを確認）',
+    to: grade,
+    action,
+    targetFrom: prices.length >= 2 ? prices[0] : null,
+    targetTo: prices.length ? prices[prices.length - 1] : null,
+    up: /格上げ|引き上げ|引上げ/.test(t), down: /格下げ|引き下げ|引下げ/.test(t),
+  };
 }
 
 const RATING_WORDS = /目標株価|レーティング|格上げ|格下げ|投資判断|強気|弱気|オーバーウエート|アンダーウエート|買い推奨|新規カバレッジ/;
@@ -100,7 +130,13 @@ export async function getRatings(symbol, name) {
       ? getNews(`${name} 目標株価`).then((n) => n.items.filter((x) => RATING_WORDS.test(x.title) && x.verdict !== '除外').slice(0, 10)).catch(() => [])
       : Promise.resolve([]),
   ]);
-  const data = { symbol, summary, news };
+  // 日本株はニュースの見出しから、各社の評価と目標株価の一覧を作る
+  const fromNews = news.map((n) => {
+    const r = parseRatingHeadline(n.title);
+    return r ? { ...r, date: n.date ? new Date(n.date).toISOString().slice(0, 10) : '', url: n.url, title: n.title } : null;
+  }).filter(Boolean);
+  const table = [...(summary?.history || []), ...fromNews].sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, 25);
+  const data = { symbol, summary, news, table };
   cache.set(key, { at: Date.now(), data });
   return data;
 }

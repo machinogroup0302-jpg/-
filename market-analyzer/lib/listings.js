@@ -77,7 +77,7 @@ export function parseNewListings(html) {
       .replace(code[1], '')
       .replace(/[（）()]/g, ' ')
       .split(' ')
-      .filter((w) => w && !/^\d/.test(w) && !/上場|市場|プライム|スタンダード|グロース|日$/.test(w))[0] || '';
+      .filter((w) => w && w.length >= 2 && !/^\d/.test(w) && !/^株式会社$|上場|市場|プライム|スタンダード|グロース|日$/.test(w))[0] || '';
     out.push({ date: `${date[1]}-${date[2].padStart(2, '0')}-${date[3].padStart(2, '0')}`, code: code[1], name });
   }
   const seen = new Set();

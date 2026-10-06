@@ -1,147 +1,79 @@
-// 注文・約定分析（株）：価格帯別出来高・買いと売りの勢い・板と歩み値
-import { api, $, esc, fmtPrice, loadImage, imageToDataUrl, toast } from './util.js';
+// 注文・約定分析（株）：買いと売り・積極的な買いと売り・大口の買いと売りを円グラフで表示
+import { api, $, esc } from './util.js';
 import { term } from './glossary.js';
-import { volumeProfile, buySellPressure, volumeSpikes, summarizeTicks } from './volume.js';
+import { flowBreakdown, lastSession } from './volume.js';
 
-const fmtVol = (v) => (v >= 1e8 ? `${(v / 1e8).toFixed(1)}億` : v >= 1e4 ? `${(v / 1e4).toFixed(1)}万` : Math.round(v).toLocaleString('ja-JP'));
+let lastKey = '';
 
-// 価格帯別出来高（横向きの棒グラフ。赤=買い、青=売り）
-function profileSvg(p, price, digits) {
-  const rows = p.rows.slice().reverse(); // 上が高い値段
-  const W = 340, rowH = 13, labelW = 74, H = rows.length * rowH + 4;
-  const max = Math.max(...rows.map((r) => r.total), 1);
-  const barW = W - labelW - 8;
-  const y = (pr) => 2 + ((p.rows[p.rows.length - 1].to - pr) / (p.rows[p.rows.length - 1].to - p.rows[0].from)) * (rows.length * rowH);
-  return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="価格帯別出来高">
-    <rect x="${labelW}" y="${y(p.valueHigh)}" width="${barW}" height="${y(p.valueLow) - y(p.valueHigh)}" fill="var(--accent)" opacity=".08"/>
-    ${rows.map((r, i) => {
-      const top = 2 + i * rowH;
-      const wb = (r.buy / max) * barW, ws = (r.sell / max) * barW;
-      const isPoc = r === p.poc;
-      return `<text x="${labelW - 6}" y="${top + 10}" text-anchor="end" font-size="9" fill="${isPoc ? 'var(--text)' : 'var(--muted)'}" font-weight="${isPoc ? 700 : 400}">${fmtPrice(r.mid, digits)}</text>
-        <rect x="${labelW}" y="${top + 1}" width="${wb}" height="${rowH - 3}" rx="2" fill="var(--buy)" opacity="${isPoc ? 1 : 0.75}"/>
-        <rect x="${labelW + wb}" y="${top + 1}" width="${ws}" height="${rowH - 3}" rx="2" fill="var(--sell)" opacity="${isPoc ? 1 : 0.75}"/>`;
-    }).join('')}
-    <line x1="${labelW}" x2="${W}" y1="${y(price)}" y2="${y(price)}" stroke="var(--text)" stroke-dasharray="3 3"/>
-    <text x="${W - 2}" y="${y(price) - 3}" text-anchor="end" font-size="9" fill="var(--text)">現在値</text>
-  </svg>`;
+// ドーナツ形の円グラフ
+function donut(parts, center) {
+  const R = 52, C = 2 * Math.PI * R;
+  let offset = 0;
+  const arcs = parts.filter((p) => p.value > 0).map((p) => {
+    const len = p.value * C;
+    const arc = `<circle r="${R}" cx="70" cy="70" fill="none" stroke="${p.color}" stroke-width="22" stroke-dasharray="${len} ${C - len}" stroke-dashoffset="${-offset}" transform="rotate(-90 70 70)"/>`;
+    offset += len;
+    return arc;
+  }).join('');
+  return `<svg viewBox="0 0 140 140" width="140" height="140" role="img" aria-label="${esc(parts.map((p) => `${p.label} ${Math.round(p.value * 100)}%`).join('、'))}">
+    <circle r="${R}" cx="70" cy="70" fill="none" stroke="var(--surface-2)" stroke-width="22"/>${arcs}
+    <text x="70" y="66" text-anchor="middle" font-size="13" font-weight="800" fill="var(--text)">${esc(center[0])}</text>
+    <text x="70" y="84" text-anchor="middle" font-size="12" fill="var(--muted)">${esc(center[1])}</text></svg>`;
 }
 
-// 買いと売りの勢い（足ごとの差＋積み上げ線）
-function pressureSvg(pr) {
-  const list = pr.slice(-40);
-  const W = 340, H = 140, mid = 70;
-  const maxD = Math.max(...list.map((p) => Math.abs(p.delta)), 1);
-  const cums = list.map((p) => p.cum);
-  const cmin = Math.min(...cums), cmax = Math.max(...cums);
-  const bw = W / list.length;
-  const cy = (v) => 10 + (1 - (v - cmin) / (cmax - cmin || 1)) * (H - 20);
-  return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="買いと売りの勢い">
-    <line x1="0" x2="${W}" y1="${mid}" y2="${mid}" stroke="var(--border)"/>
-    ${list.map((p, i) => {
-      const h = (Math.abs(p.delta) / maxD) * (mid - 6);
-      return `<rect x="${i * bw + 1}" y="${p.delta >= 0 ? mid - h : mid}" width="${Math.max(bw - 2, 1)}" height="${h}" rx="1" fill="${p.delta >= 0 ? 'var(--buy)' : 'var(--sell)'}" opacity=".7"/>`;
-    }).join('')}
-    <path d="${list.map((p, i) => `${i ? 'L' : 'M'}${(i * bw + bw / 2).toFixed(1)},${cy(p.cum).toFixed(1)}`).join('')}" fill="none" stroke="var(--warn)" stroke-width="2"/>
-  </svg>`;
+function legend(parts) {
+  return `<div class="small" style="display:grid;gap:2px">${parts.map((p) => `<div><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${p.color};margin-right:6px;vertical-align:-1px"></i>${esc(p.label)} <b class="num">${Math.round(p.value * 100)}%</b></div>`).join('')}</div>`;
 }
 
-export function renderOrderflow(data) {
-  const box = $('orderflow-box');
-  const candles = data.candles;
-  const p = volumeProfile(candles.slice(-200));
-  if (!p) {
-    box.innerHTML = '<p class="small muted">為替には出来高のデータがないため、この分析は株（日本株・指数）で使えます。板・歩み値のスクリーンショットからの分析は下から使えます。</p>';
-    return;
-  }
-  const price = candles[candles.length - 1].close;
-  const digits = 1; // 株の値段は小数点1桁まで
-  const pr = buySellPressure(candles);
-  const recent = pr.slice(-20);
-  const buy = recent.reduce((s, x) => s + x.buy, 0), sell = recent.reduce((s, x) => s + x.sell, 0);
-  const buyPct = Math.round((buy / (buy + sell || 1)) * 100);
-  const spikes = volumeSpikes(candles).slice(-5).reverse();
-  const where = price > p.valueHigh ? '出来高が多い価格帯より上にあり、上値が軽い状態です' : price < p.valueLow ? '出来高が多い価格帯より下にあり、戻ると売られやすい状態です' : '出来高が多い価格帯の中にあり、もみ合いやすい状態です';
-  box.innerHTML = `
-    <div class="grid2">
-      <div class="stat"><div class="label">直近20本の買いの割合（推定）</div><div class="value ${buyPct >= 50 ? 'plus' : 'minus'}">${buyPct}%</div></div>
-      <div class="stat"><div class="label">${term('poc', 'いちばん売買が多い値段')}</div><div class="value">${fmtPrice(p.poc.mid, digits)}</div></div>
+function block(title, parts, center) {
+  return `<div class="flow-item"><h3>${title}</h3><div class="flow-row">${donut(parts, center)}${legend(parts)}</div></div>`;
+}
+
+function verdict(a, b) {
+  if (a >= 0.55) return ['買いが優勢', 'plus'];
+  if (b >= 0.55) return ['売りが優勢', 'minus'];
+  return ['ほぼ互角', ''];
+}
+
+export function renderFlow(f) {
+  const BUY = 'var(--buy)', SELL = 'var(--sell)', GRAY = 'var(--neutral)';
+  const [v1, c1] = verdict(f.buySell.buy, f.buySell.sell);
+  const aggTotal = f.aggressive.buy + f.aggressive.sell || 1;
+  const [v2] = verdict(f.aggressive.buy / aggTotal, f.aggressive.sell / aggTotal);
+  const bigTotal = f.big.buy + f.big.sell;
+  const [v3] = bigTotal > 0.02 ? verdict(f.big.buy / bigTotal, f.big.sell / bigTotal) : ['大口は少ない'];
+  const time = (t) => new Date(t * 1000).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+  return `
+    <div class="li-head" style="margin-bottom:6px"><span class="name">今日の売買のまとめ</span><span class="badge ${c1 === 'plus' ? 'buy' : c1 === 'minus' ? 'sell' : 'neutral'}">${v1}</span></div>
+    <p class="small muted" style="margin:0 0 8px">${time(f.from)}〜${time(f.to)} の5分ごとの売買から推定</p>
+    <div class="flow-grid">
+      ${block('買いと売り', [{ label: '買い', value: f.buySell.buy, color: BUY }, { label: '売り', value: f.buySell.sell, color: SELL }], [`買い${Math.round(f.buySell.buy * 100)}%`, v1])}
+      ${block(term('aggressive', '積極買い・積極売り'), [{ label: '積極買い', value: f.aggressive.buy, color: BUY }, { label: '積極売り', value: f.aggressive.sell, color: SELL }, { label: '値段変わらず', value: f.aggressive.flat, color: GRAY }], [`積極買い${Math.round(f.aggressive.buy * 100)}%`, v2])}
+      ${block(term('bigTrade', '大口の買い・売り'), [{ label: '大口の買い', value: f.big.buy, color: BUY }, { label: '大口の売り', value: f.big.sell, color: SELL }, { label: '小口（ふつうの量）', value: f.big.small, color: GRAY }], [`大口${Math.round(bigTotal * 100)}%`, v3])}
     </div>
-    <p class="small" style="margin:8px 0">現在値は${where}。</p>
-    <h3>${term('profile', '値段ごとの売買の量（価格帯別出来高）')}</h3>
-    <p class="small muted" style="margin:0 0 4px">棒が長い値段ほど、たくさん売買された＝意識されやすい値段です。<span class="plus">■</span>買い <span class="minus">■</span>売り（推定）。薄い帯は出来高の70%が集まる範囲です。</p>
-    ${profileSvg(p, price, digits)}
-    <h3>${term('pressure', '買いと売りの勢い')}（最近40本）</h3>
-    <p class="small muted" style="margin:0 0 4px">棒が上なら買い優勢、下なら売り優勢。黄色の線は積み上げで、右上がりなら買いが続いています。</p>
-    ${pressureSvg(pr)}
-    ${spikes.length ? `<h3>${term('volume', '売買の量（出来高）')}が急に増えた日・時間</h3><ul class="list">${spikes.map((s) => `<li class="small"><span class="badge ${s.up ? 'buy' : 'sell'}">${s.up ? '上げ' : '下げ'}</span> ${new Date(s.time * 1000).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}　平均の${s.ratio.toFixed(1)}倍</li>`).join('')}</ul>` : ''}
-    <p class="notice" style="margin-top:8px">買い・売りの量は、ローソク足の形からの推定です。正確な内訳は下の「板・歩み値」で確認できます。</p>`;
+    <p class="notice" style="margin-top:8px">証券会社の板や歩み値（1件ごとの売買の記録）は無料では手に入らないため、5分ごとの値動きと売買の量から推定しています。正確な数字ではなく「傾向」として見てください。</p>`;
 }
 
-// ---------- 板・歩み値（スクリーンショット→AI） ----------
-function boardSvg(board) {
-  const rows = board.slice(0, 20);
-  const W = 340, rowH = 16, H = rows.length * rowH + 4, mid = W / 2;
-  const max = Math.max(...rows.map((r) => Math.max(r.sell_qty, r.buy_qty)), 1);
-  const half = mid - 40;
-  return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="板の厚さ">
-    ${rows.map((r, i) => {
-      const top = 2 + i * rowH;
-      const ws = (r.sell_qty / max) * half, wb = (r.buy_qty / max) * half;
-      return `<rect x="${mid - 36 - ws}" y="${top + 2}" width="${ws}" height="${rowH - 4}" rx="2" fill="var(--sell)" opacity=".8"/>
-        <text x="${mid}" y="${top + 12}" text-anchor="middle" font-size="10" fill="var(--text)">${fmtPrice(r.price, 0)}</text>
-        <rect x="${mid + 36}" y="${top + 2}" width="${wb}" height="${rowH - 4}" rx="2" fill="var(--buy)" opacity=".8"/>
-        ${r.sell_qty ? `<text x="${mid - 40 - ws}" y="${top + 12}" text-anchor="end" font-size="9" fill="var(--muted)">${fmtVol(r.sell_qty)}</text>` : ''}
-        ${r.buy_qty ? `<text x="${mid + 40 + wb}" y="${top + 12}" font-size="9" fill="var(--muted)">${fmtVol(r.buy_qty)}</text>` : ''}`;
-    }).join('')}
-  </svg>`;
+export async function updateOrderflow(st, mode) {
+  const box = $('orderflow-box');
+  if (mode === 'fx') return;
+  const key = st.symbol;
+  if (key === lastKey && box.dataset.loaded) return;
+  lastKey = key;
+  box.dataset.loaded = '';
+  box.innerHTML = '<p class="small muted"><span class="spinner"></span> 読み込み中…</p>';
+  try {
+    const data = await api(`/api/chart?symbol=${encodeURIComponent(st.symbol)}&tf=5m`);
+    if (key !== lastKey) return;
+    const f = flowBreakdown(lastSession(data.candles));
+    box.innerHTML = f ? renderFlow(f) : '<p class="small muted">売買の量のデータがありません（指数や、取引が少ない銘柄では表示できません）。</p>';
+    box.dataset.loaded = '1';
+  } catch (e) {
+    if (key === lastKey) box.innerHTML = `<p class="error">${esc(e.message)}</p>`;
+  }
 }
 
-function renderBook(r) {
-  const s = summarizeTicks(r.ticks);
-  const sellTotal = r.board.reduce((a, b) => a + b.sell_qty, 0), buyTotal = r.board.reduce((a, b) => a + b.buy_qty, 0);
-  const tickMax = Math.max(...s.rows.map((x) => x.buy + x.sell + x.other), 1);
-  $('book-result').innerHTML = `
-    <p class="small" style="margin:10px 0">${esc(r.comment)}</p>
-    ${r.board.length ? `<h3>${term('board', '板')}の厚さ（注文がたまっている量）</h3>
-      <div class="grid2" style="margin-bottom:6px">
-        <div class="stat"><div class="label">売り注文の合計</div><div class="value minus">${fmtVol(sellTotal)}株</div></div>
-        <div class="stat"><div class="label">買い注文の合計</div><div class="value plus">${fmtVol(buyTotal)}株</div></div>
-      </div>
-      <p class="small muted" style="margin:0 0 4px">左が売り注文、右が買い注文。長い棒の値段は「壁」になりやすいです。</p>
-      ${boardSvg(r.board)}` : ''}
-    ${s.rows.length ? `<h3>${term('ticks', '歩み値')}（実際に売買が成立した記録）の集計</h3>
-      <div class="grid2" style="margin-bottom:6px">
-        <div class="stat"><div class="label">買いの約定</div><div class="value plus">${fmtVol(s.buy)}株</div></div>
-        <div class="stat"><div class="label">売りの約定</div><div class="value minus">${fmtVol(s.sell)}株</div></div>
-      </div>
-      <div class="bars">${s.rows.slice(0, 15).map((x) => {
-        const t = x.buy + x.sell + x.other;
-        return `<div class="bar"><span>${fmtPrice(x.price, 0)}</span>
-          <span class="track"><span class="fill" style="left:0;width:${(x.buy / tickMax) * 100}%;background:var(--buy)"></span><span class="fill" style="left:${(x.buy / tickMax) * 100}%;width:${(x.sell / tickMax) * 100}%;background:var(--sell)"></span></span>
-          <span class="val">${fmtVol(t)}株</span></div>`;
-      }).join('')}</div>
-      ${s.big.length ? `<h3>大口の売買（ふつうの5倍以上の株数）</h3><ul class="list">${s.big.slice(0, 8).map((t) => `<li class="small"><span class="badge ${t.side === '買い' ? 'buy' : t.side === '売り' ? 'sell' : 'neutral'}">${esc(t.side)}</span> ${esc(t.time)}　${fmtPrice(t.price, 0)}　<b>${fmtVol(t.qty)}株</b></li>`).join('')}</ul>` : ''}` : ''}`;
+// 自動更新のときに、もう一度読み込めるようにする
+export function resetOrderflow() {
+  lastKey = '';
 }
-
-export function initOrderflow() {
-  $('book-img').addEventListener('change', async (e) => {
-    const f = e.target.files[0];
-    e.target.value = '';
-    if (!f) return;
-    const label = $('book-label');
-    label.classList.add('busy');
-    $('book-result').innerHTML = '<p class="small muted" style="margin-top:10px"><span class="spinner"></span> AIが板・歩み値を読み取っています…</p>';
-    try {
-      const img = await loadImage(f);
-      const r = await api('/api/ai/orderbook-image', { method: 'POST', body: { image: imageToDataUrl(img) } });
-      renderBook(r);
-    } catch (err) {
-      $('book-result').innerHTML = '';
-      toast(err.message);
-    } finally {
-      label.classList.remove('busy');
-    }
-  });
-}
-

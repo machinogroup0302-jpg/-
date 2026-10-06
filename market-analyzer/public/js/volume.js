@@ -102,3 +102,38 @@ export function summarizeTicks(ticks) {
   const big = ticks.filter((t) => median > 0 && t.qty >= median * 5);
   return { rows, buy, sell, big };
 }
+
+// 最新の1日（取引時間のまとまり）だけを取り出す。3時間以上あいたところで区切る
+export function lastSession(candles) {
+  let i = candles.length - 1;
+  while (i > 0 && candles[i].time - candles[i - 1].time < 3 * 3600) i--;
+  return candles.slice(i);
+}
+
+// 5分足から「買いと売り」「積極買いと積極売り」「大口の買いと売り」の割合を推定する
+export function flowBreakdown(candles) {
+  const list = candles.filter((c) => c.volume > 0);
+  if (list.length < 5) return null;
+  let buy = 0, sell = 0, aggBuy = 0, aggSell = 0, flat = 0, bigBuy = 0, bigSell = 0, small = 0;
+  const vols = list.map((c) => c.volume).sort((a, b) => a - b);
+  const median = vols[Math.floor(vols.length / 2)];
+  list.forEach((c, i) => {
+    const s = splitVolume(c);
+    buy += s.buy; sell += s.sell;
+    const prev = i > 0 ? list[i - 1].close : c.open;
+    if (c.close > prev) aggBuy += c.volume;
+    else if (c.close < prev) aggSell += c.volume;
+    else flat += c.volume;
+    if (c.volume >= median * 3) {
+      bigBuy += s.buy; bigSell += s.sell;
+    } else small += c.volume;
+  });
+  const total = buy + sell;
+  return {
+    total,
+    buySell: { buy: buy / total, sell: sell / total },
+    aggressive: { buy: aggBuy / total, sell: aggSell / total, flat: flat / total },
+    big: { buy: bigBuy / total, sell: bigSell / total, small: small / total },
+    from: list[0].time, to: list[list.length - 1].time,
+  };
+}
