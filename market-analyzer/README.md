@@ -75,3 +75,8 @@ SITE_PASSWORD=好きなパスワード npm start
 - ヒロセ通商（LION FX）: 会員ページやパソコン版の「取引履歴」「約定照会」から CSV を保存
 
 メニュー名は変わることがあります。列名は自動で判別し、うまくいかないときは画面で割り当てを直せます。
+
+## 自動更新
+
+`market-analyzer` の中身を更新して GitHub に保存すると、GitHub Actions（`.github/workflows/render-deploy.yml`）が Render の Deploy Hook を呼び出し、数分で新しい版に入れ替わります。
+Deploy Hook の URL は、GitHub の Secrets に `RENDER_DEPLOY_HOOK_URL` という名前で登録してあります。
