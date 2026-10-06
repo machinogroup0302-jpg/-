@@ -219,28 +219,33 @@ function universe(mode) {
   return [...favs, ...base].filter(([c]) => (seen.has(c.toUpperCase()) ? false : seen.add(c.toUpperCase())));
 }
 
+// 銘柄ごとの日足を、3つずつ並べて取ってくる
+async function loadCandles(syms, out) {
+  const list = [];
+  let done = 0;
+  const queue = [...syms];
+  const worker = async () => {
+    while (queue.length) {
+      const [code, name] = queue.shift();
+      try {
+        const d = await api(`/api/chart?symbol=${encodeURIComponent(code)}&tf=1d`);
+        if (d.candles.length >= 200) list.push({ symbol: d.symbol, name, candles: d.candles, fundRatio: null });
+      } catch { /* 取れない銘柄は飛ばす */ }
+      done++;
+      out.innerHTML = `<p class="small muted"><span class="spinner"></span> 過去のデータを読み込み中… ${done} / ${syms.length}</p>`;
+    }
+  };
+  await Promise.all([worker(), worker(), worker()]);
+  return list;
+}
+
 async function runPicks(mode) {
   const out = $('lab-pick');
   const btn = $('lab-pick-run');
   btn.disabled = true;
-  const syms = universe(mode);
-  const list = [];
   try {
     const regime = await loadRegime();
-    let done = 0;
-    const queue = [...syms];
-    const worker = async () => {
-      while (queue.length) {
-        const [code, name] = queue.shift();
-        try {
-          const d = await api(`/api/chart?symbol=${encodeURIComponent(code)}&tf=1d`);
-          if (d.candles.length >= 200) list.push({ symbol: d.symbol, name, candles: d.candles, fundRatio: null });
-        } catch { /* 取れない銘柄は飛ばす */ }
-        done++;
-        out.innerHTML = `<p class="small muted"><span class="spinner"></span> 過去のデータを読み込み中… ${done} / ${syms.length}</p>`;
-      }
-    };
-    await Promise.all([worker(), worker(), worker()]);
+    const list = await loadCandles(universe(mode), out);
     out.innerHTML = '<p class="small muted"><span class="spinner"></span> 計算しています…</p>';
     await new Promise((r) => setTimeout(r, 30));
     renderPicks(pickAndTrade(list, { kind: kindOf(mode), regime }), mode);
@@ -249,6 +254,100 @@ async function runPicks(mode) {
   } finally {
     btn.disabled = false;
   }
+}
+
+// ---------------- 全銘柄の売買一覧（理由つき） ----------------
+async function logUniverse(mode) {
+  const syms = universe(mode);
+  if (mode !== 'stock') return syms;
+  // 候補チェックが終わっていれば、上がりそう・下がりそうの上位も入れる
+  const seen = new Set(syms.map(([c]) => c));
+  for (const view of ['buy', 'sell']) {
+    try {
+      const r = await api(`/api/stocks/scan?view=${view}&limit=15`);
+      for (const x of r.results || []) if (!seen.has(x.code)) { seen.add(x.code); syms.push([x.code, x.name]); }
+    } catch { /* チェックしていなければ使わない */ }
+  }
+  return syms;
+}
+
+const whyList = (arr) => (arr?.length ? `<ul class="why">${arr.map((w) => `<li>${esc(w)}</li>`).join('')}</ul>` : '');
+
+async function runLog(mode) {
+  const out = $('lab-log');
+  const btn = $('lab-log-run');
+  btn.disabled = true;
+  try {
+    const regime = await loadRegime();
+    const list = await loadCandles(await logUniverse(mode), out);
+    out.innerHTML = '<p class="small muted"><span class="spinner"></span> 計算しています…</p>';
+    await new Promise((r) => setTimeout(r, 30));
+    const kind = kindOf(mode);
+    const trades = [], holding = [], next = [];
+    for (const x of list) {
+      const r = runStrategy(x.candles, 'combo', { kind, pair: x.symbol.replace(/=X$/, ''), regime });
+      const last = x.candles[x.candles.length - 1].close;
+      for (const t of r.trades) trades.push({ ...t, name: x.name, symbol: x.symbol });
+      if (r.open) holding.push({ ...r.open, name: x.name, symbol: x.symbol, last });
+      if (r.next) next.push({ ...r.next, name: x.name, symbol: x.symbol, holdingSide: r.open?.side || 0 });
+    }
+    renderLog({ trades, holding, next, count: list.length }, mode);
+  } catch (e) {
+    out.innerHTML = `<p class="error">${esc(e.message)}</p>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+let logFilter = 'all';
+function renderLog(r, mode) {
+  const d = mode === 'stock' ? 1 : mode === 'us' ? 2 : 3;
+  const md = (x) => esc(String(x).slice(5).replace('-', '/'));
+  const yd = (x) => esc(String(x).slice(2).replace(/-/g, '/'));
+  const side = (s) => `<span class="badge ${s > 0 ? 'buy' : 'sell'}">${s > 0 ? '買い' : '売り'}</span>`;
+  const wins = r.trades.filter((t) => t.pnl > 0);
+  const total = r.trades.reduce((a, t) => a + t.pnl, 0);
+  const sorted = r.trades.slice().sort((a, b) => b.entryDate.localeCompare(a.entryDate));
+  $('lab-log').innerHTML = `
+    <div class="grid2">
+      <div class="stat"><div class="label">取引の回数（${r.count}銘柄）</div><div class="value">${r.trades.length}回</div></div>
+      <div class="stat"><div class="label">勝率</div><div class="value">${pct(r.trades.length ? wins.length / r.trades.length : null)}</div></div>
+      <div class="stat"><div class="label">合計の損益（決済した分）</div><div class="value ${total >= 0 ? 'plus' : 'minus'}">${fmtYen(total)}</div></div>
+      <div class="stat"><div class="label">今持っている銘柄</div><div class="value">${r.holding.length}</div></div>
+    </div>
+    <h3>次の取引日にやること</h3>
+    ${r.next.length ? `<ul class="list">${r.next.map((x) => `<li>
+      <div class="li-head"><span class="name">${esc(x.name)}</span>${x.type === 'open' ? `${side(x.side)}<span class="badge neutral">新しく入る</span>` : `<span class="badge warn">決済する</span>`}</div>
+      <div class="small"><b>${esc(x.reason)}</b></div>${whyList(x.why)}</li>`).join('')}</ul>` : '<p class="small muted">次の取引日に予定している売買はありません。</p>'}
+    <h3>今持っている銘柄</h3>
+    ${r.holding.length ? `<ul class="list">${r.holding.map((x) => {
+      const g0 = x.side * (x.last / x.entryPrice - 1);
+      const g = Math.abs(g0) < 0.0005 ? 0 : g0;
+      return `<li><div class="li-head"><span class="name">${esc(x.name)}</span>${side(x.side)}<span class="${g >= 0 ? 'plus' : 'minus'} num">${g >= 0 ? '+' : ''}${(g * 100).toFixed(1)}%</span></div>
+      <div class="small">${yd(x.entryDate)} に ${fmtPrice(x.entryPrice, d)} で${x.side > 0 ? '買い' : '売り'}　→　今 ${fmtPrice(x.last, d)}</div>${whyList(x.why)}</li>`;
+    }).join('')}</ul>` : '<p class="small muted">今持っている銘柄はありません。</p>'}
+    <h3>売買の一覧<span class="sub">新しい順</span></h3>
+    <div class="seg" id="lab-log-seg" style="margin-bottom:8px">${[['all', 'すべて'], ['win', '勝ち'], ['loss', '負け'], ['buy', '買い'], ['sell', '売り']].map(([k, v]) => `<button data-f="${k}" aria-pressed="${k === logFilter}">${v}</button>`).join('')}</div>
+    <div id="lab-log-list"></div>
+    <p class="small muted" style="margin-top:6px">判断はその日の終わりの値段まで見て行い、売買は次の日の始まりの値段で行っています。1回の取引は100万円分で、手数料などの費用も差し引いています。過去の成績で、これからも同じになるとは限りません。</p>`;
+  const draw = () => {
+    const f = { all: () => true, win: (t) => t.pnl > 0, loss: (t) => t.pnl <= 0, buy: (t) => t.side > 0, sell: (t) => t.side < 0 }[logFilter];
+    pagedList($('lab-log-list'), sorted.filter(f), (t) => `<li class="log-item">
+      <div class="li-head"><span class="name">${esc(t.name)}</span>${side(t.side)}<b class="${t.pnl >= 0 ? 'plus' : 'minus'}">${fmtYen(t.pnl)}</b></div>
+      <div class="log-leg"><div class="small"><b>${t.side > 0 ? '買った' : '売った'}：${yd(t.entryDate)}</b>　${fmtPrice(t.entryPrice, d)}</div>
+        <div class="small">${esc(t.reasonIn)}</div>${whyList(t.whyIn)}</div>
+      <div class="log-leg"><div class="small"><b>決済：${yd(t.exitDate)}</b>　${fmtPrice(t.exitPrice, d)}（${t.days}日間・${t.ret >= 0 ? '+' : ''}${(t.ret * 100).toFixed(1)}%）</div>
+        <div class="small">${esc(t.reasonOut)}</div>${whyList(t.whyOut)}</div></li>`,
+    { empty: '該当する取引はありません', tag: 'div', wrap: (b) => `<ul class="list">${b}</ul>` });
+  };
+  draw();
+  $('lab-log-seg').onclick = (e) => {
+    const b = e.target.closest('button[data-f]');
+    if (!b) return;
+    logFilter = b.dataset.f;
+    $('lab-log-seg').querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+    draw();
+  };
 }
 
 function renderPicks(r, mode) {
@@ -298,6 +397,7 @@ function renderPicks(r, mode) {
 
 export function initLab(getMode) {
   $('lab-pick-run').addEventListener('click', () => runPicks(getMode()));
+  $('lab-log-run').addEventListener('click', () => runLog(getMode()));
   $('lab-h-seg').addEventListener('click', (e) => {
     const b = e.target.closest('button[data-h]');
     if (!b || !ctx) return;

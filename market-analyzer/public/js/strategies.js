@@ -21,6 +21,9 @@ export const STRATEGIES = {
 };
 
 const CAPITAL = 1_000_000;
+const num = (v) => Number(Number(v).toPrecision(6)).toLocaleString('ja-JP', { maximumFractionDigits: 4 });
+// 「（ゴールデンクロス＝…）」のような補足を外して短くする
+const short = (t) => String(t).replace(/（[^）]*）/g, '');
 
 // 情勢（恐怖指数・米国の金利・日経平均）を日付から引けるようにする
 export function regimeLookup(series) {
@@ -89,16 +92,17 @@ export function runStrategy(candles, id, { kind = 'stock', pair = '', regime = n
     // 1) 前の日に決めた売買を、今日の始まりの値段で行う
     if (pending) {
       if (pending.type === 'open' && !pos) {
-        pos = { side: pending.side, entryIdx: i, entryPrice: c.open, reason: pending.reason, peak: c.open, trough: c.open };
+        pos = { side: pending.side, entryIdx: i, entryPrice: c.open, reason: pending.reason, why: pending.why || [], peak: c.open, trough: c.open };
         const a = a14[i - 1] || c.open * 0.01;
         pos.stop = c.open - pos.side * a * (id === 'rebound' ? 2 : 2);
         pos.take = id === 'combo' ? c.open + pos.side * a * 3 : null;
+        pos.why = [...pos.why, `入った値段 ${num(c.open)}（次の日の始まりの値段）・損切りの線 ${num(pos.stop)}${pos.take ? `・利益確定の目標 ${num(pos.take)}` : ''}`];
         events.push(`${pos.side > 0 ? '買い' : '売り'}で入る（${pending.reason}）`);
       } else if (pending.type === 'close' && pos) {
         const ret = pos.side * (c.open / pos.entryPrice - 1) - cost(kind);
         const pnl = CAPITAL * ret;
         realized += pnl;
-        trades.push({ side: pos.side, entryDate: dayKey(candles[pos.entryIdx].time), entryTime: candles[pos.entryIdx].time, entryPrice: pos.entryPrice, exitDate: dayKey(c.time), exitTime: c.time, exitPrice: c.open, ret, pnl, reasonIn: pos.reason, reasonOut: pending.reason, days: i - pos.entryIdx });
+        trades.push({ side: pos.side, entryDate: dayKey(candles[pos.entryIdx].time), entryTime: candles[pos.entryIdx].time, entryPrice: pos.entryPrice, exitDate: dayKey(c.time), exitTime: c.time, exitPrice: c.open, ret, pnl, reasonIn: pos.reason, reasonOut: pending.reason, whyIn: pos.why, whyOut: pending.why || [], days: i - pos.entryIdx });
         events.push(`決済（${pending.reason}）`);
         pos = null;
       }
@@ -114,36 +118,63 @@ export function runStrategy(candles, id, { kind = 'stock', pair = '', regime = n
       const held = i - pos.entryIdx;
       // 損切りの線を、有利に動いた分だけ引き上げる（流れに乗る戦略）
       if (id === 'trend') pos.stop = pos.side > 0 ? Math.max(pos.stop, pos.peak - 2 * a) : Math.min(pos.stop, pos.trough + 2 * a);
-      let exit = null;
-      if (pos.side > 0 ? price <= pos.stop : price >= pos.stop) exit = '損切り・逆に動いた';
-      else if (pos.take && (pos.side > 0 ? price >= pos.take : price <= pos.take)) exit = '目標まで動いたので利益確定';
-      else if (id === 'trend' && ma25[i] && (pos.side > 0 ? price < ma25[i] : price > ma25[i])) exit = '平均線を割って流れが弱まった';
-      else if (id === 'rebound' && r14[i] != null && (pos.side > 0 ? r14[i] > 55 : r14[i] < 45)) exit = '行きすぎが元に戻った';
-      else if (id === 'combo') {
-        const t = techAt(i).label;
-        if (pos.side > 0 ? /売り/.test(t) : /買い/.test(t)) exit = `判定が「${t}」に変わった`;
+      let exit = null, why = [];
+      const gain = pos.side * (price / pos.entryPrice - 1);
+      const now = `この日の終わりの値段 ${num(price)}（入った値段から${gain >= 0 ? '+' : ''}${(gain * 100).toFixed(1)}%）`;
+      if (pos.side > 0 ? price <= pos.stop : price >= pos.stop) {
+        exit = '損切り・逆に動いた';
+        why = [`${pos.side > 0 ? '下がって' : '上がって'}、あらかじめ決めていた損切りの線（${num(pos.stop)}）に届いた`, now, 'これ以上損を広げないために決済'];
+      } else if (pos.take && (pos.side > 0 ? price >= pos.take : price <= pos.take)) {
+        exit = '目標まで動いたので利益確定';
+        why = [`利益確定の目標（${num(pos.take)}）に届いた`, now, '欲張らずに利益を確定'];
+      } else if (id === 'trend' && ma25[i] && (pos.side > 0 ? price < ma25[i] : price > ma25[i])) {
+        exit = '平均線を割って流れが弱まった';
+        why = [`値段が25日の平均（${num(ma25[i])}）を${pos.side > 0 ? '下回った' : '上回った'}`, now, '流れが弱まったので降りる'];
+      } else if (id === 'rebound' && r14[i] != null && (pos.side > 0 ? r14[i] > 55 : r14[i] < 45)) {
+        exit = '行きすぎが元に戻った';
+        why = [`買われすぎ・売られすぎ度（RSI）が${r14[i].toFixed(0)}まで戻った`, now, 'ねらっていた戻りが終わったので決済'];
+      } else if (id === 'combo') {
+        const ts = techAt(i);
+        if (pos.side > 0 ? /売り/.test(ts.label) : /買い/.test(ts.label)) {
+          exit = `判定が「${ts.label}」に変わった`;
+          const against = ts.rows.filter((r) => r.signal === (pos.side > 0 ? '売り' : '買い'));
+          why = [`テクニカル判定が「${ts.label}」に変わった（反対のサイン${against.length}/${ts.rows.length}個）`, ...against.slice(0, 2).map((r) => short(r.detail)), now];
+        }
       }
-      if (!exit && held >= (id === 'rebound' ? 10 : 30)) exit = '長く持ちすぎたので終了';
+      if (!exit && held >= (id === 'rebound' ? 10 : 30)) {
+        exit = '長く持ちすぎたので終了';
+        why = [`${held}日持っても決着がつかなかった`, now, 'お金を寝かせないために、いったん終了'];
+      }
       // 最後の日に決めたことは「次の取引日の予定」として残る
-      if (exit) pending = { type: 'close', reason: exit };
+      if (exit) pending = { type: 'close', reason: exit, why };
     } else {
-      let side = 0, reason = '';
+      let side = 0, reason = '', why = [];
       if (id === 'trend' && ma25[i] && ma75[i]) {
         const hi20 = Math.max(...candles.slice(i - 20, i).map((x) => x.high));
         const lo20 = Math.min(...candles.slice(i - 20, i).map((x) => x.low));
-        if (ma25[i] > ma75[i] && price > hi20) { side = 1; reason = '上向きの流れで最近20日の高値を超えた'; }
-        else if (canShort && ma25[i] < ma75[i] && price < lo20) { side = -1; reason = '下向きの流れで最近20日の安値を下回った'; }
+        if (ma25[i] > ma75[i] && price > hi20) { side = 1; reason = '上向きの流れで最近20日の高値を超えた'; why = ['25日の平均が75日の平均より上（上向きの流れ）', `この日の終わりの値段 ${num(price)} が、最近20日の一番高い値段 ${num(hi20)} を超えた`, 'さらに上がる勢いに乗る']; }
+        else if (canShort && ma25[i] < ma75[i] && price < lo20) { side = -1; reason = '下向きの流れで最近20日の安値を下回った'; why = ['25日の平均が75日の平均より下（下向きの流れ）', `この日の終わりの値段 ${num(price)} が、最近20日の一番安い値段 ${num(lo20)} を下回った`, 'さらに下がる勢いに乗る']; }
       } else if (id === 'rebound' && r14[i] != null) {
-        if (r14[i] < 30) { side = 1; reason = `売られすぎ（RSI ${r14[i].toFixed(0)}）`; }
-        else if (canShort && r14[i] > 70) { side = -1; reason = `買われすぎ（RSI ${r14[i].toFixed(0)}）`; }
+        if (r14[i] < 30) { side = 1; reason = `売られすぎ（RSI ${r14[i].toFixed(0)}）`; why = [`買われすぎ・売られすぎ度（RSI）が${r14[i].toFixed(0)}（30以下は売られすぎ）`, '下がりすぎた反動で、上がり返すのをねらう']; }
+        else if (canShort && r14[i] > 70) { side = -1; reason = `買われすぎ（RSI ${r14[i].toFixed(0)}）`; why = [`買われすぎ・売られすぎ度（RSI）が${r14[i].toFixed(0)}（70以上は買われすぎ）`, '上がりすぎた反動で、下がり返すのをねらう']; }
       } else if (id === 'combo') {
-        const t = techAt(i).label;
+        const ts = techAt(i);
+        const t = ts.label;
         const rg = regimeScore(regime?.(dayKey(c.time)), kind, pair);
         const fundOk = fundamentalRatio == null || fundamentalRatio > -0.3;
-        if (/買い/.test(t) && rg.score >= 0 && fundOk) { side = 1; reason = `判定「${t}」${rg.notes.length ? '・' + rg.notes.join('・') : ''}`; }
-        else if (canShort && /売り/.test(t) && rg.score <= 0) { side = -1; reason = `判定「${t}」${rg.notes.length ? '・' + rg.notes.join('・') : ''}`; }
+        const explain = (sig) => {
+          const agree = ts.rows.filter((r) => r.signal === sig);
+          return [
+            `テクニカル判定「${t}」（${sig}のサイン${agree.length}/${ts.rows.length}個）`,
+            ...agree.slice(0, 3).map((r) => short(r.detail)),
+            rg.notes.length ? `世界の情勢：${rg.notes.join('・')}` : '世界の情勢：特に悪い材料なし',
+            ...(fundamentalRatio != null && sig === '買い' ? ['会社の業績など（ファンダメンタルズ）も悪くない'] : []),
+          ];
+        };
+        if (/買い/.test(t) && rg.score >= 0 && fundOk) { side = 1; why = explain('買い'); reason = `テクニカル判定が「${t}」で、世界の情勢も逆風ではない`; }
+        else if (canShort && /売り/.test(t) && rg.score <= 0) { side = -1; why = explain('売り'); reason = `テクニカル判定が「${t}」で、世界の情勢も追い風ではない`; }
       }
-      if (side) pending = { type: 'open', side, reason };
+      if (side) pending = { type: 'open', side, reason, why };
     }
 
     const unreal = pos ? CAPITAL * (pos.side * (price / pos.entryPrice - 1)) : 0;
@@ -159,7 +190,7 @@ export function runStrategy(candles, id, { kind = 'stock', pair = '', regime = n
     id,
     trades,
     daily,
-    open: pos ? { side: pos.side, entryDate: dayKey(candles[pos.entryIdx].time), entryTime: candles[pos.entryIdx].time, entryPrice: pos.entryPrice, reason: pos.reason, unreal: last ? last.equity - realized : 0 } : null,
+    open: pos ? { side: pos.side, entryDate: dayKey(candles[pos.entryIdx].time), entryTime: candles[pos.entryIdx].time, entryPrice: pos.entryPrice, reason: pos.reason, why: pos.why, stop: pos.stop, take: pos.take, unreal: last ? last.equity - realized : 0 } : null,
     next: pending,
     stats: {
       trades: trades.length,
