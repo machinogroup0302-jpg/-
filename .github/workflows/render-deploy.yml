@@ -1,4 +1,6 @@
-# market-analyzer を更新したら、Render に新しい版の公開を自動で依頼する
+# market-analyzer を更新したら:
+#   1. 東証の上場企業一覧を JPX から取ってきて data/listings.json に保存する
+#   2. Render に新しい版の公開を依頼する
 # 事前準備: Render の Deploy Hook の URL を、GitHub の Secrets に
 #           RENDER_DEPLOY_HOOK_URL という名前で登録しておく
 name: Render 自動更新
@@ -9,12 +11,47 @@ on:
       - claude/trusting-planck-dsasvf
     paths:
       - 'market-analyzer/**'
+      - '.github/workflows/render-deploy.yml'
   workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: render-deploy
+  cancel-in-progress: false
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: 上場企業の一覧を取得
+        id: listings
+        continue-on-error: true
+        working-directory: market-analyzer
+        run: |
+          npm install --no-audit --no-fund
+          node scripts/update-listings.mjs
+
+      - name: 一覧が変わっていれば保存
+        if: steps.listings.outcome == 'success'
+        run: |
+          if git diff --quiet -- market-analyzer/data/listings.json && ! git ls-files --others --exclude-standard market-analyzer/data | grep -q .; then
+            echo "上場企業の一覧に変更はありません"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add market-analyzer/data/listings.json
+          git commit -m "Update TSE listing data"
+          git push
+
       - name: Render に更新を依頼
         env:
           HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}

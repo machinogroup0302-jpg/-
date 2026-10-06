@@ -4,13 +4,24 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import * as XLSX from 'xlsx';
 
 const LIST_URL = 'https://www.jpx.co.jp/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_j.xls';
+const LIST_PAGE = 'https://www.jpx.co.jp/markets/statistics-equities/misc/01.html';
 const NEW_URL = 'https://www.jpx.co.jp/listing/stocks/new/index.html';
+// GitHub に毎回保存している一覧（JPX に直接つながらないときに使う）
+const REPO_URL = process.env.LISTINGS_URL || 'https://raw.githubusercontent.com/machinogroup0302-jpg/-/claude/trusting-planck-dsasvf/market-analyzer/data/listings.json';
+const REPO_FILE = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'data', 'listings.json');
 const CACHE_FILE = path.join(process.env.DATA_DIR || os.tmpdir(), 'ma-listings.json');
 const REFRESH_MS = 24 * 3600 * 1000;
-const UA = 'Mozilla/5.0 (compatible; market-analyzer/1.0)';
+// ブラウザと同じ形でアクセスする（機械的なアクセスとして断られないように）
+const HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36',
+  Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,application/vnd.ms-excel,*/*;q=0.8',
+  'Accept-Language': 'ja,en;q=0.8',
+  Referer: LIST_PAGE,
+};
 
 let state = null; // { fetchedAt, items: [...], firstSeen: {code: date}, upcoming: [...] }
 let loading = null;
@@ -73,19 +84,38 @@ export function parseNewListings(html) {
   return out.filter((x) => (seen.has(x.code) ? false : seen.add(x.code)));
 }
 
-async function download() {
-  const res = await fetch(LIST_URL, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(30000) });
-  if (!res.ok) throw new Error(`上場銘柄一覧を取得できませんでした (HTTP ${res.status})`);
-  const wb = XLSX.read(Buffer.from(await res.arrayBuffer()), { type: 'buffer' });
+// 一覧ページからファイルの場所を探す（場所が変わっても大丈夫なように）
+export function findListLink(html) {
+  const m = String(html).match(/href="([^"]*data_j\.xlsx?)"/i);
+  return m ? new URL(m[1], LIST_PAGE).href : null;
+}
+
+async function fetchBuffer(url) {
+  const res = await fetch(url, { headers: HEADERS, signal: AbortSignal.timeout(30000) });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return Buffer.from(await res.arrayBuffer());
+}
+
+export async function downloadFromJpx() {
+  let buf;
+  try {
+    buf = await fetchBuffer(LIST_URL);
+  } catch (first) {
+    const page = await fetch(LIST_PAGE, { headers: HEADERS, signal: AbortSignal.timeout(20000) }).then((r) => (r.ok ? r.text() : ''));
+    const link = findListLink(page);
+    if (!link) throw new Error(`上場銘柄一覧を取得できませんでした (${first.message})`);
+    buf = await fetchBuffer(link);
+  }
+  const wb = XLSX.read(buf, { type: 'buffer' });
   const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: false, defval: '' });
   const items = parseListingRows(rows);
   if (items.length < 1000) throw new Error('上場銘柄一覧の件数が少なすぎます');
   return items;
 }
 
-async function downloadUpcoming() {
+export async function downloadUpcoming() {
   try {
-    const res = await fetch(NEW_URL, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(20000) });
+    const res = await fetch(NEW_URL, { headers: HEADERS, signal: AbortSignal.timeout(20000) });
     if (!res.ok) return [];
     return parseNewListings(await res.text());
   } catch {
@@ -102,9 +132,35 @@ export function mergeListing(prev, items, upcoming, today) {
   return { fetchedAt: Date.now(), items, firstSeen, upcoming };
 }
 
+// GitHub に保存してある一覧（毎回の更新時に GitHub Actions が JPX から取ってくる）
+async function loadFromRepo() {
+  try {
+    const res = await fetch(REPO_URL, { signal: AbortSignal.timeout(20000) });
+    if (res.ok) {
+      const d = await res.json();
+      if (d?.items?.length > 1000) return d;
+    }
+  } catch { /* 次の方法を試す */ }
+  try {
+    const d = JSON.parse(await fs.readFile(REPO_FILE, 'utf8'));
+    if (d?.items?.length > 1000) return d;
+  } catch { /* ファイルがない */ }
+  return null;
+}
+
 async function refresh() {
-  const [items, upcoming] = await Promise.all([download(), downloadUpcoming()]);
-  state = mergeListing(state, items, upcoming, new Date().toISOString().slice(0, 10));
+  const today = new Date().toISOString().slice(0, 10);
+  try {
+    const [items, upcoming] = await Promise.all([downloadFromJpx(), downloadUpcoming()]);
+    const repo = state ? null : await loadFromRepo();
+    state = mergeListing(state || repo, items, upcoming.length ? upcoming : repo?.upcoming || [], today);
+  } catch (e) {
+    console.error('JPX から直接取得できませんでした:', e.message);
+    const repo = await loadFromRepo();
+    if (!repo) throw new Error(`上場企業の一覧を取得できませんでした（${e.message}）。少し時間をおいてもう一度お試しください。`);
+    // 「新しく上場した会社」の記録は、これまでの記録と GitHub の記録を合わせる
+    state = { ...repo, firstSeen: { ...(state?.firstSeen || {}), ...(repo.firstSeen || {}) }, fetchedAt: Date.now() };
+  }
   try { await fs.writeFile(CACHE_FILE, JSON.stringify(state)); } catch { /* 保存できなくても動かす */ }
   return state;
 }
@@ -127,7 +183,10 @@ export function nameFromCache(code) {
   return state?.items?.find((x) => x.code === code)?.name?.normalize('NFKC') || null;
 }
 
-const norm = (s) => String(s || '').normalize('NFKC').toLowerCase().replace(/\s+/g, '');
+// ひらがなはカタカナにそろえ、空白・「株式会社」・中黒は無視して探す（例: おんこりす → オンコリスバイオファーマ）
+const norm = (s) => String(s || '').normalize('NFKC').toLowerCase()
+  .replace(/[\u3041-\u3096]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0x60))
+  .replace(/株式会社|\(株\)|[\s・]/g, '');
 
 export async function searchListings(q, limit = 20) {
   const { items } = await getListings();
