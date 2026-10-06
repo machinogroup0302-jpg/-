@@ -39,17 +39,21 @@ jobs:
           npm install --no-audit --no-fund
           node scripts/update-listings.mjs
 
-      - name: 一覧が変わっていれば保存
-        if: steps.listings.outcome == 'success'
+      - name: 決算発表予定日・信用残を取得
+        continue-on-error: true
+        working-directory: market-analyzer
+        run: node scripts/update-market-data.mjs
+
+      - name: データが変わっていれば保存
         run: |
-          if git diff --quiet -- market-analyzer/data/listings.json && ! git ls-files --others --exclude-standard market-analyzer/data | grep -q .; then
-            echo "上場企業の一覧に変更はありません"
+          if git diff --quiet -- market-analyzer/data && ! git ls-files --others --exclude-standard market-analyzer/data | grep -q .; then
+            echo "データに変更はありません"
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add market-analyzer/data/listings.json
-          git commit -m "Update TSE listing data"
+          git add market-analyzer/data
+          git commit -m "Update JPX market data"
           git push
 
       - name: Render に更新を依頼
