@@ -114,6 +114,9 @@ export function syncFavs() {
           store.set(`sync_${key}`, { ts: remote?.ts || 0, dirty: !!own && (key.startsWith('favs_') || !remote) });
         } else if (meta.dirty) {
           // この端末で変えたものがまだ送れていない → こちらを送る
+        } else if (own && (!remote || remote.ts < (meta.ts || 0))) {
+          // サーバーが再起動して忘れていた（または古い内容に戻った）→ この端末の内容を送り直す
+          store.set(`sync_${key}`, { ...meta, dirty: true, rev: (meta.rev || 0) + 1 });
         } else if (remote && remote.ts > (meta.ts || 0)) {
           store.set(key, remote.value);
           store.set(`sync_${key}`, { ts: remote.ts, dirty: false });
