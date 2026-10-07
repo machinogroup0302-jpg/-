@@ -54,7 +54,7 @@ function merge(other) {
 }
 
 const maxTs = () => Math.max(0, ...Object.values(data).map((v) => v.ts || 0));
-const saveLocal = () => fs.writeFile(LOCAL, JSON.stringify(data)).catch(() => {});
+const saveLocal = () => (process.env.NODE_ENV === 'test' && !process.env.PREFS_LOCAL ? Promise.resolve() : fs.writeFile(LOCAL, JSON.stringify(data)).catch(() => {}));
 
 // GitHub に保存されている暗号化コピーを読む（認証なしで読める公開の場所）
 async function readBackup() {
@@ -70,6 +70,7 @@ async function readBackup() {
 
 export function loadPrefs() {
   ready ||= (async () => {
+    if (process.env.NODE_ENV === 'test' && !process.env.PREFS_LOCAL) return; // テストでは前の保存を読まない
     try { merge(JSON.parse(await fs.readFile(LOCAL, 'utf8'))); restoredFrom = 'local'; } catch { /* まだない */ }
     if (process.env.NODE_ENV === 'test') return;
     try {
