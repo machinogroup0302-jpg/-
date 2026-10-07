@@ -142,7 +142,9 @@ async function main() {
   try { state = JSON.parse(await fs.readFile(STATE, 'utf8')); } catch { /* 初回 */ }
   site = await siteProfile();
   const pf = site?.profile;
-  if (pf?.notify) MODES = MODES.filter((m) => pf.notify[m]);
+  if (pf?.notify) console.log(`通知する種類: ${['fx', 'stock', 'us'].filter((m) => pf.notify[m]).map((m) => NAMES[m]).join('・') || 'なし'}`);
+  // テストのときは、通知のオン・オフに関係なく送る
+  if (pf?.notify && !process.env.TEST_MAIL) MODES = MODES.filter((m) => pf.notify[m]);
   if (!MODES.length) { console.log('設定で通知がオフになっています'); return; }
   const to = pf?.email || process.env.MAIL_TO;
   // ログは公開されるので、メールアドレスや予算は出さない
