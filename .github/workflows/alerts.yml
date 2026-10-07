@@ -1,5 +1,6 @@
 # 売買サインをメールで知らせる
-#   日本株：平日 16:40（日本時間）／為替・米国株：火〜土 6:40（日本時間）
+#   スイング：日本株は平日 16:40（日本時間）／為替・米国株は火〜土 6:40（日本時間）
+#   デイトレ・持っている株の見張り：取引時間中の市場を15分ごと
 # 事前準備（GitHub の Settings → Secrets and variables → Actions に登録）:
 #   MAIL_USER … 送るのに使う Gmail アドレス
 #   MAIL_PASS … その Gmail の「アプリ パスワード」（16文字）
@@ -12,10 +13,12 @@ on:
   schedule:
     - cron: '40 7 * * 1-5'
     - cron: '40 21 * * 1-5'
+    - cron: '*/15 * * * 1-5'
+    - cron: '*/15 22-23 * * 0'
   workflow_dispatch:
     inputs:
       markets:
-        description: '対象（stock / fx,us / stock,fx,us）'
+        description: '対象（stock / fx,us / stock,fx,us / day＝デイトレ）'
         default: 'stock,fx,us'
       test:
         description: 'テストメールを送る（true にすると、サインがなくても送ります）'
@@ -48,7 +51,7 @@ jobs:
           MAIL_TO: ${{ secrets.MAIL_TO }}
           SITE_PASSWORD: ${{ secrets.SITE_PASSWORD }}
           TEST_MAIL: ${{ github.event.inputs.test == 'true' && '1' || '' }}
-          MARKETS: ${{ github.event.inputs.markets || (github.event.schedule == '40 7 * * 1-5' && 'stock' || 'fx,us') }}
+          MARKETS: ${{ github.event.inputs.markets || (github.event.schedule == '40 7 * * 1-5' && 'stock') || (github.event.schedule == '40 21 * * 1-5' && 'fx,us') || 'day' }}
         run: |
           npm install --no-save --no-audit --no-fund --ignore-scripts nodemailer@6
           node scripts/alerts.mjs "$MARKETS"
