@@ -1,0 +1,61 @@
+# 売買サインをメールで知らせる
+#   日本株：平日 16:40（日本時間）／為替・米国株：火〜土 6:40（日本時間）
+# 事前準備（GitHub の Settings → Secrets and variables → Actions に登録）:
+#   MAIL_USER … 送るのに使う Gmail アドレス
+#   MAIL_PASS … その Gmail の「アプリ パスワード」（16文字）
+#   SITE_PASSWORD … サイトのパスワード（サイトの設定に入れたメールアドレス・予算を読むため）
+#   MAIL_TO   … 届け先のメールアドレス（サイトの設定にメールアドレスがないときだけ使う・なくてもよい）
+# ※ 決まった時刻に動かすには、このブランチがリポジトリの「デフォルトブランチ」になっている必要があります
+name: 売買サインのメール
+
+on:
+  schedule:
+    - cron: '40 7 * * 1-5'
+    - cron: '40 21 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      markets:
+        description: '対象（stock / fx,us / stock,fx,us）'
+        default: 'stock,fx,us'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: alerts
+  cancel-in-progress: false
+
+jobs:
+  alerts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/trusting-planck-dsasvf
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: サインを調べてメールを送る
+        working-directory: market-analyzer
+        env:
+          MAIL_USER: ${{ secrets.MAIL_USER }}
+          MAIL_PASS: ${{ secrets.MAIL_PASS }}
+          MAIL_TO: ${{ secrets.MAIL_TO }}
+          SITE_PASSWORD: ${{ secrets.SITE_PASSWORD }}
+          MARKETS: ${{ github.event.inputs.markets || (github.event.schedule == '40 7 * * 1-5' && 'stock' || 'fx,us') }}
+        run: |
+          npm install --no-save --no-audit --no-fund --ignore-scripts nodemailer@6
+          node scripts/alerts.mjs "$MARKETS"
+
+      - name: 送ったサインを記録
+        run: |
+          if git diff --quiet -- alerts && ! git ls-files --others --exclude-standard alerts | grep -q .; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add alerts
+          git commit -m "Record sent trade alerts"
+          for i in 1 2 3; do git pull --rebase origin claude/trusting-planck-dsasvf && git push origin HEAD:claude/trusting-planck-dsasvf && break; sleep 5; done

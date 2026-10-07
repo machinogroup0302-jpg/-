@@ -1,0 +1,58 @@
+# サイトの見守り（10分ごと）
+#   1. サイトを起こしておく（Render の無料プランは15分使わないと眠るため）
+#   2. お気に入り・あなたの設定の「暗号化したコピー」を alerts/prefs.json に保存する
+#      （サーバーが再起動しても、このコピーから元に戻せる）
+# 事前準備: GitHub の Secrets に SITE_PASSWORD（サイトのパスワード）を登録
+name: サイトの見守り
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: keepalive
+  cancel-in-progress: false
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/trusting-planck-dsasvf
+
+      - name: 設定のコピーを取ってくる
+        env:
+          KEY: ${{ secrets.SITE_PASSWORD }}
+        run: |
+          if [ -z "$KEY" ]; then
+            curl -fsS -o /dev/null --max-time 90 https://wataru-lupe.onrender.com/api/status || true
+            echo "SITE_PASSWORD が未登録のため、サイトを起こすだけにしました"
+            exit 0
+          fi
+          curl -fsS --retry 2 --max-time 90 -H "x-site-key: $KEY" https://wataru-lupe.onrender.com/api/backup/prefs -o /tmp/new.json
+          new=$(jq -r '.maxTs // 0' /tmp/new.json)
+          old=$(jq -r '.maxTs // 0' alerts/prefs.json 2>/dev/null || echo 0)
+          if [ "$new" -gt "$old" ]; then
+            mkdir -p alerts
+            cp /tmp/new.json alerts/prefs.json
+            echo "新しい設定を保存します"
+          else
+            echo "変更はありません"
+          fi
+
+      - name: 保存
+        run: |
+          if git diff --quiet -- alerts && ! git ls-files --others --exclude-standard alerts | grep -q .; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add alerts
+          git commit -m "Back up synced settings (encrypted)"
+          for i in 1 2 3; do git pull --rebase origin claude/trusting-planck-dsasvf && git push origin HEAD:claude/trusting-planck-dsasvf && break; sleep 5; done
