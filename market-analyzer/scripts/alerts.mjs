@@ -160,14 +160,16 @@ async function main() {
     return age <= 4 && !state.sent[keyOf(s)];
   }).sort((a, b) => ORDER[a.type] - ORDER[b.type] || (b.odds?.p || 0) - (a.odds?.p || 0));
 
-  if (!fresh.length) { console.log('新しいサインはありません'); return; }
+  const TEST = !!process.env.TEST_MAIL;
+  if (!fresh.length && !TEST) { console.log('新しいサインはありません'); return; }
   const buys = fresh.filter((s) => s.type === 'open').length, closes = fresh.filter((s) => s.type === 'close').length, holds = fresh.filter((s) => s.type === 'hold').length;
-  const subject = `【売買サイン】${MODES.map((m) => NAMES[m]).join('・')}：${holds ? `持っている株${holds}件・` : ''}新しく入る${buys}件・決済${closes}件（${md(today)}）`;
+  const subject = TEST ? `【テスト】売買サインのメールが届くか確認しています（${md(today)}）` : `【売買サイン】${MODES.map((m) => NAMES[m]).join('・')}：${holds ? `持っている株${holds}件・` : ''}新しく入る${buys}件・決済${closes}件（${md(today)}）`;
   const blocks = fresh.map((s) => describe(s, pf));
   const note = '※ 過去の値動きから計算した練習用のサインです。勝つ確率は目安で、当たる保証はありません。売買はご自身の判断で行ってください。';
-  const text = [subject, '', ...blocks.flatMap((b) => [b.title, ...b.lines, '']), `くわしくはサイトの「成績」→「今のサイン」：${SITE}`, '', note].join('\n');
+  const testNote = TEST ? ['このメールが届いていれば設定は完了です。これからは新しいサインが出たときにお知らせします。', `今の新しいサイン：${fresh.length}件`, ''] : [];
+  const text = [subject, '', ...testNote, ...blocks.flatMap((b) => [b.title, ...b.lines, '']), `くわしくはサイトの「成績」→「今のサイン」：${SITE}`, '', note].join('\n');
   const html = `<div style="font-family:sans-serif;font-size:14px;line-height:1.6">
-    <h2 style="font-size:16px">${esc(subject)}</h2>
+    <h2 style="font-size:16px">${esc(subject)}</h2>${testNote.length ? `<p>${testNote.filter(Boolean).map(esc).join('<br>')}</p>` : ''}
     ${blocks.map((b) => `<div style="border:1px solid #ddd;border-radius:10px;padding:10px 12px;margin:10px 0"><b style="font-size:15px">${esc(b.title)}</b><br>${b.lines.map(esc).join('<br>')}</div>`).join('')}
     <p><a href="${SITE}">サイトで見る（成績 → 今のサイン）</a></p><p style="color:#888;font-size:12px">${esc(note)}</p></div>`;
 
@@ -181,6 +183,7 @@ async function main() {
   const tr = nodemailer.createTransport({ service: 'gmail', auth: { user: MAIL_USER, pass: MAIL_PASS.replace(/\s/g, '') } });
   await tr.sendMail({ from: `売買サイン <${MAIL_USER}>`, to, subject, text, html });
   console.log(`メールを送りました（${fresh.length}件）`);
+  if (TEST) return; // テストのときは「送った」記録を残さない（本番でもう一度お知らせする）
 
   const now = new Date().toISOString();
   for (const s of fresh) state.sent[keyOf(s)] = now;

@@ -17,6 +17,9 @@ on:
       markets:
         description: '対象（stock / fx,us / stock,fx,us）'
         default: 'stock,fx,us'
+      test:
+        description: 'テストメールを送る（true にすると、サインがなくても送ります）'
+        default: 'false'
 
 permissions:
   contents: write
@@ -44,6 +47,7 @@ jobs:
           MAIL_PASS: ${{ secrets.MAIL_PASS }}
           MAIL_TO: ${{ secrets.MAIL_TO }}
           SITE_PASSWORD: ${{ secrets.SITE_PASSWORD }}
+          TEST_MAIL: ${{ github.event.inputs.test == 'true' && '1' || '' }}
           MARKETS: ${{ github.event.inputs.markets || (github.event.schedule == '40 7 * * 1-5' && 'stock' || 'fx,us') }}
         run: |
           npm install --no-save --no-audit --no-fund --ignore-scripts nodemailer@6
