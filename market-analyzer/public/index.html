@@ -203,6 +203,65 @@
         </div>
       </section>
 
+      <!-- ===== あなた専用 ===== -->
+      <section class="view" id="view-mine" hidden>
+        <div class="lab-subnav" id="mine-sub" role="tablist">
+          <button data-sub="plan">あなたのプラン</button>
+          <button data-sub="hold">持っている株</button>
+          <button data-sub="now">今のサイン</button>
+          <button data-sub="list">売買の一覧</button>
+        </div>
+        <div class="seg" id="style-seg" style="margin-bottom:10px">
+          <button data-style="swing">スイング（数日〜）</button>
+          <button data-style="day">デイトレ（その日中）</button>
+        </div>
+        <p class="small muted" id="style-note" style="margin:-4px 0 10px"></p>
+
+        <div data-minepanel="hold" hidden>
+          <div class="card">
+            <h2>持っている株<span class="sub">入力すると、どうした方がいいか出します</span></h2>
+            <form class="stack" id="hold-form" autocomplete="off">
+              <div class="hold-sym">
+                <input class="input" id="hold-sym" placeholder="銘柄（例: 7203 / トヨタ / ドル円 / アップル）">
+                <ul class="suggest" id="hold-suggest" hidden></ul>
+              </div>
+              <div class="seg" id="hold-side"><button type="button" data-v="1" aria-pressed="true">買いで持っている</button><button type="button" data-v="-1" aria-pressed="false">売りで持っている</button></div>
+              <div class="row"><input class="input grow" id="hold-price" inputmode="decimal" placeholder="買った値段（1株・1通貨あたり）"></div>
+              <div class="row"><input class="input grow" id="hold-qty" inputmode="numeric" placeholder="数量（株数・通貨の数）"><span class="small muted">または</span><input class="input grow" id="hold-amount" inputmode="numeric" placeholder="金額（円）"></div>
+              <div class="row"><label class="small muted" for="hold-date" style="white-space:nowrap">買った日（なくてもOK）</label><input class="input grow" id="hold-date" type="date"></div>
+              <button class="btn primary block" type="submit">追加する</button>
+              <p class="small error" id="hold-err"></p>
+            </form>
+          </div>
+          <div id="hold-list"></div>
+        </div>
+
+        <div data-minepanel="plan" hidden>
+          <div class="card">
+            <h2>あなたのプラン<span class="sub">予算に合わせて計算</span></h2>
+            <p class="small muted" style="margin-top:-4px">設定（右上の⚙）に入れた予算とルールで、「今どれを・どれだけ買う（売る）といいか」「損切りはどこか」「決済した方がいいもの」を計算します。</p>
+            <div id="lab-plan"></div>
+          </div>
+        </div>
+
+        <div data-minepanel="now" hidden>
+          <div class="card">
+            <h2>今のサイン<span class="sub">次の取引日にやること</span></h2>
+            <p class="small muted" style="margin-top:-4px">「総合判断」のやり方で、<span class="only-fx">主な通貨ペア25種類すべて</span><span class="only-stock">日本の代表的な20社・お気に入り・候補チェックで上位の銘柄</span><span class="only-us">米国の代表的な20社とお気に入り</span>を毎日チェックした結果です。「勝つ確率の目安」は、過去約1年の同じような場面の勝ち負けから計算しています。</p>
+            <div id="lab-now"></div>
+          </div>
+        </div>
+
+        <div data-minepanel="list" hidden>
+          <div class="card">
+            <h2>売買の一覧<span class="sub">いつ・なぜ買った／売ったか</span></h2>
+            <p class="small muted" style="margin-top:-4px">約1年分、それぞれ仮想の100万円で売買した記録です。判断はその日の終わりの値段まで見て行い、売買は次の日の始まりの値段で行っています。</p>
+            <div id="lab-log"></div>
+          </div>
+        </div>
+
+      </section>
+
       <!-- ===== 取引分析 ===== -->
       <section class="view" id="view-trades" hidden>
         <div class="card stack">
@@ -228,36 +287,9 @@
       <!-- ===== 成績（答え合わせ・自動売買） ===== -->
       <section class="view" id="view-lab" hidden>
         <div class="lab-subnav" id="lab-sub" role="tablist">
-          <button data-sub="plan">あなたのプラン</button>
-          <button data-sub="now">今のサイン</button>
-          <button data-sub="list">売買の一覧</button>
           <button data-sub="trade">この銘柄の売買</button>
           <button data-sub="fc">予想の答え合わせ</button>
           <button data-sub="more">銘柄選び・まとめ</button>
-        </div>
-
-        <div data-labpanel="plan" hidden>
-          <div class="card">
-            <h2>あなたのプラン<span class="sub">予算に合わせて計算</span></h2>
-            <p class="small muted" style="margin-top:-4px">設定（右上の⚙）に入れた予算とルールで、「今どれを・どれだけ買う（売る）といいか」「損切りはどこか」「決済した方がいいもの」を計算します。</p>
-            <div id="lab-plan"></div>
-          </div>
-        </div>
-
-        <div data-labpanel="now" hidden>
-          <div class="card">
-            <h2>今のサイン<span class="sub">次の取引日にやること</span></h2>
-            <p class="small muted" style="margin-top:-4px">「総合判断」のやり方で、<span class="only-fx">主な通貨ペア25種類すべて</span><span class="only-stock">日本の代表的な20社・お気に入り・候補チェックで上位の銘柄</span><span class="only-us">米国の代表的な20社とお気に入り</span>を毎日チェックした結果です。「勝つ確率の目安」は、過去約1年の同じような場面の勝ち負けから計算しています。</p>
-            <div id="lab-now"></div>
-          </div>
-        </div>
-
-        <div data-labpanel="list" hidden>
-          <div class="card">
-            <h2>売買の一覧<span class="sub">いつ・なぜ買った／売ったか</span></h2>
-            <p class="small muted" style="margin-top:-4px">約1年分、それぞれ仮想の100万円で売買した記録です。判断はその日の終わりの値段まで見て行い、売買は次の日の始まりの値段で行っています。</p>
-            <div id="lab-log"></div>
-          </div>
         </div>
 
         <div data-labpanel="trade fc" hidden>
@@ -325,7 +357,8 @@
         <p class="small muted" style="margin:-2px 0 8px">入力すると「成績」→「あなたのプラン」で、予算に合った「買う量・損切りの値段」を計算します。パソコンとスマホで共有されます。</p>
         <label class="small" for="pf-email">通知を受け取るメールアドレス</label>
         <input class="input" id="pf-email" type="email" inputmode="email" autocomplete="email" placeholder="例: example@i.softbank.jp">
-        <div class="chips" id="pf-notify" style="margin:6px 0 10px"></div>
+        <div class="chips" id="pf-notify" style="margin:6px 0 4px"></div>
+        <p class="small" id="mail-status" style="margin:0 0 10px"></p>
         <label class="small" for="pf-budget">使えるお金（予算）</label>
         <div class="row"><input class="input grow" id="pf-budget" type="text" inputmode="numeric" placeholder="例: 500000"><span class="small">円</span></div>
         <p class="small muted" id="pf-budget-view" style="margin:2px 0 8px"></p>

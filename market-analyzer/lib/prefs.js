@@ -12,7 +12,7 @@ const BRANCH = process.env.PREFS_BRANCH || 'claude/trusting-planck-dsasvf';
 const BACKUP_PATH = 'alerts/prefs.json';
 const LOCAL = path.join(os.tmpdir(), 'ma-prefs.json');
 const SECRET = process.env.PREFS_KEY || process.env.SITE_PASSWORD || '';
-export const SYNC_KEY = /^(favs_(fx|stock|us)|profile)$/;
+export const SYNC_KEY = /^(favs_(fx|stock|us)|holdings_(fx|stock|us)|profile)$/;
 const MAX_SIZE = 200 * 1024;
 
 let data = {}; // { key: { value, ts } }
@@ -74,7 +74,7 @@ export async function getPrefs() {
   await loadPrefs();
   // 10分ごとの保存が最近あれば「ずっと共有できている」
   const durable = Date.now() - lastBackupAt < 40 * 60 * 1000;
-  return { items: data, durable, restoredFrom, lastBackupAt };
+  return { items: data, durable, restoredFrom, lastBackupAt, lastAlertAt };
 }
 
 function cleanProfile(v) {
@@ -96,7 +96,13 @@ export async function putPref(key, value) {
   if (!SYNC_KEY.test(key)) throw Object.assign(new Error('保存できない項目です'), { status: 400, expose: true });
   let clean;
   if (key === 'profile') clean = cleanProfile(value);
-  else {
+  else if (key.startsWith('holdings_')) {
+    if (!Array.isArray(value) || JSON.stringify(value).length > MAX_SIZE) throw Object.assign(new Error('保存する内容が正しくありません'), { status: 400, expose: true });
+    clean = value.slice(0, 100).map((x) => ({
+      code: String(x?.code ?? '').slice(0, 20), name: String(x?.name ?? '').slice(0, 60), side: Number(x?.side) < 0 ? -1 : 1,
+      price: Number(x?.price) || 0, qty: Number(x?.qty) || 0, date: /^\d{4}-\d{2}-\d{2}$/.test(x?.date || '') ? x.date : '', id: String(x?.id ?? '').slice(0, 20),
+    })).filter((x) => x.code && x.price > 0);
+  } else {
     if (!Array.isArray(value) || JSON.stringify(value).length > MAX_SIZE) throw Object.assign(new Error('保存する内容が正しくありません'), { status: 400, expose: true });
     clean = value.slice(0, 500).map((x) => ({ code: String(x?.code ?? '').slice(0, 20), name: String(x?.name ?? '').slice(0, 60) })).filter((x) => x.code);
   }
@@ -115,11 +121,14 @@ export async function backupBlob() {
 }
 
 // GitHub Actions のメール送信用：あなたの設定とお気に入り
+let lastAlertAt = 0;
 export async function alertProfile() {
   await loadPrefs();
+  lastAlertAt = Date.now();
   return {
     profile: data.profile?.value || null,
     favs: { fx: data.favs_fx?.value || null, stock: data.favs_stock?.value || null, us: data.favs_us?.value || null },
+    holdings: { fx: data.holdings_fx?.value || [], stock: data.holdings_stock?.value || [], us: data.holdings_us?.value || [] },
   };
 }
 

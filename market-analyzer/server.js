@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { getChart, getHistory } from './lib/market.js';
 import { getNews } from './lib/news.js';
 import { searchListings, listingMeta, nameFromCache, getListings } from './lib/listings.js';
-import { usName, searchUs } from './lib/usstocks.js';
+import { usName, searchUs, US_LIST } from './lib/usstocks.js';
 import { getRatings } from './lib/ratings.js';
 import { getFundamentals } from './lib/fundamentals.js';
 import { loadRepoData } from './lib/jpxdata.js';
@@ -151,7 +151,25 @@ async function handleApi(req, res, url) {
     }
   }
   if (route === 'GET /api/us/search') {
-    return json(res, 200, { items: searchUs(String(url.searchParams.get('q') || '').slice(0, 40)) });
+    const q = String(url.searchParams.get('q') || '').slice(0, 40);
+    const items = searchUs(q);
+    // 一覧にない銘柄は、英語の名前やティッカーで Yahoo から探す
+    if (items.length < 5 && /[a-z]/i.test(q)) {
+      try {
+        const r = await fetch(`https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=8&newsCount=0&lang=en-US`, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(6000) });
+        const j = await r.json();
+        const US_EX = /^(NMS|NYQ|NGM|NCM|ASE|PCX|BTS|NAS|NYS|PNK)$/;
+        for (const x of j.quotes || []) {
+          if (!x.symbol || !US_EX.test(x.exchange || '') || !/EQUITY|ETF/.test(x.quoteType || '')) continue;
+          if (items.some((i) => i.symbol === x.symbol)) continue;
+          items.push({ symbol: x.symbol, name: usName(x.symbol) || x.shortname || x.longname || x.symbol, sector: x.quoteType === 'ETF' ? 'ETF' : (x.sectorDisp || '米国株') });
+        }
+      } catch { /* 見つからなくても一覧の結果は返す */ }
+    }
+    return json(res, 200, { items: items.slice(0, 20) });
+  }
+  if (route === 'GET /api/us/list') {
+    return json(res, 200, { items: US_LIST.filter((x) => !x.symbol.startsWith('^')).map(({ symbol, name, sector }) => ({ symbol, name, sector })) });
   }
   if (route === 'GET /api/ratings') {
     try {

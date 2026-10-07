@@ -38,12 +38,12 @@ export function setFavs(mode, list) {
 // ---- パソコンとスマホでお気に入り・あなたの設定を共有する ----
 // 端末ごとに「最後にサーバーとそろえた時刻（ts）」と「まだ送っていない変更があるか（dirty）」を覚えておく
 const MODES = ['fx', 'stock', 'us'];
-const KEYS = [...MODES.map((m) => `favs_${m}`), 'profile'];
-const localValue = (key) => (key === 'profile' ? store.get('profile', null) : getFavs(key.slice(5)));
+const KEYS = [...MODES.map((m) => `favs_${m}`), ...MODES.map((m) => `holdings_${m}`), 'profile'];
+const localValue = (key) => (key.startsWith('favs_') ? getFavs(key.slice(5)) : store.get(key, null));
 let pushTimer = null;
 let syncing = null;
 let onSynced = () => {};
-export const syncState = { durable: null, error: '', last: 0 };
+export const syncState = { durable: null, error: '', last: 0, lastBackupAt: 0, lastAlertAt: 0 };
 
 export function onFavsSynced(fn) { onSynced = fn; }
 
@@ -58,6 +58,13 @@ export const DEFAULT_PROFILE = { email: '', budget: 0, riskPct: 2, maxPos: 3, no
 export function getProfile() {
   return { ...DEFAULT_PROFILE, ...(store.get('profile', null) || {}) };
 }
+// 自分で持っている株・通貨
+export function getHoldings(mode) { return store.get(`holdings_${mode}`, []) || []; }
+export function setHoldings(mode, list) {
+  store.set(`holdings_${mode}`, list);
+  markDirty(`holdings_${mode}`);
+}
+
 export function setProfile(p) {
   store.set('profile', p);
   markDirty('profile');
@@ -90,8 +97,10 @@ const union = (a, b) => {
 export function syncFavs() {
   syncing ||= (async () => {
     try {
-      const { items, durable } = await api('/api/prefs');
+      const { items, durable, lastBackupAt, lastAlertAt } = await api('/api/prefs');
       syncState.durable = durable;
+      syncState.lastBackupAt = lastBackupAt || 0;
+      syncState.lastAlertAt = lastAlertAt || 0;
       syncState.error = '';
       let changed = false;
       for (const key of KEYS) {
@@ -100,9 +109,9 @@ export function syncFavs() {
         const own = store.get(key, null);
         if (!meta) {
           // 初めてそろえる端末：今までのお気に入りは消さずに、サーバーのものと合わせる
-          if (remote && own && key !== 'profile') { store.set(key, union(remote.value, own)); changed = true; }
+          if (remote && own && key.startsWith('favs_')) { store.set(key, union(remote.value, own)); changed = true; }
           else if (remote) { store.set(key, remote.value); changed = true; }
-          store.set(`sync_${key}`, { ts: remote?.ts || 0, dirty: !!own && (key !== 'profile' || !remote) });
+          store.set(`sync_${key}`, { ts: remote?.ts || 0, dirty: !!own && (key.startsWith('favs_') || !remote) });
         } else if (meta.dirty) {
           // この端末で変えたものがまだ送れていない → こちらを送る
         } else if (remote && remote.ts > (meta.ts || 0)) {

@@ -71,7 +71,13 @@ function cost(kind) {
   return kind === 'fx' ? 0.0003 : 0.001; // 往復の費用（スプレッド・手数料の目安）
 }
 
-export function runStrategy(candles, id, { kind = 'stock', pair = '', regime = null, fundamentalRatio = null, days = 250 } = {}) {
+export function runStrategy(candles, id, { kind = 'stock', pair = '', regime = null, fundamentalRatio = null, days = 250, intraday = false } = {}) {
+  // デイトレ（intraday）：15分足などで売買し、その日のうちに必ず決済する（持ち越さない）
+  const NEXT = intraday ? '次の足の始まりの値段' : '次の日の始まりの値段';
+  const BAR = intraday ? 'この足の終わりの値段' : 'この日の終わりの値段';
+  const sessKey = (t) => (kind === 'fx' ? Math.floor((t + 2 * 3600) / 86400) : Math.floor((t + 9 * 3600) / 86400));
+  // i本目がその日の最後の足か（次の足との間が2時間以上あく・為替は朝7時で区切る）
+  const sessionEnd = (i) => i < candles.length - 1 && (candles[i + 1].time - candles[i].time >= 2 * 3600 || sessKey(candles[i + 1].time) !== sessKey(candles[i].time));
   const closes = candles.map((c) => c.close);
   const ma25 = sma(closes, 25), ma75 = sma(closes, 75);
   const r14 = rsi(closes, 14);
@@ -97,7 +103,7 @@ export function runStrategy(candles, id, { kind = 'stock', pair = '', regime = n
         pos.stop = c.open - pos.side * a * (id === 'rebound' ? 2 : 2);
         pos.take = id === 'combo' ? c.open + pos.side * a * 3 : null;
         pos.stop0 = pos.stop;
-        pos.why = [...pos.why, `入った値段 ${num(c.open)}（次の日の始まりの値段）・損切りの線 ${num(pos.stop)}${pos.take ? `・利益確定の目標 ${num(pos.take)}` : ''}`];
+        pos.why = [...pos.why, `入った値段 ${num(c.open)}（${NEXT}）・損切りの線 ${num(pos.stop)}${pos.take ? `・利益確定の目標 ${num(pos.take)}` : ''}`];
         events.push(`${pos.side > 0 ? '買い' : '売り'}で入る（${pending.reason}）`);
       } else if (pending.type === 'close' && pos) {
         const ret = pos.side * (c.open / pos.entryPrice - 1) - cost(kind);
@@ -112,7 +118,16 @@ export function runStrategy(candles, id, { kind = 'stock', pair = '', regime = n
 
     // 2) 今日の終わりの値段で、次の日にどうするか決める
     const price = c.close;
-    if (pos) {
+    if (intraday && pos && sessionEnd(i)) {
+      // デイトレは、その日の最後の足の終わりの値段で必ず決済する
+      const ret = pos.side * (price / pos.entryPrice - 1) - cost(kind);
+      const pnl = CAPITAL * ret;
+      realized += pnl;
+      trades.push({ side: pos.side, entryDate: dayKey(candles[pos.entryIdx].time), entryTime: candles[pos.entryIdx].time, entryPrice: pos.entryPrice, exitDate: dayKey(c.time), exitTime: c.time, exitPrice: price, ret, pnl, stopPct: Math.abs(pos.entryPrice - pos.stop0) / pos.entryPrice, reasonIn: pos.reason, reasonOut: 'その日の取引時間が終わるので決済（持ち越さない）', strength: pos.strength, whyIn: pos.why, whyOut: [`${BAR} ${num(price)}`, 'デイトレなので、次の日に持ち越さずに決済'], days: i - pos.entryIdx });
+      events.push('決済（その日の終わり）');
+      pos = null;
+      pending = null;
+    } else if (pos) {
       pos.peak = Math.max(pos.peak, c.high);
       pos.trough = Math.min(pos.trough, c.low);
       const a = a14[i] || price * 0.01;
@@ -121,7 +136,7 @@ export function runStrategy(candles, id, { kind = 'stock', pair = '', regime = n
       if (id === 'trend') pos.stop = pos.side > 0 ? Math.max(pos.stop, pos.peak - 2 * a) : Math.min(pos.stop, pos.trough + 2 * a);
       let exit = null, why = [];
       const gain = pos.side * (price / pos.entryPrice - 1);
-      const now = `この日の終わりの値段 ${num(price)}（入った値段から${gain >= 0 ? '+' : ''}${(gain * 100).toFixed(1)}%）`;
+      const now = `${BAR} ${num(price)}（入った値段から${gain >= 0 ? '+' : ''}${(gain * 100).toFixed(1)}%）`;
       if (pos.side > 0 ? price <= pos.stop : price >= pos.stop) {
         exit = '損切り・逆に動いた';
         why = [`${pos.side > 0 ? '下がって' : '上がって'}、あらかじめ決めていた損切りの線（${num(pos.stop)}）に届いた`, now, 'これ以上損を広げないために決済'];
@@ -144,11 +159,11 @@ export function runStrategy(candles, id, { kind = 'stock', pair = '', regime = n
       }
       if (!exit && held >= (id === 'rebound' ? 10 : 30)) {
         exit = '長く持ちすぎたので終了';
-        why = [`${held}日持っても決着がつかなかった`, now, 'お金を寝かせないために、いったん終了'];
+        why = [intraday ? `${held}本（足）持っても決着がつかなかった` : `${held}日持っても決着がつかなかった`, now, 'お金を寝かせないために、いったん終了'];
       }
       // 最後の日に決めたことは「次の取引日の予定」として残る
       if (exit) pending = { type: 'close', reason: exit, why };
-    } else {
+    } else if (!(intraday && (sessionEnd(i) || sessionEnd(i + 1)))) {
       let side = 0, reason = '', why = [], strength = null;
       if (id === 'trend' && ma25[i] && ma75[i]) {
         const hi20 = Math.max(...candles.slice(i - 20, i).map((x) => x.high));

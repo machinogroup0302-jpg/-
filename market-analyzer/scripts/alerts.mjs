@@ -9,6 +9,9 @@ import { getChart } from '../lib/market.js';
 import { runStrategy, regimeLookup, signalOdds, oddsLabel } from '../public/js/strategies.js';
 import { baseUniverse } from '../public/js/universe.js';
 import { sizePosition } from '../public/js/plan.js';
+import { adviseHolding } from '../public/js/holdingadvice.js';
+import { US_LIST } from '../lib/usstocks.js';
+import { startScan, scanStatus } from '../lib/scanner.js';
 
 const SITE = 'https://wataru-lupe.onrender.com';
 const STATE = new URL('../../alerts/state.json', import.meta.url);
@@ -42,6 +45,19 @@ const prices = {};
 
 async function collect(mode, regime) {
   const syms = baseUniverse(mode);
+  const add = (code, name) => { if (!syms.some(([c]) => c.toUpperCase() === String(code).toUpperCase())) syms.push([String(code).toUpperCase(), name]); };
+  // 米国株は一覧の全部、日本株は東証の全上場企業をチェックして、買いのサインが強い上位をくわしく計算する
+  if (mode === 'us') US_LIST.filter((x) => !x.symbol.startsWith('^')).forEach((x) => add(x.symbol, x.name));
+  if (mode === 'stock') {
+    try {
+      startScan({ markets: ['グロース', 'スタンダード', 'プライム'] });
+      for (let i = 0; i < 200 && scanStatus().status === 'running'; i++) await new Promise((r) => setTimeout(r, 3000));
+      const buy = scanStatus({ view: 'buy', limit: 40 });
+      console.log(`日本株：全${buy.total || 0}社をチェック`);
+      for (const x of buy.results || []) add(x.code, x.name);
+    } catch (e) { console.log('全銘柄チェックに失敗:', e.message); }
+  }
+  for (const h of site?.holdings?.[mode] || []) add(h.code, h.name);
   // お気に入りも入れる（指数は除く）
   for (const f of site?.favs?.[mode] || []) {
     if (!/^\^/.test(f.code) && !syms.some(([c]) => c.toUpperCase() === f.code.toUpperCase())) syms.push([f.code.toUpperCase(), f.name]);
@@ -65,11 +81,29 @@ async function collect(mode, regime) {
     if (r.next) signals.push({ ...r.next, mode, name: x.name, symbol: x.symbol, open: r.open, last: last.close, date: dayKey(last.time) });
   }
   for (const s of signals) if (s.type === 'open') s.odds = signalOdds(trades, { symbol: s.symbol, side: s.side, strength: s.strength });
+  // 自分で持っている株：損切り・決済・利益確定のタイミングを知らせる
+  const byCode = new Map(list.map((x) => [x.code.toUpperCase(), x]));
+  for (const h of site?.holdings?.[mode] || []) {
+    const x = byCode.get(String(h.code).toUpperCase());
+    if (!x) continue;
+    const adv = adviseHolding({ ...h, symbol: x.symbol }, x.candles, { mode, prices, usdjpy: prices['USDJPY=X'], profile: site?.profile });
+    if (adv && adv.key !== 'hold') signals.push({ type: 'hold', mode, name: h.name, symbol: x.symbol, side: h.side, key: adv.key, adv, date: adv.date, h });
+  }
   console.log(`${NAMES[mode]}: ${list.length}/${syms.length}銘柄を計算、サイン${signals.length}件`);
   return signals;
 }
 
 function describe(s, pf) {
+  if (s.type === 'hold') {
+    const a = s.adv;
+    return {
+      title: `📦【持っている株】${s.name}：${a.verdict.icon}${a.verdict.label}`,
+      lines: [
+        `${price(s.h.price, s.mode)}で${s.h.side > 0 ? '買い' : '売り'} → 今 ${price(a.now, s.mode)}（${a.plPct >= 0 ? '+' : ''}${(a.plPct * 100).toFixed(1)}%${a.plYen != null ? `・${a.plYen >= 0 ? '+' : '−'}${Math.abs(Math.round(a.plYen)).toLocaleString()}円` : ''}）`,
+        ...a.reasons.map((w) => `・${w}`),
+      ],
+    };
+  }
   if (s.type === 'open') {
     const p = s.odds ? `${Math.round(s.odds.p * 100)}%（${oddsLabel(s.odds)}）` : 'まだ出せません';
     let plan = [];
@@ -99,6 +133,8 @@ function describe(s, pf) {
   };
 }
 
+const ORDER = { hold: 0, open: 1, close: 2 };
+const keyOf = (s) => `${s.symbol}|${s.type}|${s.type === 'hold' ? s.key : s.side || 0}|${s.date}`;
 const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 async function main() {
@@ -116,17 +152,17 @@ async function main() {
   const regime = regimeLookup({ vix, tnx, nikkei });
 
   const all = [];
+  { const u = await candles('USDJPY=X'); if (u) prices['USDJPY=X'] = u[u.length - 1].close; }
   for (const mode of MODES) all.push(...await collect(mode, regime));
-  if (!prices['USDJPY=X']) { const u = await candles('USDJPY=X'); if (u) prices['USDJPY=X'] = u[u.length - 1].close; }
   const today = dayKey(Date.now() / 1000);
   const fresh = all.filter((s) => {
     const age = (Date.parse(today) - Date.parse(s.date)) / 86400000;
-    return age <= 4 && !state.sent[`${s.symbol}|${s.type}|${s.side || 0}|${s.date}`];
-  }).sort((a, b) => (a.type === b.type ? (b.odds?.p || 0) - (a.odds?.p || 0) : a.type === 'open' ? -1 : 1));
+    return age <= 4 && !state.sent[keyOf(s)];
+  }).sort((a, b) => ORDER[a.type] - ORDER[b.type] || (b.odds?.p || 0) - (a.odds?.p || 0));
 
   if (!fresh.length) { console.log('新しいサインはありません'); return; }
-  const buys = fresh.filter((s) => s.type === 'open').length, closes = fresh.length - buys;
-  const subject = `【売買サイン】${MODES.map((m) => NAMES[m]).join('・')}：新しく入る${buys}件・決済${closes}件（${md(today)}）`;
+  const buys = fresh.filter((s) => s.type === 'open').length, closes = fresh.filter((s) => s.type === 'close').length, holds = fresh.filter((s) => s.type === 'hold').length;
+  const subject = `【売買サイン】${MODES.map((m) => NAMES[m]).join('・')}：${holds ? `持っている株${holds}件・` : ''}新しく入る${buys}件・決済${closes}件（${md(today)}）`;
   const blocks = fresh.map((s) => describe(s, pf));
   const note = '※ 過去の値動きから計算した練習用のサインです。勝つ確率は目安で、当たる保証はありません。売買はご自身の判断で行ってください。';
   const text = [subject, '', ...blocks.flatMap((b) => [b.title, ...b.lines, '']), `くわしくはサイトの「成績」→「今のサイン」：${SITE}`, '', note].join('\n');
@@ -138,7 +174,7 @@ async function main() {
   const { MAIL_USER, MAIL_PASS } = process.env;
   if (!MAIL_USER || !MAIL_PASS || !to) {
     console.log('メールの設定（MAIL_USER・MAIL_PASS と届け先）がないため、送らずに内容だけ表示します。\n');
-    if (!pf) console.log(text);
+    if (!pf || process.env.SHOW_TEXT) console.log(text);
     return;
   }
   const nodemailer = (await import('nodemailer')).default;
@@ -147,7 +183,7 @@ async function main() {
   console.log(`メールを送りました（${fresh.length}件）`);
 
   const now = new Date().toISOString();
-  for (const s of fresh) state.sent[`${s.symbol}|${s.type}|${s.side || 0}|${s.date}`] = now;
+  for (const s of fresh) state.sent[keyOf(s)] = now;
   // 30日より前の記録は消す
   for (const [k, v] of Object.entries(state.sent)) if (Date.now() - Date.parse(v) > 30 * 86400000) delete state.sent[k];
   await fs.mkdir(new URL('.', STATE), { recursive: true });

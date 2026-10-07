@@ -451,6 +451,11 @@ function showSuggest(items) {
 
 async function suggestFor(q) {
   if (mode === 'fx') return searchFx(q).map((p) => ({ code: p.code, symbol: p.symbol, name: p.name }));
+  if (mode === 'us' && !q) {
+    // 何も入れていないときは、人気の銘柄を出す
+    const { items } = await api('/api/us/list');
+    return items.filter((x) => x.sector !== 'ETF').slice(0, 20).map((x) => ({ code: x.symbol, symbol: x.symbol, name: x.name, sub: x.sector }));
+  }
   if (!q) return [];
   if (mode === 'us') {
     const { items } = await api(`/api/us/search?q=${encodeURIComponent(q)}`);
@@ -485,16 +490,16 @@ export function initChartView() {
     }
     // 米国株は「AAPL アップル」のような候補や、カタカナでも探せる
     if (mode === 'us') {
-      const tick = v.match(/^([\^A-Za-z.\-]{1,10})(\s|$)/);
-      if (tick) {
-        v = tick[1];
-      } else {
-        try {
-          const { items } = await api(`/api/us/search?q=${encodeURIComponent(v)}`);
-          if (!items.length) { $('chart-msg').hidden = false; $('chart-msg').textContent = `「${v}」は一覧にありませんでした。ティッカー（例: AAPL）で入力してください`; return; }
-          return loadChart(items[0].symbol, items[0].name);
-        } catch (err) { $('chart-msg').hidden = false; $('chart-msg').textContent = err.message; return; }
-      }
+      const t = v.match(/^([\^A-Za-z.\-]{1,10})(\s|$)/);
+      const tickerLike = t && /^[\^A-Za-z.\-]{1,6}$/.test(t[1]);
+      try {
+        const { items } = await api(`/api/us/search?q=${encodeURIComponent(v)}`);
+        const exact = tickerLike && items.find((x) => x.symbol === t[1].toUpperCase());
+        const hit = exact || (!tickerLike && items[0]);
+        if (hit) return loadChart(hit.symbol, hit.name);
+        if (!tickerLike) { $('chart-msg').hidden = false; $('chart-msg').textContent = `「${v}」は見つかりませんでした。カタカナ（例: アップル）か、ティッカー（例: AAPL）で入れてください`; return; }
+      } catch { /* 探せなくてもティッカーとして表示してみる */ }
+      v = t[1];
     }
     // 株は「7203 トヨタ自動車」のような候補や、会社名でも探せる
     if (mode === 'stock') {
@@ -522,7 +527,7 @@ export function initChartView() {
     }, mode === 'fx' ? 0 : 200);
   };
   $('symbol-input').addEventListener('input', refreshSuggest);
-  $('symbol-input').addEventListener('focus', () => { if (mode === 'fx' || $('symbol-input').value.trim()) refreshSuggest(); });
+  $('symbol-input').addEventListener('focus', () => { if (mode !== 'stock' || $('symbol-input').value.trim()) refreshSuggest(); });
   $('suggest').addEventListener('click', (e) => {
     const li = e.target.closest('li[data-symbol]');
     if (!li) return;

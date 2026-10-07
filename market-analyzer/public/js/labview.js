@@ -2,12 +2,11 @@
 import { api, $, esc, store, fmtPrice, digitsFor, fmtYen, cssVar, JST } from './util.js';
 import { term } from './glossary.js';
 import { evaluateForecasts } from './backtest.js';
-import { runStrategy, regimeLookup, STRATEGIES, pickAndTrade, signalOdds, oddsLabel, oddsText } from './strategies.js';
+import { runStrategy, regimeLookup, STRATEGIES, pickAndTrade } from './strategies.js';
 import { baseUniverse } from './universe.js';
 import { pagedList } from './stockscreener.js';
 import { futureTimes } from './forecast.js';
-import { getFavs, getProfile } from './favorites.js';
-import { sizePosition, replayWithBudget } from './plan.js';
+import { getFavs } from './favorites.js';
 
 const LC = window.LightweightCharts;
 const HORIZONS = [[1, '翌日'], [5, '1週間後'], [20, '1か月後']];
@@ -18,7 +17,7 @@ let charts = {};
 let regimeCache = null;
 
 const pct = (v) => (v == null ? '—' : `${Math.round(v * 100)}%`);
-const kindOf = (mode) => (mode === 'fx' ? 'fx' : mode === 'us' ? 'us' : 'stock');
+export const kindOf = (mode) => (mode === 'fx' ? 'fx' : mode === 'us' ? 'us' : 'stock');
 
 function chartOpts(height) {
   const grid = cssVar('--border');
@@ -38,7 +37,7 @@ function makeChart(id) {
   return charts[id];
 }
 
-async function loadRegime() {
+export async function loadRegime() {
   if (regimeCache && Date.now() - regimeCache.at < 30 * 60 * 1000) return regimeCache.fn;
   const get = (s) => api(`/api/chart?symbol=${encodeURIComponent(s)}&tf=1d`).then((d) => d.candles).catch(() => []);
   const [vix, tnx, nikkei] = await Promise.all([get('^VIX'), get('^TNX'), get('^N225')]);
@@ -160,7 +159,7 @@ async function prepare(st, mode) {
 }
 
 // 成績タブの中の切り替え（今のサイン・売買の一覧・この銘柄の売買・予想の答え合わせ・銘柄選び）
-let labSub = store.get('lab_sub', 'plan');
+let labSub = ['trade', 'fc', 'more'].includes(store.get('lab_sub', 'trade')) ? store.get('lab_sub', 'trade') : 'trade';
 let getModeFn = () => 'fx';
 let lastSt = null;
 
@@ -174,9 +173,6 @@ export async function updateLab(st, mode) {
   if (st) lastSt = st;
   if ($('view-lab').hidden) return;
   applySub();
-  if (labSub === 'plan') return showPlan(mode);
-  if (labSub === 'now') return showNow(mode);
-  if (labSub === 'list') return showList(mode);
   if (labSub === 'more' || !lastSt) return;
   return updateSymbol(lastSt, mode);
 }
@@ -184,9 +180,6 @@ export async function updateLab(st, mode) {
 // 自動更新：今見ている画面を最新にする
 export function refreshLab(mode) {
   if ($('view-lab').hidden) return;
-  if (labSub === 'plan') return showPlan(mode, true);
-  if (labSub === 'now') return showNow(mode, true);
-  if (labSub === 'list') return showList(mode, true);
   if ((labSub === 'trade' || labSub === 'fc') && lastSt) { ctx = null; return updateSymbol(lastSt, mode, { silent: true }); }
 }
 
@@ -238,7 +231,7 @@ async function runBatch(mode) {
 }
 
 // ---------------- 勝率の高い銘柄だけを選んで売買 ----------------
-function universe(mode) {
+export function universe(mode) {
   const base = baseUniverse(mode);
   const favs = getFavs(mode).filter((f) => !/^\^/.test(f.code)).map((f) => [f.code, f.name]);
   const seen = new Set();
@@ -246,7 +239,7 @@ function universe(mode) {
 }
 
 // 銘柄ごとの日足を、3つずつ並べて取ってくる
-async function loadCandles(syms, out) {
+export async function loadCandles(syms, out, tf = '1d', minLen = 200) {
   const list = [];
   let done = 0;
   const queue = [...syms];
@@ -254,8 +247,8 @@ async function loadCandles(syms, out) {
     while (queue.length) {
       const [code, name] = queue.shift();
       try {
-        const d = await api(`/api/chart?symbol=${encodeURIComponent(code)}&tf=1d`);
-        if (d.candles.length >= 200) list.push({ symbol: d.symbol, name, candles: d.candles, fundRatio: null });
+        const d = await api(`/api/chart?symbol=${encodeURIComponent(code)}&tf=${tf}`);
+        if (d.candles.length >= minLen) list.push({ symbol: d.symbol, name, candles: d.candles, fundRatio: null });
       } catch { /* 取れない銘柄は飛ばす */ }
       done++;
       out.innerHTML = `<p class="small muted"><span class="spinner"></span> 過去のデータを読み込み中… ${done} / ${syms.length}</p>`;
@@ -280,242 +273,6 @@ async function runPicks(mode) {
   } finally {
     btn.disabled = false;
   }
-}
-
-// ---------------- 全銘柄の売買一覧（理由つき） ----------------
-async function logUniverse(mode) {
-  const syms = universe(mode);
-  if (mode !== 'stock') return syms;
-  // 候補チェックが終わっていれば、上がりそう・下がりそうの上位も入れる
-  const seen = new Set(syms.map(([c]) => c));
-  for (const view of ['buy', 'sell']) {
-    try {
-      const r = await api(`/api/stocks/scan?view=${view}&limit=15`);
-      for (const x of r.results || []) if (!seen.has(x.code)) { seen.add(x.code); syms.push([x.code, x.name]); }
-    } catch { /* チェックしていなければ使わない */ }
-  }
-  return syms;
-}
-
-const whyList = (arr) => (arr?.length ? `<ul class="why">${arr.map((w) => `<li>${esc(w)}</li>`).join('')}</ul>` : '');
-const sideBadge = (s) => `<span class="badge ${s > 0 ? 'buy' : 'sell'}">${s > 0 ? '買い' : '売り'}</span>`;
-const digitsOf = (mode) => (mode === 'stock' ? 1 : mode === 'us' ? 2 : 3);
-const ymd = (x) => esc(`${Number(String(x).slice(5, 7))}/${Number(String(x).slice(8, 10))}`);
-
-// 勝つ確率の目安を、色つきのメーターで見せる
-function oddsHtml(o, { compact = false } = {}) {
-  if (!o) return '<div class="odds muted small">勝つ確率：過去の取引が少なく、まだ出せません</div>';
-  const v = Math.round(o.p * 100);
-  const cls = o.p >= 0.6 ? 'hi' : o.p >= 0.5 ? 'mid' : 'lo';
-  return `<div class="odds ${cls}"><div class="odds-head"><span>勝つ確率の目安</span><b>${v}%</b><span class="badge ${cls === 'hi' ? 'ok' : cls === 'mid' ? 'warn' : 'danger'}">${oddsLabel(o)}</span></div>
-    <div class="odds-bar"><i style="width:${v}%"></i></div>${compact ? '' : `<div class="small muted" style="margin-top:4px">${esc(oddsText(o))}</div>`}</div>`;
-}
-
-const logCache = {};
-let logRunning = null;
-
-// 全銘柄を「総合判断」で計算する（「今のサイン」と「売買の一覧」で共通）
-async function computeLog(mode, out, force = false) {
-  const hit = logCache[mode];
-  if (hit && !force && Date.now() - hit.at < 30 * 60 * 1000) return hit.data;
-  if (logRunning?.mode === mode) return logRunning.p;
-  const p = (async () => {
-    const regime = await loadRegime();
-    const list = await loadCandles(await logUniverse(mode), out);
-    out.innerHTML = '<p class="small muted"><span class="spinner"></span> 計算しています…</p>';
-    await new Promise((r) => setTimeout(r, 30));
-    const kind = kindOf(mode);
-    const trades = [], holding = [], next = [];
-    const prices = {};
-    for (const x of list) {
-      prices[x.symbol] = x.candles[x.candles.length - 1].close;
-      const r = runStrategy(x.candles, 'combo', { kind, pair: x.symbol.replace(/=X$/, ''), regime });
-      const last = x.candles[x.candles.length - 1];
-      for (const t of r.trades) trades.push({ ...t, name: x.name, symbol: x.symbol });
-      if (r.open) holding.push({ ...r.open, name: x.name, symbol: x.symbol, last: last.close });
-      if (r.next) next.push({ ...r.next, name: x.name, symbol: x.symbol, open: r.open, last: last.close, date: dayKeyOf(last.time) });
-    }
-    // 確率：これからの売買は全部の取引から、過去の売買は「その日より前に終わった取引」だけから計算する
-    for (const x of next) if (x.type === 'open') x.odds = signalOdds(trades, { symbol: x.symbol, side: x.side, strength: x.strength });
-    for (const x of holding) x.odds = signalOdds(trades, { symbol: x.symbol, side: x.side, strength: x.strength, before: x.entryDate });
-    for (const t of trades) t.odds = signalOdds(trades, { symbol: t.symbol, side: t.side, strength: t.strength, before: t.entryDate });
-    let usdjpy = prices['USDJPY=X'] || null;
-    if (!usdjpy) { try { const u = await api('/api/chart?symbol=USDJPY&tf=1d'); usdjpy = u.candles[u.candles.length - 1].close; } catch { /* 取れなければ米国株の量は出さない */ } }
-    const data = { trades, holding, next, prices, usdjpy, count: list.length, at: Date.now() };
-    logCache[mode] = { at: Date.now(), data };
-    return data;
-  })();
-  logRunning = { mode, p };
-  try { return await p; } finally { logRunning = null; }
-}
-
-const dayKeyOf = (t) => new Date((t + 9 * 3600) * 1000).toISOString().slice(0, 10);
-
-function refreshBtn(id) {
-  return `<button class="btn block" id="${id}" style="margin-top:10px">最新にする</button>`;
-}
-
-async function showPlan(mode, force = false) {
-  const out = $('lab-plan');
-  try {
-    const r = await computeLog(mode, out, force);
-    if (getModeFn() !== mode) return;
-    renderPlan(r, mode);
-  } catch (e) { out.innerHTML = `<p class="error">${esc(e.message)}</p>`; }
-}
-
-const yen0 = (v) => `${Math.round(v).toLocaleString()}円`;
-
-function renderPlan(r, mode) {
-  const pf = getProfile();
-  const budget = pf.budget || 1_000_000;
-  const d = digitsOf(mode);
-  const rule = { budget, riskPct: pf.riskPct, maxPos: pf.maxPos };
-  // 過去1年をあなたのルールでやり直す：全部やった場合と、確率の目安が高いものだけやった場合
-  const all = replayWithBudget(r.trades, rule);
-  const picky = replayWithBudget(r.trades, { ...rule, minOdds: 0.55 });
-  const usePicky = picky.trades >= 5 && picky.total > all.total;
-  const minOdds = usePicky ? 0.55 : 0.5;
-  const sz = (x, stop) => sizePosition({ mode, symbol: x.symbol, price: x.last, stop, budget, riskPct: pf.riskPct, maxPos: pf.maxPos, prices: r.prices, usdjpy: r.usdjpy });
-  const opens = r.next.filter((x) => x.type === 'open').map((x) => ({ ...x, size: sz(x, x.stopEst) }))
-    .sort((a, b) => (b.odds?.p || 0) - (a.odds?.p || 0));
-  const good = opens.filter((x) => x.odds && x.odds.p >= minOdds && x.odds.expect > 0);
-  const picks = good.filter((x) => x.size?.qty > 0).slice(0, pf.maxPos);
-  const rest = opens.filter((x) => !picks.includes(x));
-  const closes = r.next.filter((x) => x.type === 'close');
-  const replayCard = (t, x) => `<div class="stat"><div class="label">${t}</div><div class="value ${x.total >= 0 ? 'plus' : 'minus'}">${fmtYen(x.total)}</div><div class="small muted">${x.trades}回・勝率${pct(x.winRate)}・一番減ったとき ${fmtYen(-x.maxDD)}</div></div>`;
-  $('lab-plan').innerHTML = `
-    ${pf.budget ? '' : '<p class="notice" style="margin:0 0 8px">予算がまだ入っていないので、100万円で計算しています。右上の⚙（設定）の「あなたの設定」で入れてください。</p>'}
-    <div class="plan-rule small">予算 <b>${yen0(budget)}</b>　／　1回で減ってもいい額 <b>${yen0(budget * pf.riskPct / 100)}</b>（${pf.riskPct}%）　／　同時に <b>${pf.maxPos}銘柄</b>まで（1銘柄 ${yen0(budget / pf.maxPos)}まで）</div>
-    <button class="btn block" id="plan-settings" style="margin:8px 0 4px">予算・ルールを変える</button>
-
-    <h3>✅ 今やるといいこと<span class="sub">次の取引日の始まりに</span></h3>
-    ${picks.length ? `<ul class="list">${picks.map((x) => {
-      const s = x.size;
-      const gain = x.takeEst ? Math.abs(x.takeEst - x.last) * s.perPrice : null;
-      return `<li class="plan-pick">
-        <div class="li-head"><span class="name">${esc(x.name)}</span>${sideBadge(x.side)}</div>
-        <div class="plan-order"><b>${x.side > 0 ? '買う' : '売る'}：${s.qty.toLocaleString()}${s.unitLabel}</b>（今 ${fmtPrice(x.last, d)}・${s.kindLabel} 約${yen0(s.cost)}）</div>
-        <div class="grid2 plan-grid">
-          <div class="stat"><div class="label">損切りの値段</div><div class="value minus" style="font-size:16px">${fmtPrice(x.stopEst, d)}</div><div class="small muted">ここまで来たら決済：約−${yen0(s.maxLoss)}</div></div>
-          <div class="stat"><div class="label">利益確定の目標</div><div class="value plus" style="font-size:16px">${x.takeEst ? fmtPrice(x.takeEst, d) : '—'}</div><div class="small muted">${gain ? `届いたら決済：約+${yen0(gain)}` : '判定が変わるまで持つ'}</div></div>
-        </div>
-        ${oddsHtml(x.odds, { compact: true })}
-        <details class="why-box"><summary>理由を見る</summary>${whyList(x.why)}</details></li>`;
-    }).join('')}</ul>` : `<p class="small muted">今は、あなたのルールに合うサインがありません（勝つ確率の目安${Math.round(minOdds * 100)}%以上・予算内で買える量があるもの）。お休みも大事なトレードです。</p>`}
-
-    <h3>🔴 持っていたら決済した方がいいもの</h3>
-    ${closes.length ? `<ul class="list">${closes.map((x) => `<li><div class="li-head"><span class="name">${esc(x.name)}</span>${x.open ? sideBadge(x.open.side) : ''}</div>
-      <div class="small"><b>次の取引日の始まりに決済</b>：${esc(x.reason)}</div></li>`).join('')}</ul>` : '<p class="small muted">今はありません。</p>'}
-
-    ${rest.length ? `<details class="why-box" style="margin-top:10px"><summary>見送ったサイン（${rest.length}件）</summary><ul class="list">${rest.map((x) => `<li class="small"><b>${esc(x.name)}</b> ${sideBadge(x.side)} 確率${x.odds ? Math.round(x.odds.p * 100) + '%' : '—'}　<span class="muted">${
-      !x.odds || x.odds.p < minOdds ? `勝つ確率の目安が${Math.round(minOdds * 100)}%未満` : x.odds.expect <= 0 ? '勝っても負けても平均するとマイナス' : x.size && x.size.qty === 0 ? esc(x.size.why) : !x.size ? '量を計算できませんでした' : `同時に持つ数（${pf.maxPos}つ）を超えるため`}</span></li>`).join('')}</ul></details>` : ''}
-
-    <h3>📊 あなたの予算で、このやり方を1年続けていたら</h3>
-    <div class="grid2">${replayCard('サインが出たら全部やる', all)}${replayCard('確率の目安55%以上だけやる', picky)}</div>
-    <p class="small" style="margin:6px 0 0"><b>おすすめ：</b>${usePicky ? '確率の目安が55%以上のサインだけに絞る方が成績が良かったので、上の「今やるといいこと」も55%以上に絞っています。' : '絞らずにサインどおりにやる方が成績が良かったので、50%以上のサインを出しています。'}</p>
-    <p class="notice" style="margin-top:8px">過去の値動きでの計算です。日本株は100株単位、為替は1,000通貨単位・レバレッジ25倍で計算しています。手数料などは差し引いていますが、実際の値段（次の日の始まりの値段）は少しずれます。最終的な判断はご自身で行ってください。</p>
-    ${refreshBtn('lab-plan-refresh')}`;
-  $('lab-plan-refresh').onclick = () => showPlan(mode, true);
-  $('plan-settings').onclick = () => $('open-settings').click();
-}
-
-async function showNow(mode, force = false) {
-  const out = $('lab-now');
-  try {
-    const r = await computeLog(mode, out, force);
-    if (getModeFn() !== mode) return;
-    renderNow(r, mode);
-  } catch (e) { out.innerHTML = `<p class="error">${esc(e.message)}</p>`; }
-}
-
-async function showList(mode, force = false) {
-  const out = $('lab-log');
-  try {
-    const r = await computeLog(mode, out, force);
-    if (getModeFn() !== mode) return;
-    renderLog(r, mode);
-  } catch (e) { out.innerHTML = `<p class="error">${esc(e.message)}</p>`; }
-}
-
-function renderNow(r, mode) {
-  const d = digitsOf(mode);
-  const opens = r.next.filter((x) => x.type === 'open').sort((a, b) => (b.odds?.p || 0) - (a.odds?.p || 0));
-  const closes = r.next.filter((x) => x.type === 'close');
-  const when = r.next[0]?.date ? `${ymd(r.next[0].date)}の終わりの値段で判断` : '';
-  $('lab-now').innerHTML = `
-    <h3>🟢 新しく入るサイン<span class="sub">${opens.length}件・${when}</span></h3>
-    ${opens.length ? `<ul class="list">${opens.map((x) => `<li>
-      <div class="li-head"><span class="name">${esc(x.name)}</span>${sideBadge(x.side)}</div>
-      <div class="small"><b>次の取引日の始まりに${x.side > 0 ? '買う' : '売る'}</b>（今 ${fmtPrice(x.last, d)}）</div>
-      ${oddsHtml(x.odds)}
-      <details class="why-box"><summary>理由を見る</summary>${whyList(x.why)}</details></li>`).join('')}</ul>` : '<p class="small muted">今は新しく入るサインはありません。</p>'}
-    <h3>🔴 決済するサイン<span class="sub">${closes.length}件</span></h3>
-    ${closes.length ? `<ul class="list">${closes.map((x) => {
-      const g = x.open ? x.open.side * (x.last / x.open.entryPrice - 1) : 0;
-      return `<li><div class="li-head"><span class="name">${esc(x.name)}</span>${x.open ? sideBadge(x.open.side) : ''}<b class="${g >= 0 ? 'plus' : 'minus'}">${g >= 0 ? '+' : ''}${(g * 100).toFixed(1)}%</b></div>
-      <div class="small"><b>次の取引日の始まりに決済</b>：${esc(x.reason)}</div>
-      ${x.open ? `<div class="small muted">${ymd(x.open.entryDate)}に${fmtPrice(x.open.entryPrice, d)}で${x.open.side > 0 ? '買い' : '売り'} → 今 ${fmtPrice(x.last, d)}</div>` : ''}
-      <details class="why-box"><summary>理由を見る</summary>${whyList(x.why)}</details></li>`;
-    }).join('')}</ul>` : '<p class="small muted">今は決済するサインはありません。</p>'}
-    <h3>📦 今持っている銘柄<span class="sub">${r.holding.length}件</span></h3>
-    ${r.holding.length ? `<ul class="list">${r.holding.map((x) => {
-      const g = x.side * (x.last / x.entryPrice - 1);
-      return `<li><div class="li-head"><span class="name">${esc(x.name)}</span>${sideBadge(x.side)}<b class="${g >= 0 ? 'plus' : 'minus'}">${g >= 0 ? '+' : ''}${(g * 100).toFixed(1)}%</b></div>
-      <div class="small">${ymd(x.entryDate)}に ${fmtPrice(x.entryPrice, d)} で${x.side > 0 ? '買い' : '売り'} → 今 ${fmtPrice(x.last, d)}</div>
-      <div class="small muted">損切りの線 ${fmtPrice(x.stop, d)}${x.take ? `・利益確定の目標 ${fmtPrice(x.take, d)}` : ''}</div>
-      ${oddsHtml(x.odds, { compact: true })}
-      <details class="why-box"><summary>入った理由を見る</summary>${whyList(x.why)}</details></li>`;
-    }).join('')}</ul>` : '<p class="small muted">今持っている銘柄はありません。</p>'}
-    <p class="notice" style="margin-top:8px">「勝つ確率の目安」は過去の成績からの見積もりで、当たる保証はありません。${r.count}銘柄を計算・${new Date(r.at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}時点。</p>
-    ${refreshBtn('lab-now-refresh')}`;
-  $('lab-now-refresh').onclick = () => showNow(mode, true);
-}
-
-let logFilter = 'all';
-function renderLog(r, mode) {
-  const d = digitsOf(mode);
-  const wins = r.trades.filter((t) => t.pnl > 0);
-  const total = r.trades.reduce((a, t) => a + t.pnl, 0);
-  const sorted = r.trades.slice().sort((a, b) => b.entryDate.localeCompare(a.entryDate));
-  // 確率の目安ごとに、実際どれくらい勝てたか（目安が当てになるかの確認）
-  const band = (lo, hi) => { const g = r.trades.filter((t) => t.odds && t.odds.p >= lo && t.odds.p < hi); return { n: g.length, w: g.filter((t) => t.pnl > 0).length }; };
-  const bands = [['60%以上', band(0.6, 2)], ['50〜60%', band(0.5, 0.6)], ['50%未満', band(0, 0.5)]];
-  $('lab-log').innerHTML = `
-    <div class="grid2">
-      <div class="stat"><div class="label">取引の回数（${r.count}銘柄）</div><div class="value">${r.trades.length}回</div></div>
-      <div class="stat"><div class="label">勝率</div><div class="value">${pct(r.trades.length ? wins.length / r.trades.length : null)}</div></div>
-      <div class="stat"><div class="label">合計の損益（決済した分）</div><div class="value ${total >= 0 ? 'plus' : 'minus'}">${fmtYen(total)}</div></div>
-      <div class="stat"><div class="label">1回あたりの平均</div><div class="value ${total >= 0 ? 'plus' : 'minus'}">${fmtYen(r.trades.length ? total / r.trades.length : 0)}</div></div>
-    </div>
-    <h3>確率の目安は当たっていた？</h3>
-    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>入ったときの目安</th><th class="r">回数</th><th class="r">実際の勝率</th></tr></thead><tbody>
-      ${bands.map(([k, b]) => `<tr><td class="small">${k}</td><td class="r">${b.n}</td><td class="r">${b.n ? pct(b.w / b.n) : '—'}</td></tr>`).join('')}</tbody></table></div>
-    <h3>売買の一覧<span class="sub">新しい順・10件ずつ</span></h3>
-    <div class="seg" id="lab-log-seg" style="margin-bottom:8px">${[['all', 'すべて'], ['win', '勝ち'], ['loss', '負け'], ['buy', '買い'], ['sell', '売り']].map(([k, v]) => `<button data-f="${k}" aria-pressed="${k === logFilter}">${v}</button>`).join('')}</div>
-    <div id="lab-log-list"></div>
-    ${refreshBtn('lab-log-refresh')}`;
-  $('lab-log-refresh').onclick = () => showList(mode, true);
-  const draw = () => {
-    const f = { all: () => true, win: (t) => t.pnl > 0, loss: (t) => t.pnl <= 0, buy: (t) => t.side > 0, sell: (t) => t.side < 0 }[logFilter];
-    pagedList($('lab-log-list'), sorted.filter(f), (t) => `<li class="log-item">
-      <div class="li-head"><span class="name">${esc(t.name)}</span>${sideBadge(t.side)}<b class="${t.pnl >= 0 ? 'plus' : 'minus'}" style="font-size:16px">${t.pnl >= 0 ? '勝ち ' : '負け '}${fmtYen(t.pnl)}</b></div>
-      <div class="timeline">
-        <div class="tl-step"><span class="tl-dot in"></span><div><b>${ymd(t.entryDate)} ${t.side > 0 ? '買った' : '売った'}</b>　<span class="num">${fmtPrice(t.entryPrice, d)}</span><div class="small muted">${esc(t.reasonIn)}</div></div></div>
-        <div class="tl-step"><span class="tl-dot out"></span><div><b>${ymd(t.exitDate)} 決済</b>　<span class="num">${fmtPrice(t.exitPrice, d)}</span>（${t.days}日間・<span class="${t.ret >= 0 ? 'plus' : 'minus'}">${t.ret >= 0 ? '+' : ''}${(t.ret * 100).toFixed(1)}%</span>）<div class="small muted">${esc(t.reasonOut)}</div></div></div>
-      </div>
-      ${oddsHtml(t.odds, { compact: true })}
-      <details class="why-box"><summary>くわしい理由を見る</summary><div class="small"><b>入った理由</b></div>${whyList(t.whyIn)}<div class="small" style="margin-top:4px"><b>決済した理由</b></div>${whyList(t.whyOut)}</details></li>`,
-    { empty: '該当する取引はありません', tag: 'div', wrap: (b) => `<ul class="list">${b}</ul>` });
-  };
-  draw();
-  $('lab-log-seg').onclick = (e) => {
-    const b = e.target.closest('button[data-f]');
-    if (!b) return;
-    logFilter = b.dataset.f;
-    $('lab-log-seg').querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
-    draw();
-  };
 }
 
 function renderPicks(r, mode) {

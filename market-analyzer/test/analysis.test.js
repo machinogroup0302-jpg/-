@@ -617,3 +617,43 @@ test('勝つ確率の目安：銘柄の回数が少ないときは全体の勝�
   const past = signalOdds(pool, { symbol: 'A', side: 1, strength: 0.7, before: '2026-02-01' });
   assert.ok(past.base < 40);
 });
+
+test('デイトレ：その日のうちに必ず決済し、次の日に持ち越さない', async () => {
+  const { runStrategy } = await import('../public/js/strategies.js');
+  const cs = [];
+  let p = 100, seed = 5;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let d = 0; d < 30; d++) {
+    const t0 = Date.UTC(2026, 8, 1 + d, 0, 0) / 1000; // 日本時間 9:00
+    for (let k = 0; k < 26; k++) { const o = p; p = o * (1 + (rnd() - 0.48) * 0.006); cs.push({ time: t0 + k * 900, open: o, high: Math.max(o, p) * 1.001, low: Math.min(o, p) * 0.999, close: p, volume: 1 }); }
+  }
+  const r = runStrategy(cs, 'combo', { kind: 'stock', days: 26 * 20, intraday: true });
+  assert.ok(r.trades.length > 0);
+  const day = (t) => Math.floor((t + 9 * 3600) / 86400);
+  assert.ok(r.trades.every((t) => day(t.entryTime) === day(t.exitTime)), '同じ日に決済している');
+});
+
+test('持っている株のアドバイス：損切りの線を割ったら「損切りを」、上向きなら「持ち続けてOK」', async () => {
+  const { adviseHolding } = await import('../public/js/holdingadvice.js');
+  const up = [], down = [];
+  for (let i = 0; i < 120; i++) {
+    const t = Date.UTC(2026, 3, 1) / 1000 + i * 86400;
+    const pu = 1000 + i * 5 + Math.sin(i) * 8, pd = 2000 - i * 8 + Math.sin(i) * 8;
+    up.push({ time: t, open: pu - 2, high: pu + 6, low: pu - 6, close: pu, volume: 1 });
+    down.push({ time: t, open: pd + 2, high: pd + 6, low: pd - 6, close: pd, volume: 1 });
+  }
+  const a = adviseHolding({ symbol: '7203.T', side: 1, price: 1500, qty: 100 }, up, { mode: 'stock' });
+  assert.ok(['hold', 'trim'].includes(a.key), a.key);
+  assert.ok(a.plYen > 0);
+  const b = adviseHolding({ symbol: '7203.T', side: 1, price: 1500, qty: 100 }, down, { mode: 'stock' });
+  assert.equal(b.key, 'cut');
+  assert.ok(b.reasons[0].includes('損切りの線'));
+});
+
+test('米国株の検索：カタカナ・ひらがな・別の呼び方でも見つかる', async () => {
+  const { searchUs } = await import('../lib/usstocks.js');
+  assert.equal(searchUs('あっぷる')[0].symbol, 'AAPL');
+  assert.equal(searchUs('ソフィ')[0].symbol, 'SOFI');
+  assert.equal(searchUs('ロケットラボ')[0].symbol, 'RKLB');
+  assert.equal(searchUs('フェイスブック')[0].symbol, 'META');
+});

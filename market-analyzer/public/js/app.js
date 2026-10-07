@@ -15,12 +15,13 @@ import { updateOrderflow, resetOrderflow } from './orderflow.js';
 import { updateFundamentals, resetFundamentals } from './fundview.js';
 import { initLab, updateLab, resetLab, refreshLab } from './labview.js';
 import { updateEarningsCard } from './earningsview.js';
+import { initMine, updateMine } from './mineview.js';
 
 const MODE_NAMES = { fx: '為替', stock: '日本株', us: '米国株' };
 function applyMode(mode) {
   document.body.dataset.mode = mode;
   document.querySelectorAll('#mode-seg button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === mode)));
-  $('symbol-input').placeholder = { fx: '例: USDJPY（ドル円）', stock: '例: 7203 または トヨタ', us: '例: AAPL または アップル' }[mode];
+  $('symbol-input').placeholder = { fx: '例: USDJPY（ドル円）', stock: '例: 7203 または トヨタ', us: '例: AAPL / アップル / あっぷる（押すと人気銘柄）' }[mode];
   $('news-q').placeholder = { fx: '例: ドル円', stock: '例: トヨタ', us: '例: エヌビディア' }[mode];
   renderFavorites();
   setTradesMode(mode);
@@ -32,6 +33,7 @@ const TABS = [
   ['chart', 'チャート', 'チャート分析', ICON('<path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/>')],
   ['news', 'ニュース', 'ニュース・ファンダ', ICON('<path d="M4 4h13v16H6a2 2 0 0 1-2-2z"/><path d="M17 8h3v10a2 2 0 0 1-2 2"/><path d="M8 8h5M8 12h5M8 16h3"/>')],
   ['lab', '成績', '答え合わせ・自動売買', ICON('<path d="M4 20h16"/><rect x="5" y="11" width="3" height="7"/><rect x="10.5" y="7" width="3" height="11"/><rect x="16" y="4" width="3" height="14"/>')],
+  ['mine', 'あなた専用', 'あなた専用のアドバイス', ICON('<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/>')],
   ['screener', '候補', '可能性のある候補', ICON('<path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>')],
   ['trades', '取引分析', '自分の取引の分析', ICON('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>')],
 ];
@@ -49,6 +51,7 @@ function showTab(id) {
   if (id === 'news') newsOnSymbol(chartState);
   if (id === 'screener' && getMode() === 'stock') showStockScreener();
   if (id === 'lab') updateLab(chartState, getMode());
+  if (id === 'mine') updateMine(getMode());
   window.scrollTo({ top: 0 });
 }
 
@@ -102,7 +105,18 @@ function showBudget() {
   $('pf-budget-view').textContent = v ? `＝ ${v.toLocaleString()}円${v >= 10000 ? `（${(v / 10000).toLocaleString()}万円）` : ''}` : '未入力のときは、計算に100万円を使います';
 }
 
+function renderMailStatus() {
+  const el = $('mail-status');
+  const t = syncState.lastAlertAt;
+  if (t && Date.now() - t < 36 * 3600 * 1000) {
+    el.innerHTML = `<span class="badge ok">メール通知：動いています</span> 最後の確認 ${new Date(t).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}。新しいサインが出たときだけ届きます。`;
+  } else {
+    el.innerHTML = '<span class="badge warn">メール通知：まだ動いていません</span> メールを送る仕組み（GitHub）の準備がまだです。やり方はチャットで説明しています。';
+  }
+}
+
 function renderSyncStatus() {
+  renderMailStatus();
   const el = $('sync-status');
   if (syncState.error) {
     el.innerHTML = `<span class="badge warn">共有できませんでした</span> ${esc(syncState.error)}`;
@@ -131,11 +145,12 @@ function saveSettings() {
   $('settings').close();
   toast('保存しました');
   if (currentTab === 'lab') updateLab(chartState, getMode());
+  if (currentTab === 'mine') updateMine(getMode());
 }
 
 // ---- 画面ごとの自動更新（チャートの値段は chartview.js で1分ごと） ----
 // 何分ごとに最新にするか
-const EVERY = { chartCards: 5, ratings: 30, news: 5, screener: 5, lab: 15 };
+const EVERY = { chartCards: 5, ratings: 30, news: 5, screener: 5, lab: 15, mine: 15, hold: 5 };
 const lastRun = {};
 function due(key) {
   const now = Date.now();
@@ -154,6 +169,9 @@ function startAutoUpdate() {
     if (currentTab === 'news' && due('news') && $('news-q').value) searchNews($('news-q').value, { silent: true });
     if (currentTab === 'screener' && due('screener')) { if (mode === 'stock') autoRefreshStock(); else autoRefreshList(); }
     if (currentTab === 'lab' && due('lab')) refreshLab(mode);
+    if (currentTab === 'mine') {
+      if (store.get('mine_sub', 'plan') === 'hold') { if (due('hold')) updateMine(mode); } else if (due('mine')) updateMine(mode, { force: true });
+    }
   };
   setInterval(tick, 30 * 1000);
   document.addEventListener('visibilitychange', tick);
@@ -173,6 +191,7 @@ function startApp() {
   initScreener(openChart);
   initStockScreener(openChart);
   initLab(getMode);
+  initMine(getMode);
   initNewsView();
   initTradesView();
   onSymbolChange((st) => {
