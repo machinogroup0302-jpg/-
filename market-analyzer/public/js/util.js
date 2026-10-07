@@ -1,9 +1,11 @@
 // 画面全体で使う小さな道具
 
+// ログインしている人ごとに保存場所を分ける（index.html で window.MA_NS を決めている）
+const NS = () => 'ma_' + ((typeof window !== 'undefined' && window.MA_NS) || '');
 export const store = {
   get(key, fallback) {
     try {
-      const v = localStorage.getItem('ma_' + key);
+      const v = localStorage.getItem(NS() + key);
       return v == null ? fallback : JSON.parse(v);
     } catch {
       return fallback;
@@ -11,7 +13,7 @@ export const store = {
   },
   set(key, value) {
     try {
-      localStorage.setItem('ma_' + key, JSON.stringify(value));
+      localStorage.setItem(NS() + key, JSON.stringify(value));
       return true;
     } catch {
       return false;
@@ -19,7 +21,9 @@ export const store = {
   },
   clear() {
     try {
-      Object.keys(localStorage).filter((k) => k.startsWith('ma_')).forEach((k) => localStorage.removeItem(k));
+      // 持ち主の分を消すときに、ほかの人の分（ma_u_…）は消さない
+      const ns = NS();
+      Object.keys(localStorage).filter((k) => k.startsWith(ns) && (ns !== 'ma_' || !k.startsWith('ma_u_'))).forEach((k) => localStorage.removeItem(k));
     } catch { /* 保存できない環境では何もしない */ }
   },
 };

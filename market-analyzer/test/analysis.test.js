@@ -582,28 +582,46 @@ test('決算発表まであと何日', () => {
   assert.equal(earningsInfo({ date: '2026-10-01' }, '2026-10-06').when, '5日前に発表済み');
 });
 
-test('お気に入りの共有：新しい値を保存し、時刻が進む', async () => {
+test('お気に入りの共有：人ごとに別々に保存し、時刻が進む', async () => {
   process.env.NODE_ENV = 'test'; // テストでは GitHub から読まない
-  const { putPref, getPrefs, _reset, encrypt, decrypt, backupBlob, alertProfile } = await import('../lib/prefs.js');
+  const { putPref, getPrefs, _reset, encrypt, decrypt, backupBlob, alertProfile, addUser, checkUser, listUsers, removeUser, setUserPassword } = await import('../lib/prefs.js');
   _reset();
-  const a = await putPref('favs_fx', [{ code: 'USDJPY', name: 'ドル円' }]);
-  const b = await putPref('favs_fx', [{ code: 'EURJPY', name: 'ユーロ円' }]);
+  const a = await putPref('admin', 'favs_fx', [{ code: 'USDJPY', name: 'ドル円' }]);
+  const b = await putPref('admin', 'favs_fx', [{ code: 'EURJPY', name: 'ユーロ円' }]);
   assert.ok(b.ts > a.ts);
-  const p = await getPrefs();
-  assert.equal(p.items.favs_fx.value[0].code, 'EURJPY');
-  await assert.rejects(() => putPref('secret', []));
-  // あなたの設定：メール・予算
-  await putPref('profile', { email: 'a@example.com', budget: '500000', riskPct: 2, maxPos: 3, notify: { fx: true } });
-  await assert.rejects(() => putPref('profile', { email: 'not-an-email' }));
+  assert.equal((await getPrefs('admin')).items.favs_fx.value[0].code, 'EURJPY');
+  await assert.rejects(() => putPref('admin', 'secret', []));
+  // あなたの設定：メール・予算・持つ日数
+  await putPref('admin', 'profile', { email: 'a@example.com', budget: '500000', riskPct: 2, maxPos: 3, swingDays: 10, notify: { fx: true } });
+  await assert.rejects(() => putPref('admin', 'profile', { email: 'not-an-email' }));
+  // 取引履歴も保存できる
+  await putPref('admin', 'trades_fx', [{ date: '2026-09-01T01:00:00.000Z', symbol: 'USD/JPY', side: '買', qty: 1, price: 146.8, entry: 146.5, pnl: 3120, file: 'abc' }]);
+  assert.equal((await getPrefs('admin')).items.trades_fx.value[0].pnl, 3120);
+  // ほかの人を追加：データは別々
+  await addUser({ id: 'Tanaka', name: '田中さん', password: 'secret1' });
+  await assert.rejects(() => addUser({ id: 'tanaka', password: 'secret2' }), /もう使われています/);
+  await assert.rejects(() => addUser({ id: 'x', password: 'secret2' }), /3〜20文字/);
+  assert.equal((await checkUser('tanaka', 'secret1')).name, '田中さん');
+  assert.equal(await checkUser('tanaka', 'wrong'), null);
+  await putPref('tanaka', 'favs_fx', [{ code: 'GBPJPY', name: 'ポンド円' }]);
+  assert.equal((await getPrefs('tanaka')).items.favs_fx.value[0].code, 'GBPJPY');
+  assert.equal((await getPrefs('admin')).items.favs_fx.value[0].code, 'EURJPY');
+  assert.equal((await getPrefs('tanaka')).items.profile, undefined, 'ほかの人の設定は見えない');
+  await setUserPassword('tanaka', 'newpass1');
+  assert.ok(await checkUser('tanaka', 'newpass1'));
   const ap = await alertProfile();
   assert.equal(ap.profile.email, 'a@example.com');
-  assert.equal(ap.profile.budget, 500000);
-  assert.equal(ap.favs.fx[0].code, 'EURJPY');
-  // 暗号化したコピーから元に戻せる
+  assert.equal(ap.profile.swingDays, 10);
+  assert.equal(ap.users.length, 2);
+  assert.equal(ap.users[1].favs.fx[0].code, 'GBPJPY');
+  // 暗号化したコピーから元に戻せる（パスワードのハッシュも入るが、メールアドレスなどは読めない）
   const bk = await backupBlob();
   assert.ok(!bk.blob.includes('example.com'));
   assert.equal(decrypt(bk.blob).profile.value.email, 'a@example.com');
   assert.deepEqual(decrypt(encrypt({ x: 1 })), { x: 1 });
+  await removeUser('tanaka');
+  assert.equal((await listUsers()).length, 0);
+  assert.equal((await getPrefs('tanaka')).items.favs_fx, undefined);
 });
 
 test('勝つ確率の目安：銘柄の回数が少ないときは全体の勝率に近づく', async () => {
@@ -656,4 +674,31 @@ test('米国株の検索：カタカナ・ひらがな・別の呼び方でも�
   assert.equal(searchUs('ソフィ')[0].symbol, 'SOFI');
   assert.equal(searchUs('ロケットラボ')[0].symbol, 'RKLB');
   assert.equal(searchUs('フェイスブック')[0].symbol, 'META');
+});
+
+test('いつ決済するのが一番いいか：日数ごとの見込みを出す', async () => {
+  const { adviseHolding, exitTiming } = await import('../public/js/holdingadvice.js');
+  const cs = [];
+  let p = 1000, seed = 3;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < 200; i++) { const o = p; p = o * (1 + (rnd() - 0.5) * 0.03); cs.push({ time: Date.UTC(2026, 0, 1) / 1000 + i * 86400, open: o, high: Math.max(o, p) * 1.005, low: Math.min(o, p) * 0.995, close: p, volume: 1 }); }
+  const h = { symbol: '7203.T', side: 1, price: p * 1.2, qty: 100 };
+  const adv = adviseHolding(h, cs, { mode: 'stock' });
+  const t = exitTiming(h, cs, adv, { mode: 'stock' });
+  assert.equal(t.rows.length, 6);
+  assert.ok(t.losing);
+  assert.ok(t.rows.every((r) => r.pLine >= 0 && r.pLine <= 1 && r.pEscape >= 0 && r.pEscape <= 1));
+  assert.ok(/損/.test(t.text));
+  // 同じ入力なら同じ結果（毎回変わらない）
+  assert.equal(exitTiming(h, cs, adv, { mode: 'stock' }).best.mean, t.best.mean);
+});
+
+test('スイングの持つ日数の上限を守る', async () => {
+  const { runStrategy } = await import('../public/js/strategies.js');
+  const cs = [];
+  let p = 100;
+  for (let i = 0; i < 400; i++) { const o = p; p = o * (1 + 0.003 + Math.sin(i / 9) * 0.004); cs.push({ time: Date.UTC(2025, 0, 1) / 1000 + i * 86400, open: o, high: Math.max(o, p) * 1.002, low: Math.min(o, p) * 0.998, close: p, volume: 1 }); }
+  const r = runStrategy(cs, 'trend', { kind: 'stock', maxHold: 5 });
+  assert.ok(r.trades.length > 0);
+  assert.ok(r.trades.every((t) => t.days <= 6), JSON.stringify(r.trades.map((t) => t.days)));
 });

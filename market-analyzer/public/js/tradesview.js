@@ -1,6 +1,7 @@
 // 取引分析画面：CSV またはスクリーンショットから取引を読み込み、成績を分析する
 import { $, esc, store, fmtYen, toast, api } from './util.js';
 import { term } from './glossary.js';
+import { saveSynced } from './favorites.js';
 import { coach, fmtDuration, tradeSymbol, pickInterval, excursion, excursionAdvice } from './tradecoach.js';
 import { parseCsv, findHeader, guessMapping, rowsToTrades, decodeFile, computeStats, FIELD_LABELS, detectFormat, fileId } from './trades.js';
 
@@ -24,7 +25,7 @@ export function setTradesMode(mode) {
 }
 
 function save() {
-  if (!store.set(`trades_${tradeMode}`, trades)) toast('保存できませんでした（容量オーバーの可能性があります）');
+  if (!saveSynced(`trades_${tradeMode}`, trades)) toast('保存できませんでした（容量オーバーの可能性があります）');
 }
 
 function bars(groups, labelFn) {

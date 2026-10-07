@@ -38,7 +38,7 @@ export function setFavs(mode, list) {
 // ---- パソコンとスマホでお気に入り・あなたの設定を共有する ----
 // 端末ごとに「最後にサーバーとそろえた時刻（ts）」と「まだ送っていない変更があるか（dirty）」を覚えておく
 const MODES = ['fx', 'stock', 'us'];
-const KEYS = [...MODES.map((m) => `favs_${m}`), ...MODES.map((m) => `holdings_${m}`), 'profile'];
+const KEYS = [...MODES.map((m) => `favs_${m}`), ...MODES.map((m) => `holdings_${m}`), ...MODES.map((m) => `trades_${m}`), 'profile'];
 const localValue = (key) => (key.startsWith('favs_') ? getFavs(key.slice(5)) : store.get(key, null));
 let pushTimer = null;
 let syncing = null;
@@ -54,10 +54,17 @@ function markDirty(key) {
 }
 
 // あなたの設定（メール・予算など）
-export const DEFAULT_PROFILE = { email: '', budget: 0, riskPct: 2, maxPos: 3, notify: { fx: true, stock: true, us: true } };
+export const DEFAULT_PROFILE = { email: '', budget: 0, riskPct: 2, maxPos: 3, swingDays: 30, notify: { fx: true, stock: true, us: true } };
 export function getProfile() {
   return { ...DEFAULT_PROFILE, ...(store.get('profile', null) || {}) };
 }
+// 取引履歴など、ほかの端末と共有するものを保存する
+export function saveSynced(key, value) {
+  const ok = store.set(key, value);
+  markDirty(key);
+  return ok;
+}
+
 // 自分で持っている株・通貨
 export function getHoldings(mode) { return store.get(`holdings_${mode}`, []) || []; }
 export function setHoldings(mode, list) {
@@ -88,6 +95,20 @@ async function pushDirty() {
   }
 }
 
+// 取引履歴を合わせる（同じ取引は1つにする）
+const tradeKey = (t) => [t.file, t.date, t.symbol, t.pnl, t.price, t.qty].join('|');
+function unionTrades(a, b) {
+  // 同じファイルにまったく同じ取引が複数あるときは、多い方の数だけ残す
+  const count = (list) => { const m = new Map(); list.forEach((t) => m.set(tradeKey(t), (m.get(tradeKey(t)) || 0) + 1)); return m; };
+  const ca = count(a), cb = count(b), first = new Map(), out = [];
+  for (const t of [...a, ...b]) if (!first.has(tradeKey(t))) first.set(tradeKey(t), t);
+  for (const [k, t] of first) {
+    const n = Math.max(ca.get(k) || 0, cb.get(k) || 0);
+    for (let i = 0; i < n; i++) out.push(t);
+  }
+  return out.sort((x, y) => new Date(x.date || 0) - new Date(y.date || 0));
+}
+
 const union = (a, b) => {
   const seen = new Set(a.map((f) => favCode(f.code)));
   return [...a, ...b.filter((f) => !seen.has(favCode(f.code)))];
@@ -110,8 +131,9 @@ export function syncFavs() {
         if (!meta) {
           // 初めてそろえる端末：今までのお気に入りは消さずに、サーバーのものと合わせる
           if (remote && own && key.startsWith('favs_')) { store.set(key, union(remote.value, own)); changed = true; }
+          else if (remote && own && key.startsWith('trades_')) { store.set(key, unionTrades(remote.value, own)); changed = true; }
           else if (remote) { store.set(key, remote.value); changed = true; }
-          store.set(`sync_${key}`, { ts: remote?.ts || 0, dirty: !!own && (key.startsWith('favs_') || !remote) });
+          store.set(`sync_${key}`, { ts: remote?.ts || 0, dirty: !!own && (key.startsWith('favs_') || key.startsWith('trades_') || !remote) });
         } else if (meta.dirty) {
           // この端末で変えたものがまだ送れていない → こちらを送る
         } else if (own && (!remote || remote.ts < (meta.ts || 0))) {

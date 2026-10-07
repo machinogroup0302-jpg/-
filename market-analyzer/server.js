@@ -8,14 +8,14 @@ import { fileURLToPath } from 'node:url';
 import { getChart, getHistory } from './lib/market.js';
 import { getNews } from './lib/news.js';
 import { searchListings, listingMeta, nameFromCache, getListings } from './lib/listings.js';
-import { usName, searchUs, US_LIST } from './lib/usstocks.js';
+import { usName, searchUs, US_LIST, setExtraUs } from './lib/usstocks.js';
 import { getRatings } from './lib/ratings.js';
 import { getFundamentals } from './lib/fundamentals.js';
 import { loadRepoData } from './lib/jpxdata.js';
 import { INDEX_NAMES } from './lib/market.js';
 import { fxName } from './public/js/fxpairs.js';
 import { startScan, scanStatus } from './lib/scanner.js';
-import { getPrefs, putPref, loadPrefs, backupBlob, alertProfile } from './lib/prefs.js';
+import { getPrefs, putPref, loadPrefs, backupBlob, alertProfile, listUsers, addUser, removeUser, setUserPassword, checkUser, userExists, userName, ADMIN } from './lib/prefs.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(here, 'public');
@@ -78,22 +78,27 @@ function readBody(req) {
 function sign(value) {
   return crypto.createHmac('sha256', SECRET).update(value).digest('hex');
 }
-function makeToken() {
+// 合言葉（トークン）＝「だれか.期限.署名」。昔の形（期限.署名）は持ち主として扱う
+function makeToken(uid) {
   const exp = String(Date.now() + 30 * 24 * 3600 * 1000);
-  return `${exp}.${sign(exp)}`;
+  return `${uid}.${exp}.${sign(`${uid}.${exp}`)}`;
 }
-function validToken(token) {
-  const [exp, mac] = String(token || '').split('.');
-  if (!exp || !mac || Number(exp) < Date.now()) return false;
-  const expected = sign(exp);
-  return mac.length === expected.length && crypto.timingSafeEqual(Buffer.from(mac), Buffer.from(expected));
+function tokenUser(token) {
+  const parts = String(token || '').split('.');
+  const [uid, exp, mac] = parts.length === 2 ? [ADMIN, parts[0], parts[1]] : parts;
+  if (!uid || !exp || !mac || Number(exp) < Date.now()) return null;
+  const expected = sign(parts.length === 2 ? exp : `${uid}.${exp}`);
+  return mac.length === expected.length && crypto.timingSafeEqual(Buffer.from(mac), Buffer.from(expected)) ? uid : null;
 }
 function cookie(req, name) {
   const m = (req.headers.cookie || '').match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
   return m ? decodeURIComponent(m[1]) : '';
 }
-function authed(req) {
-  return !SITE_PASSWORD || validToken(cookie(req, 'ma_session'));
+// ログインしている人の ID（パスワードなしのサイトなら持ち主）
+async function currentUser(req) {
+  if (!SITE_PASSWORD) return ADMIN;
+  const uid = tokenUser(cookie(req, 'ma_session'));
+  return uid && (await userExists(uid)) ? uid : null;
 }
 function samePassword(input) {
   const a = crypto.createHash('sha256').update(String(input)).digest();
@@ -106,24 +111,57 @@ async function handleApi(req, res, url) {
   const route = `${req.method} ${url.pathname}`;
 
   if (route === 'GET /api/status') {
-    return json(res, 200, { loginRequired: !!SITE_PASSWORD, loggedIn: authed(req) });
+    const uid = await currentUser(req);
+    return json(res, 200, { loginRequired: !!SITE_PASSWORD, loggedIn: !!uid, user: uid ? { id: uid, name: await userName(uid), admin: uid === ADMIN } : null });
   }
   if (route === 'POST /api/login') {
     const body = await readBody(req);
-    if (!SITE_PASSWORD || samePassword(body.password || '')) {
+    const id = String(body.id || '').trim().toLowerCase();
+    let uid = null;
+    // ID が空か admin なら持ち主（サイトのパスワード）、それ以外は持ち主が追加した人
+    if (!SITE_PASSWORD) uid = ADMIN;
+    else if (!id || id === ADMIN) uid = samePassword(body.password || '') ? ADMIN : null;
+    else uid = (await checkUser(id, body.password || ''))?.id || null;
+    if (uid) {
       const secure = req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
-      res.setHeader('Set-Cookie', `ma_session=${makeToken()}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${30 * 24 * 3600}${secure}`);
-      return json(res, 200, { ok: true });
+      const age = 30 * 24 * 3600;
+      res.setHeader('Set-Cookie', [
+        `ma_session=${makeToken(uid)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${age}${secure}`,
+        // 画面側で「だれのデータか」を分けるための目印（ログインの証明には使わない）
+        `ma_uid=${encodeURIComponent(uid)}; SameSite=Strict; Path=/; Max-Age=${age}${secure}`,
+      ]);
+      return json(res, 200, { ok: true, user: uid });
     }
     await new Promise((r) => setTimeout(r, 800));
-    return json(res, 401, { error: 'パスワードが違います' });
+    return json(res, 401, { error: 'IDかパスワードが違います' });
+  }
+  if (route === 'POST /api/logout') {
+    res.setHeader('Set-Cookie', ['ma_session=; Path=/; Max-Age=0', 'ma_uid=; Path=/; Max-Age=0']);
+    return json(res, 200, { ok: true });
   }
   // GitHub Actions 用（サイトのパスワードを x-site-key に入れて呼ぶ）
   if (route === 'GET /api/backup/prefs' || route === 'GET /api/alerts/profile') {
     if (!SITE_PASSWORD || !samePassword(req.headers['x-site-key'] || '')) return json(res, 401, { error: 'パスワードが違います' });
     return json(res, 200, route.includes('backup') ? await backupBlob() : await alertProfile());
   }
-  if (!authed(req)) return json(res, 401, { error: 'ログインしてください' });
+  const uid = await currentUser(req);
+  if (!uid) return json(res, 401, { error: 'ログインしてください' });
+
+  // ---- 使う人の管理（持ち主だけ） ----
+  if (url.pathname === '/api/users') {
+    if (uid !== ADMIN) return json(res, 403, { error: '持ち主だけが使えます' });
+    if (req.method === 'GET') return json(res, 200, { items: await listUsers() });
+    if (req.method === 'POST') { const b = await readBody(req); return json(res, 200, await addUser(b)); }
+    if (req.method === 'PUT') { const b = await readBody(req); await setUserPassword(String(b.id || ''), b.password); return json(res, 200, { ok: true }); }
+    if (req.method === 'DELETE') { await removeUser(String(url.searchParams.get('id') || '')); return json(res, 200, { ok: true }); }
+  }
+  if (route === 'PUT /api/me/password') {
+    if (uid === ADMIN) return json(res, 400, { error: '持ち主のパスワードは Render の SITE_PASSWORD で変えます' });
+    const b = await readBody(req);
+    if (!(await checkUser(uid, b.current || ''))) return json(res, 400, { error: '今のパスワードが違います' });
+    await setUserPassword(uid, b.password);
+    return json(res, 200, { ok: true });
+  }
 
   if (route === 'GET /api/chart') {
     try {
@@ -190,11 +228,11 @@ async function handleApi(req, res, url) {
     }
   }
   if (route === 'GET /api/prefs') {
-    return json(res, 200, await getPrefs());
+    return json(res, 200, await getPrefs(uid));
   }
   if (route === 'PUT /api/prefs') {
     const body = await readBody(req);
-    return json(res, 200, await putPref(String(body.key || ''), body.value));
+    return json(res, 200, await putPref(uid, String(body.key || ''), body.value));
   }
   if (route === 'GET /api/stocks/earnings') {
     // 決算発表の予定（日本取引所の公開データ。GitHub Actions で毎回更新）
@@ -278,6 +316,8 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+// 米国株の日本語名の一覧（証券会社の取扱銘柄。GitHub Actions が更新する）
+loadRepoData('us-names.json').then((d) => { if (d?.items) { setExtraUs(d.items); console.log(`米国株の日本語名: ${d.items.length}銘柄`); } }).catch(() => {});
 // 起動したら上場企業の一覧を先に読み込んでおく（会社名を日本語で出すため）
 getListings().catch((e) => console.error('上場銘柄一覧の読み込みに失敗:', e.message));
 loadPrefs();

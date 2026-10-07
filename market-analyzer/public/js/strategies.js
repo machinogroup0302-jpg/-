@@ -71,7 +71,7 @@ function cost(kind) {
   return kind === 'fx' ? 0.0003 : 0.001; // 往復の費用（スプレッド・手数料の目安）
 }
 
-export function runStrategy(candles, id, { kind = 'stock', pair = '', regime = null, fundamentalRatio = null, days = 250, intraday = false } = {}) {
+export function runStrategy(candles, id, { kind = 'stock', pair = '', regime = null, fundamentalRatio = null, days = 250, intraday = false, maxHold = null } = {}) {
   // デイトレ（intraday）：15分足などで売買し、その日のうちに必ず決済する（持ち越さない）
   const NEXT = intraday ? '次の足の始まりの値段' : '次の日の始まりの値段';
   const BAR = intraday ? 'この足の終わりの値段' : 'この日の終わりの値段';
@@ -157,9 +157,10 @@ export function runStrategy(candles, id, { kind = 'stock', pair = '', regime = n
           why = [`テクニカル判定が「${ts.label}」に変わった（反対のサイン${against.length}/${ts.rows.length}個）`, ...against.slice(0, 2).map((r) => short(r.detail)), now];
         }
       }
-      if (!exit && held >= (id === 'rebound' ? 10 : 30)) {
-        exit = '長く持ちすぎたので終了';
-        why = [intraday ? `${held}本（足）持っても決着がつかなかった` : `${held}日持っても決着がつかなかった`, now, 'お金を寝かせないために、いったん終了'];
+      const limit = maxHold || (id === 'rebound' ? 10 : 30);
+      if (!exit && held >= limit) {
+        exit = maxHold && !intraday ? `持つ日数の上限（${limit}日）になったので決済` : '長く持ちすぎたので終了';
+        why = [intraday ? `${held}本（足）持っても決着がつかなかった` : `決めた日数（${limit}日）持っても決着がつかなかった`, now, maxHold ? 'あなたが決めた「持つ日数の上限」になったので決済' : 'お金を寝かせないために、いったん終了'];
       }
       // 最後の日に決めたことは「次の取引日の予定」として残る
       if (exit) pending = { type: 'close', reason: exit, why };

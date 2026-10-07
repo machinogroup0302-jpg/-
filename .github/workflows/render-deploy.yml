@@ -46,6 +46,11 @@ jobs:
           npm install --no-save --no-audit --no-fund pdfjs-dist@4
           node scripts/update-market-data.mjs
 
+      - name: 米国株の日本語名を取得
+        continue-on-error: true
+        working-directory: market-analyzer
+        run: node scripts/update-us-names.mjs
+
       - name: データが変わっていれば保存
         run: |
           if git diff --quiet -- market-analyzer/data && ! git ls-files --others --exclude-standard market-analyzer/data | grep -q .; then

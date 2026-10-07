@@ -67,10 +67,26 @@ export const US_STOCKS = [
   ['DIA', 'SPDR ダウ工業株平均 ETF', 'ETF'], ['IWM', 'iシェアーズ・ラッセル2000 ETF', 'ETF'], ['EEM', 'iシェアーズ MSCI 新興国株 ETF', 'ETF'], ['VWO', 'バンガード・FTSE・エマージング・マーケッツ ETF', 'ETF'], ['SCHD', 'シュワブ・米国配当株式 ETF', 'ETF'], ['JEPI', 'JPモルガン・米国株式プレミアム・インカム ETF', 'ETF'], ['JEPQ', 'JPモルガン・ナスダック・プレミアム・インカム ETF', 'ETF'], ['QYLD', 'グローバルX ナスダック100・カバード・コール ETF', 'ETF'],
   ['XLK', 'テクノロジー・セレクト・セクター SPDR', 'ETF'], ['XLF', 'ファイナンシャル・セレクト・セクター SPDR', 'ETF'], ['XLE', 'エネルギー・セレクト・セクター SPDR', 'ETF'], ['SMH', 'ヴァンエック半導体 ETF', 'ETF'], ['SOXX', 'iシェアーズ半導体 ETF', 'ETF'], ['ARKK', 'ARKイノベーション ETF', 'ETF'], ['TECL', 'ディレクション・デイリー・テクノロジー株ブル3倍 ETF', 'ETF'], ['SPXL', 'ディレクション・デイリーS&P500ブル3倍 ETF', 'ETF'], ['SQQQ', 'プロシェアーズ・ウルトラプロ・ショートQQQ', 'ETF'], ['SOXS', 'ディレクション・デイリー半導体株ベア3倍 ETF', 'ETF'],
   ['SLV', 'iシェアーズ・シルバー・トラスト', 'ETF'], ['IAU', 'iシェアーズ・ゴールド・トラスト', 'ETF'], ['USO', 'USオイル・ファンド', 'ETF'], ['TMF', 'ディレクション・デイリー20年超米国債ブル3倍 ETF', 'ETF'], ['BND', 'バンガード・米国トータル債券市場 ETF', 'ETF'], ['VIG', 'バンガード・米国増配株式 ETF', 'ETF'], ['VUG', 'バンガード・米国グロース ETF', 'ETF'], ['VTV', 'バンガード・米国バリュー ETF', 'ETF'], ['VXUS', 'バンガード・トータル・インターナショナル・ストック ETF', 'ETF'],
+  // さらに追加（話題の銘柄など）
+  ['SNDK', 'サンディスク', '半導体'], ['WOLF', 'ウルフスピード', '半導体'], ['ALAB', 'アステラ・ラボズ', '半導体'], ['CRDO', 'クレド・テクノロジー', '半導体'], ['TER', 'テラダイン', '半導体'], ['ENTG', 'インテグリス', '半導体'], ['MPWR', 'モノリシック・パワー・システムズ', '半導体'], ['GFS', 'グローバルファウンドリーズ', '半導体'], ['GLW', 'コーニング', '電子部品'], ['APH', 'アンフェノール', '電子部品'],
+  ['CIEN', 'シエナ', '通信機器'], ['LITE', 'ルメンタム', '通信機器'], ['COHR', 'コヒーレント', '通信機器'], ['FN', 'ファブリネット', '通信機器'],
+  ['CRWV', 'コアウィーブ', 'IT'], ['NBIS', 'ネビウス・グループ', 'IT'], ['APLD', 'アプライド・デジタル', 'IT'], ['IREN', 'アイレン', '暗号資産'], ['CIFR', 'サイファー・マイニング', '暗号資産'], ['HUT', 'ハット8', '暗号資産'], ['CRCL', 'サークル・インターネット', '暗号資産'], ['GLXY', 'ギャラクシー・デジタル', '暗号資産'], ['BMNR', 'ビットマイン・イマージョン', '暗号資産'],
+  ['BBAI', 'ビッグベアAI', 'IT'], ['SOUN', 'サウンドハウンドAI', 'IT'], ['QBTS', 'Dウェーブ・クァンタム', '量子'], ['QUBT', 'クァンタム・コンピューティング', '量子'], ['AI', 'C3.ai（シースリーエーアイ）', 'IT'], ['PATH', 'ユーアイパス', 'IT'], ['GTLB', 'ギットラボ', 'IT'], ['ESTC', 'エラスティック', 'IT'], ['MNDY', 'マンデー・ドットコム', 'IT'], ['CFLT', 'コンフルエント', 'IT'], ['S', 'センチネルワン', 'IT'], ['CHKP', 'チェック・ポイント', 'IT'], ['CYBR', 'サイバーアーク', 'IT'], ['AKAM', 'アカマイ', 'IT'], ['TOST', 'トースト', 'IT'], ['ROKU', 'ロク', 'メディア'], ['CHWY', 'チューイー', '小売'], ['CART', 'インスタカート（メープルベア）', '小売'],
+  ['ACHR', 'アーチャー・アビエーション', '航空'], ['JOBY', 'ジョビー・アビエーション', '航空'], ['LCID', 'ルーシッド・グループ', '自動車'], ['STLA', 'ステランティス', '自動車'], ['HMC', 'ホンダ（米国ADR）', '自動車'], ['RACE', 'フェラーリ', '自動車'],
+  ['CAVA', 'カバ・グループ', '外食'], ['BROS', 'ダッチ・ブラザーズ', '外食'], ['ELF', 'e.l.f.ビューティー', '日用品'], ['ONON', 'オン・ホールディング', '小売'], ['DECK', 'デッカーズ・アウトドア', '小売'], ['CROX', 'クロックス', '小売'], ['BIRK', 'ビルケンシュトック', '小売'], ['KVUE', 'ケンビュー', '日用品'],
+  ['NVAX', 'ノババックス', '医薬品'], ['BNTX', 'ビオンテック', '医薬品'],
+  ['FSLR', 'ファースト・ソーラー', 'エネルギー'], ['ENPH', 'エンフェーズ・エナジー', 'エネルギー'], ['RUN', 'サンラン', 'エネルギー'], ['PLUG', 'プラグ・パワー', 'エネルギー'], ['BE', 'ブルーム・エナジー', 'エネルギー'], ['LEU', 'セントラス・エナジー', '原子力'], ['CCJ', 'カメコ', '原子力'], ['UEC', 'ウラニウム・エナジー', '原子力'], ['NNE', 'ナノ・ニュークリア・エナジー', '原子力'], ['BWXT', 'BWXテクノロジーズ', '原子力'], ['URA', 'グローバルX ウラニウム ETF', 'ETF'],
+  ['PWR', 'クアンタ・サービシズ', '建設'], ['EME', 'エムコー', '建設'], ['AVAV', 'エアロバイロメント', '防衛'], ['KTOS', 'クラトス・ディフェンス', '防衛'], ['PL', 'プラネット・ラボ', '宇宙'], ['RDW', 'レッドワイヤー', '宇宙'], ['SPCE', 'ヴァージン・ギャラクティック', '宇宙'], ['BRK-A', 'バークシャー・ハサウェイA', '金融'],
 ].map(([symbol, name, sector]) => ({ symbol, name, sector, alias: ALIAS[symbol] || '' }));
 
 const BY_SYMBOL = new Map(US_STOCKS.map((x) => [x.symbol, x]));
 export const US_LIST = [...BY_SYMBOL.values()];
+// 証券会社が公開している米国株の一覧（日本語名つき）。GitHub Actions が data/us-names.json に保存する
+let EXTRA = [];
+export function setExtraUs(items) {
+  EXTRA = (items || []).filter((x) => x.symbol && x.name && !BY_SYMBOL.has(x.symbol)).map((x) => ({ symbol: x.symbol, name: x.name, sector: x.sector || '米国株', alias: '' }));
+  for (const x of EXTRA) BY_SYMBOL.set(x.symbol, x);
+}
 
 export function usName(symbol) {
   return BY_SYMBOL.get(String(symbol || '').toUpperCase())?.name || null;
@@ -87,7 +103,7 @@ export function searchUs(q, limit = 20) {
   const n = loose(kata(norm(q)));
   if (!n) return [];
   const starts = [], contains = [];
-  for (const it of US_LIST) {
+  for (const it of [...US_LIST, ...EXTRA]) {
     const names = [it.name, ...it.alias.split(' ')].filter(Boolean).map((x) => loose(kata(norm(x))));
     if (it.symbol.toLowerCase().startsWith(n) || names.some((x) => x.startsWith(n))) starts.push(it);
     else if (names.some((x) => x.includes(n))) contains.push(it);

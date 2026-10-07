@@ -95,6 +95,7 @@ async function openSettings() {
   seg($('pf-maxpos'), [['1', '1つ'], ['2', '2つ'], ['3', '3つ'], ['5', '5つ']], String(pf.maxPos));
   $('pf-notify').innerHTML = [['fx', '為替'], ['stock', '日本株'], ['us', '米国株']].map(([k, v]) => `<button type="button" class="chip" data-k="${k}" aria-pressed="${!!pf.notify?.[k]}">${v}のサインを通知</button>`).join('');
   renderSyncStatus();
+  renderAccount();
   $('settings').showModal();
   syncFavs().then(renderSyncStatus);
 }
@@ -134,7 +135,7 @@ function saveSettings() {
   if (email && !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email)) { toast('メールアドレスの形が正しくありません'); $('pf-email').focus(); return; }
   const notify = {};
   $('pf-notify').querySelectorAll('button').forEach((b) => { notify[b.dataset.k] = b.getAttribute('aria-pressed') === 'true'; });
-  setProfile({ email, budget: parseYen($('pf-budget').value), riskPct: Number(segValue($('pf-risk')) || 2), maxPos: Number(segValue($('pf-maxpos')) || 3), notify });
+  setProfile({ ...getProfile(), email, budget: parseYen($('pf-budget').value), riskPct: Number(segValue($('pf-risk')) || 2), maxPos: Number(segValue($('pf-maxpos')) || 3), notify });
   const favs = parseFavs($('fav-edit').value);
   setFavs(getMode(), favs.length ? favs : DEFAULT_FAVS[getMode()]);
   store.set('candle', segValue($('candle-seg')) || 'jp');
@@ -205,7 +206,12 @@ function startApp() {
   });
   startAutoRefresh();
   // お気に入りをパソコンとスマホでそろえる（開いたとき・画面に戻ってきたとき・2分ごと）
-  onFavsSynced(() => renderFavorites());
+  // ほかの端末で変えたものが届いたら、画面を作り直す
+  onFavsSynced(() => {
+    renderFavorites();
+    setTradesMode(getMode());
+    if (currentTab === 'mine') updateMine(getMode());
+  });
   syncFavs();
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') syncFavs(); });
   setInterval(() => { if (document.visibilityState === 'visible') syncFavs(); }, 2 * 60 * 1000);
@@ -220,6 +226,7 @@ function startApp() {
     showTab(currentTab);
   });
   $('open-settings').addEventListener('click', openSettings);
+  initAccount();
   $('pf-budget').addEventListener('input', showBudget);
   $('pf-notify').addEventListener('click', (e) => {
     const b = e.target.closest('button');
@@ -240,6 +247,66 @@ function startApp() {
   loadChart();
 }
 
+// ---- アカウント（使う人） ----
+let me = { id: 'admin', name: '持ち主', admin: true };
+const randomPass = () => Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => 'abcdefghjkmnpqrstuvwxyz23456789'[b % 31]).join('');
+
+async function renderAccount() {
+  $('account-who').innerHTML = me.admin
+    ? '<b>持ち主</b>としてログイン中です（ID は空のまま、または admin）。'
+    : `<b>${esc(me.name)}</b>（ID: ${esc(me.id)}）としてログイン中です。`;
+  $('account-admin').hidden = !me.admin;
+  $('account-user').hidden = me.admin;
+  if (!me.admin) return;
+  try {
+    const { items } = await api('/api/users');
+    $('user-list').innerHTML = items.length ? items.map((u) => `<li class="small"><div class="li-head"><span class="name">${esc(u.name)}<span class="muted">（ID: ${esc(u.id)}）</span></span>
+      <button type="button" class="chip" data-reset="${esc(u.id)}">パスワードを作り直す</button><button type="button" class="chip" data-del="${esc(u.id)}">消す</button></div>
+      <div class="muted">${u.email ? 'メール通知の設定あり' : 'メール通知はまだ'}</div></li>`).join('') : '<li class="small muted">まだだれも追加していません。</li>';
+  } catch (e) { $('user-list').innerHTML = `<li class="small error">${esc(e.message)}</li>`; }
+}
+
+function initAccount() {
+  $('nu-gen').onclick = () => { $('nu-pass').value = randomPass(); };
+  $('nu-add').onclick = async () => {
+    $('nu-err').textContent = '';
+    const body = { name: $('nu-name').value.trim(), id: $('nu-id').value.trim(), password: $('nu-pass').value.trim() };
+    try {
+      await api('/api/users', { method: 'POST', body });
+      alert(`追加しました。この2つを${(body.name || body.id).replace(/さん$/, '')}さんに伝えてください。\n\nサイト：${location.origin}\nID：${body.id.toLowerCase()}\nパスワード：${body.password}`);
+      ['nu-name', 'nu-id', 'nu-pass'].forEach((id) => { $(id).value = ''; });
+      renderAccount();
+    } catch (e) { $('nu-err').textContent = e.message; }
+  };
+  $('user-list').onclick = async (e) => {
+    const del = e.target.closest('[data-del]'), reset = e.target.closest('[data-reset]');
+    if (del && confirm(`ID「${del.dataset.del}」の人を消しますか？その人のデータもすべて消えます。`)) {
+      await api(`/api/users?id=${encodeURIComponent(del.dataset.del)}`, { method: 'DELETE' }).catch((err) => alert(err.message));
+      renderAccount();
+    }
+    if (reset) {
+      const pass = randomPass();
+      try {
+        await api('/api/users', { method: 'PUT', body: { id: reset.dataset.reset, password: pass } });
+        alert(`新しいパスワード：${pass}\nID「${reset.dataset.reset}」の人に伝えてください。`);
+      } catch (err) { alert(err.message); }
+    }
+  };
+  $('me-save').onclick = async () => {
+    $('me-err').textContent = '';
+    try {
+      await api('/api/me/password', { method: 'PUT', body: { current: $('me-cur').value, password: $('me-new').value } });
+      toast('パスワードを変えました');
+      $('me-cur').value = ''; $('me-new').value = '';
+    } catch (e) { $('me-err').textContent = e.message; }
+  };
+  $('logout').onclick = async () => {
+    if (!confirm('ログアウトしますか？')) return;
+    await api('/api/logout', { method: 'POST' }).catch(() => {});
+    location.reload();
+  };
+}
+
 async function boot() {
   let st = { loginRequired: false, loggedIn: true };
   try {
@@ -248,14 +315,15 @@ async function boot() {
     document.body.innerHTML = `<p class="empty">サーバーに接続できません: ${esc(e.message)}</p>`;
     return;
   }
+  me = st.user || { id: 'admin', name: '持ち主', admin: true };
   if (st.loginRequired && !st.loggedIn) {
     $('login').hidden = false;
     $('login-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       try {
-        await api('/api/login', { method: 'POST', body: { password: $('login-pass').value } });
-        $('login').hidden = true;
-        startApp();
+        await api('/api/login', { method: 'POST', body: { id: $('login-id').value.trim(), password: $('login-pass').value } });
+        // 人ごとに保存場所を分けるので、読み込み直してから始める
+        location.reload();
       } catch (err) {
         $('login-err').textContent = err.message;
       }

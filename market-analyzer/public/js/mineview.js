@@ -3,10 +3,10 @@
 import { api, $, esc, store, fmtPrice, fmtYen } from './util.js';
 import { runStrategy, signalOdds, oddsLabel, oddsText } from './strategies.js';
 import { pagedList } from './stockscreener.js';
-import { getProfile, getHoldings, setHoldings } from './favorites.js';
+import { getProfile, setProfile, getHoldings, setHoldings } from './favorites.js';
 import { sizePosition, replayWithBudget } from './plan.js';
 import { loadRegime, loadCandles, universe, kindOf } from './labview.js';
-import { adviseHolding } from './holdingadvice.js';
+import { adviseHolding, exitTiming } from './holdingadvice.js';
 import { searchFx } from './fxpairs.js';
 
 const pct = (v) => (v == null ? '—' : `${Math.round(v * 100)}%`);
@@ -82,7 +82,8 @@ let logRunning = null;
 
 // 全銘柄を「総合判断」で計算する（「今のサイン」と「売買の一覧」で共通）
 async function computeLog(mode, out, force = false) {
-  const ck = `${mode}|${style}`;
+  const swingDays = getProfile().swingDays || 30;
+  const ck = `${mode}|${style}|${style === 'swing' ? swingDays : ''}`;
   const hit = logCache[ck];
   if (hit && !force && Date.now() - hit.at < 30 * 60 * 1000) return hit.data;
   if (logRunning?.ck === ck) return logRunning.p;
@@ -97,7 +98,7 @@ async function computeLog(mode, out, force = false) {
     const prices = {};
     for (const x of list) {
       prices[x.symbol] = x.candles[x.candles.length - 1].close;
-      const r = runStrategy(x.candles, 'combo', { kind, pair: x.symbol.replace(/=X$/, ''), regime, intraday: day, days: day ? (kind === 'fx' ? 1000 : 600) : 250 });
+      const r = runStrategy(x.candles, 'combo', { kind, pair: x.symbol.replace(/=X$/, ''), regime, intraday: day, days: day ? (kind === 'fx' ? 1000 : 600) : 250, maxHold: day ? null : swingDays });
       const last = x.candles[x.candles.length - 1];
       for (const t of r.trades) trades.push({ ...t, name: x.name, symbol: x.symbol });
       if (r.open) holding.push({ ...r.open, name: x.name, symbol: x.symbol, last: last.close });
@@ -327,9 +328,25 @@ async function adviceFor(mode, list) {
   const profile = getProfile();
   return list.map((h) => {
     const sym = symbolOf(mode, h.code);
-    const adv = adviseHolding({ ...h, symbol: sym }, candles[sym], { mode, prices, usdjpy: prices['USDJPY=X'], profile, earningsDate: earnings[h.code], today });
-    return { h, adv };
+    const hh = { ...h, symbol: sym };
+    const adv = adviseHolding(hh, candles[sym], { mode, prices, usdjpy: prices['USDJPY=X'], profile, earningsDate: earnings[h.code], today });
+    const timing = adv ? exitTiming(hh, candles[sym], adv, { mode, prices, usdjpy: prices['USDJPY=X'] }) : null;
+    return { h, adv, timing };
   });
+}
+
+// いつ決済するのが一番いいか（日数ごとの見込み）
+function timingHtml(t, d) {
+  const y = (v) => `<span class="${v >= 0 ? 'plus' : 'minus'}">${fmtYen(v)}</span>`;
+  return `<div class="timing">
+    <div class="timing-head">⏱ <b>いつ決済するのが一番${t.losing ? '損が小さい' : 'いい'}？</b></div>
+    <p class="small" style="margin:4px 0 6px">${esc(t.text)}</p>
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>決済する時期</th><th class="r">平均の損益</th><th class="r">悪いとき<br><span class="muted" style="font-weight:400">（10回に1回）</span></th><th class="r">${fmtPrice(t.escape, d)}に<br>届く</th><th class="r">${fmtPrice(t.line, d)}に<br>触れる</th></tr></thead><tbody>
+      <tr${!t.wait ? ' class="best"' : ''}><td class="small">今すぐ</td><td class="r small">${y(t.now)}</td><td class="r small">${y(t.now)}</td><td class="r small">—</td><td class="r small">—</td></tr>
+      ${t.rows.map((r) => `<tr${t.wait && r.d === t.best.d ? ' class="best"' : ''}><td class="small">最大${r.d}日待つ</td><td class="r small">${y(r.mean)}</td><td class="r small">${y(r.p10)}</td><td class="r small">${Math.round(r.pEscape * 100)}%</td><td class="r small">${Math.round(r.pLine * 100)}%</td></tr>`).join('')}
+    </tbody></table></div>
+    <p class="small muted" style="margin:4px 0 0">「最大○日待つ」は、${fmtPrice(t.line, d)}（最終ライン）に触れたらすぐ決済、${fmtPrice(t.escape, d)}（${t.losing ? '戻りの目標' : '利益確定の目標'}）に届いたら決済、どちらもなければその日に決済、というやり方です。過去の値動きのくせから何千通りも試した平均で、当たる保証はありません。</p>
+  </div>`;
 }
 
 async function showHoldings(mode) {
@@ -347,7 +364,7 @@ async function showHoldings(mode) {
   const unit = mode === 'fx' ? '通貨' : '株';
   box.innerHTML = `
     <div class="card"><div class="li-head"><span class="name">${list.length}銘柄の合計の損益（今の値段で）</span><b class="${totalYen >= 0 ? 'plus' : 'minus'}" style="font-size:18px">${fmtYen(totalYen)}</b></div></div>
-    ${rows.map(({ h, adv }) => {
+    ${rows.map(({ h, adv, timing }) => {
       if (!adv) return `<div class="card hold-item"><div class="li-head"><span class="name">${esc(h.name)}</span><button class="icon-btn hold-del" data-id="${esc(h.id)}" aria-label="消す">✕</button></div><p class="small error">値段を取得できませんでした。</p></div>`;
       const v = adv.verdict;
       return `<div class="card hold-item">
@@ -359,6 +376,7 @@ async function showHoldings(mode) {
           <div class="stat"><div class="label">利益確定の目標</div><div class="value plus" style="font-size:16px">${fmtPrice(adv.target, d)}</div><div class="small muted">${adv.wall ? `${esc(adv.wall.label)}（${esc(adv.wall.strength)}）` : '値動きの大きさから'}</div></div>
         </div>
         <ul class="why" style="font-size:13px;color:var(--text)">${adv.reasons.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
+        ${timing ? timingHtml(timing, d) : ''}
       </div>`;
     }).join('')}
     <p class="small muted">日足で計算しています。この画面を開いている間は5分ごとに自動で最新にします。損切りの線は、値段が有利に動くと自動で引き上げています（利益を守るため）。</p>`;
@@ -433,6 +451,10 @@ function applyMineSub() {
   $('style-seg').hidden = !showStyle;
   $('style-note').hidden = !showStyle;
   $('style-note').textContent = STYLE_NOTE[style];
+  $('swing-days').hidden = !showStyle || style !== 'swing';
+  const sd = getProfile().swingDays || 30;
+  if (document.activeElement !== $('swing-days-input')) $('swing-days-input').value = sd;
+  $('swing-days-chips').innerHTML = [3, 5, 10, 20, 30, 60].map((d) => `<button type="button" class="chip" data-d="${d}" aria-pressed="${d === sd}">${d}日</button>`).join('');
 }
 
 export function updateMine(mode, { force = false } = {}) {
@@ -461,4 +483,13 @@ export function initMine(getMode) {
     updateMine(getMode());
   });
   initHoldForm();
+  // スイングで持つ日数（あなたの設定に保存して、パソコンとスマホで共有）
+  const setDays = (d) => {
+    d = Math.max(1, Math.min(120, Math.round(Number(d) || 30)));
+    if (d === (getProfile().swingDays || 30)) return;
+    setProfile({ ...getProfile(), swingDays: d });
+    updateMine(getMode());
+  };
+  $('swing-days-chips').addEventListener('click', (e) => { const b = e.target.closest('[data-d]'); if (b) setDays(b.dataset.d); });
+  $('swing-days-input').addEventListener('change', (e) => setDays(e.target.value));
 }

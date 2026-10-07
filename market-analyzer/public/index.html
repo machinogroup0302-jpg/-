@@ -15,12 +15,21 @@
   <link rel="apple-touch-icon" href="/icon-180.png">
   <link rel="stylesheet" href="/css/style.css">
   <script src="/vendor/lightweight-charts.js"></script>
+  <script>
+    // ログインしている人ごとに、この端末に保存するデータを分ける（持ち主は今までどおり）
+    (function () {
+      var m = document.cookie.match(/(?:^|;\s*)ma_uid=([^;]+)/);
+      var uid = m ? decodeURIComponent(m[1]) : 'admin';
+      window.MA_NS = uid && uid !== 'admin' ? 'u_' + uid + '_' : '';
+    })();
+  </script>
 </head>
 <body>
   <div id="login" class="login" hidden>
     <form class="card stack" id="login-form">
       <h2>相場分析ノート</h2>
-      <p class="muted small">自分専用のサイトです。パスワードを入れてください。</p>
+      <p class="muted small">IDとパスワードを入れてください。<br>持ち主の方は、IDは空のままでOKです。</p>
+      <input class="input" type="text" id="login-id" autocomplete="username" autocapitalize="none" placeholder="ID（持ち主は空のまま）">
       <input class="input" type="password" id="login-pass" autocomplete="current-password" placeholder="パスワード" required>
       <button class="btn primary block" type="submit">ログイン</button>
       <p class="error" id="login-err"></p>
@@ -216,6 +225,11 @@
           <button data-style="day">デイトレ（その日中）</button>
         </div>
         <p class="small muted" id="style-note" style="margin:-4px 0 10px"></p>
+        <div class="swing-days" id="swing-days" hidden>
+          <label class="small" for="swing-days-input"><b>スイングで持つ日数の上限</b>（この日数たったら決済）</label>
+          <div class="row" style="margin-top:4px"><input class="input" id="swing-days-input" type="number" min="1" max="120" inputmode="numeric" style="width:90px"><span class="small">日</span>
+            <div class="chips" id="swing-days-chips" style="margin:0"></div></div>
+        </div>
 
         <div data-minepanel="hold" hidden>
           <div class="card">
@@ -352,6 +366,32 @@
   <dialog id="settings">
     <div class="dlg-head"><h2>設定</h2><button class="icon-btn" id="close-settings" aria-label="閉じる">✕</button></div>
     <div class="dlg-body">
+      <div class="field" id="account-box">
+        <label>アカウント</label>
+        <p class="small" id="account-who" style="margin:0 0 6px"></p>
+        <div id="account-admin" hidden>
+          <p class="small muted" style="margin:0 0 6px">ほかの人にこのサイトを使ってもらうときは、ここで「ID」と「パスワード」を作って、その人に伝えてください。その人のお気に入り・持っている株・取引分析・メール設定は、あなたとは別々に保存され、お互いに見えません。</p>
+          <div class="stack" style="gap:6px">
+            <input class="input" id="nu-name" placeholder="名前（例: 田中さん）">
+            <input class="input" id="nu-id" autocapitalize="none" placeholder="ID（半角英数字3〜20文字・例: tanaka）">
+            <div class="row"><input class="input grow" id="nu-pass" placeholder="パスワード（6文字以上）"><button type="button" class="btn" id="nu-gen">自動で作る</button></div>
+            <button type="button" class="btn primary block" id="nu-add">この人を追加する</button>
+            <p class="small error" id="nu-err"></p>
+          </div>
+          <ul class="list" id="user-list" style="margin-top:6px"></ul>
+        </div>
+        <div id="account-user" hidden>
+          <details class="small"><summary>パスワードを変える</summary>
+            <div class="stack" style="gap:6px;margin-top:6px">
+              <input class="input" type="password" id="me-cur" placeholder="今のパスワード">
+              <input class="input" type="password" id="me-new" placeholder="新しいパスワード（6文字以上）">
+              <button type="button" class="btn block" id="me-save">変える</button>
+              <p class="small error" id="me-err"></p>
+            </div>
+          </details>
+        </div>
+        <button type="button" class="btn block" id="logout" style="margin-top:8px">ログアウト（別の人に切り替える）</button>
+      </div>
       <div class="field profile-box">
         <label>あなたの設定</label>
         <p class="small muted" style="margin:-2px 0 8px">入力すると「成績」→「あなたのプラン」で、予算に合った「買う量・損切りの値段」を計算します。パソコンとスマホで共有されます。</p>
