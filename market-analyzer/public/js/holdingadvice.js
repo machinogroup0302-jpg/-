@@ -196,3 +196,88 @@ export function exitTiming(h, candles, adv, { mode, prices = {}, usdjpy = null, 
   }
   return { line, escape, rows, now: nowPl, best, wait: worth, text, losing };
 }
+
+// ---------------- 長い目で見ると（1か月〜半年） ----------------
+// 10日先までだけでなく、1か月・3か月・半年持った場合も試す。
+// 長く持つなら、損切りの線は広め（大きな流れが壊れたところ）に置く。
+const LONG_DAYS = [[20, '1か月'], [60, '3か月'], [120, '半年']];
+const sma = (arr, n) => (arr.length >= n ? arr.slice(-n).reduce((a, b) => a + b, 0) / n : null);
+
+export function longTermView(h, candles, adv, { mode, prices = {}, usdjpy = null } = {}) {
+  const ypu = yenPerUnit(mode, h.symbol, { prices, usdjpy });
+  const qty = Number(h.qty) || 0;
+  if (!adv || ypu == null || !qty || candles.length < 120) return null;
+  const side = h.side < 0 ? -1 : 1;
+  const long = side > 0;
+  const entry = Number(h.price);
+  const now = adv.now, a = adv.atr;
+  const closes = candles.map((c) => c.close);
+  const pl = (p) => side * (p - entry) * qty * ypu;
+  const fmt = (v) => `${v < 0 ? '−' : '+'}${Math.abs(Math.round(v)).toLocaleString()}円`;
+
+  // 大きな流れ：200日（なければ100日）の平均、1年の高値・安値の中での位置、過去の下げからの戻り方
+  const ma200 = sma(closes, 200) ?? sma(closes, 100);
+  const ma50 = sma(closes, 50);
+  const yr = candles.slice(-250);
+  const hi = Math.max(...yr.map((c) => c.high)), lo = Math.min(...yr.map((c) => c.low));
+  const pos = hi > lo ? (now - lo) / (hi - lo) : 0.5;
+  const trendUp = ma50 != null && ma200 != null && ma50 > ma200 && now > ma200;
+  const trendDown = ma50 != null && ma200 != null && ma50 < ma200 && now < ma200;
+  // 1年の中で、今と同じくらい高値から下がったあと、3か月以内に元の値段まで戻った割合
+  const dd = (hi - now) / hi;
+  let similar = 0, recovered = 0;
+  for (let i = 60; i < closes.length - 60; i++) {
+    const peak = Math.max(...closes.slice(i - 60, i));
+    const d = (peak - closes[i]) / peak;
+    if (Math.abs(d - dd) < 0.03 && dd > 0.05) {
+      similar++;
+      if (Math.max(...closes.slice(i + 1, i + 61)) >= peak * 0.97) recovered++;
+      i += 10; // 同じ下げを何度も数えない
+    }
+  }
+
+  // 長く持つときの最終ライン：半年の安値の少し下か、今から4ATR（大きな流れが壊れたところ）
+  const low120 = Math.min(...candles.slice(-120).map((c) => c.low)), high120 = Math.max(...candles.slice(-120).map((c) => c.high));
+  const line = long ? Math.min(now - 4 * a, low120 - 0.5 * a) : Math.max(now + 4 * a, high120 + 0.5 * a);
+  const losing = pl(now) < 0;
+  const lv = supportResistance(candles.slice(-250), { maxEach: 5 });
+  const farWall = lv.filter((l) => (long ? l.kind === 'resistance' && l.price > now : l.kind === 'support' && l.price < now))
+    .sort((x, y) => (long ? y.price - x.price : x.price - y.price))[0];
+  const escape = losing ? entry : (farWall?.price ?? now + side * 6 * a);
+
+  const sims = simulatePaths(closes, { horizon: 120, paths: 1200, seed: seedOf('L' + h.symbol + h.price) });
+  if (!sims) return null;
+  const rows = LONG_DAYS.map(([d, label]) => {
+    const res = [];
+    let hitLine = 0, hitEsc = 0;
+    for (const path of sims) {
+      let v = null;
+      for (let k = 0; k < d; k++) {
+        const p = path[k];
+        if (long ? p <= line : p >= line) { v = pl(p); hitLine++; break; }
+        if (long ? p >= escape : p <= escape) { v = pl(p); hitEsc++; break; }
+      }
+      res.push(v ?? pl(path[d - 1]));
+    }
+    res.sort((x, y) => x - y);
+    return { d, label, mean: res.reduce((s, x) => s + x, 0) / res.length, p10: res[Math.floor(res.length * 0.1)], p90: res[Math.floor(res.length * 0.9)], pLine: hitLine / sims.length, pEscape: hitEsc / sims.length };
+  });
+
+  const reasons = [];
+  if (trendUp) reasons.push(`大きな流れは${long ? '味方' : '逆風'}：50日の平均が200日の平均より上で、値段も200日の平均（${num(ma200)}）より上（長い目で見ると上向き）`);
+  else if (trendDown) reasons.push(`大きな流れは${long ? '逆風' : '味方'}：50日の平均が200日の平均より下で、値段も200日の平均（${num(ma200)}）より下（長い目で見ると下向き）`);
+  else if (ma200 != null) reasons.push(`大きな流れははっきりしない：値段は200日の平均（${num(ma200)}）の近く`);
+  reasons.push(`この1年の高値（${num(hi)}）と安値（${num(lo)}）の間で、今は下から${Math.round(pos * 100)}%の位置${pos < 0.2 ? '（安いところ）' : pos > 0.8 ? '（高いところ）' : ''}`);
+  if (similar >= 2) reasons.push(`この1年で、今と同じくらい（高値から${Math.round(dd * 100)}%）下がった場面は${similar}回あり、そのうち${recovered}回は3か月以内に元の値段近くまで戻った`);
+  const best = rows.reduce((b, r) => (r.mean > b.mean ? r : b), rows[0]);
+  const flowOk = long ? !trendDown : !trendUp;
+  let text;
+  if (best.mean > pl(now) && flowOk) {
+    text = `長い目で見ると、${best.label}ほど持つ方が平均では${losing ? '損が小さい' : 'もうけが大きい'}見込みです（今 ${fmt(pl(now))} → 平均 ${fmt(best.mean)}）。長く持つなら、最終ラインを ${num(line)} に置き、そこを${long ? '割ったら' : '超えたら'}必ず決済してください。`;
+  } else if (!flowOk) {
+    text = `長い目で見ても大きな流れが${long ? '下向き' : '上向き'}なので、長く持って取り返すのはおすすめしにくいです。${losing ? '損切りを先延ばしにしない方が安全です。' : '利益があるうちに決済を考えましょう。'}`;
+  } else {
+    text = `長く持っても、平均では今より良くならない見込みです（${best.label}後の平均 ${fmt(best.mean)}）。`;
+  }
+  return { rows, line, escape, losing, text, reasons, now: pl(now) };
+}

@@ -112,6 +112,7 @@ function cleanProfile(v) {
     maxPos: Math.round(num(v.maxPos, 1, 10, 3)),
     swingDays: Math.round(num(v.swingDays, 1, 120, 30)),
     notify: { fx: !!v.notify?.fx, stock: !!v.notify?.stock, us: !!v.notify?.us },
+    notifyDay: v.notifyDay !== false,
   };
 }
 

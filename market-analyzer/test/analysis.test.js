@@ -702,3 +702,31 @@ test('スイングの持つ日数の上限を守る', async () => {
   assert.ok(r.trades.length > 0);
   assert.ok(r.trades.every((t) => t.days <= 6), JSON.stringify(r.trades.map((t) => t.days)));
 });
+
+test('長い目で見ると：1か月・3か月・半年の見込みと理由を出す', async () => {
+  const { adviseHolding, longTermView } = await import('../public/js/holdingadvice.js');
+  const cs = [];
+  let p = 1000, seed = 11;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < 400; i++) { const o = p; p = o * (1 + (rnd() - 0.49) * 0.03); cs.push({ time: Date.UTC(2025, 0, 1) / 1000 + i * 86400, open: o, high: Math.max(o, p) * 1.005, low: Math.min(o, p) * 0.995, close: p, volume: 1 }); }
+  const h = { symbol: '7203.T', side: 1, price: p * 1.1, qty: 100 };
+  const adv = adviseHolding(h, cs, { mode: 'stock' });
+  const v = longTermView(h, cs, adv, { mode: 'stock' });
+  assert.deepEqual(v.rows.map((r) => r.label), ['1か月', '3か月', '半年']);
+  assert.ok(v.reasons.some((r) => /1年の高値/.test(r)));
+  assert.ok(v.line < adv.now);
+  assert.ok(v.rows.every((r) => r.p10 <= r.mean && r.mean <= r.p90));
+});
+
+
+test('取引時間の判定（日本株・米国株・為替）', async () => {
+  const { openMarkets } = await import('../lib/markethours.js');
+  // 水曜 10:00（日本時間）＝ 01:00 UTC：日本株と為替
+  assert.deepEqual(openMarkets(new Date('2026-10-07T01:00:00Z')).sort(), ['fx', 'stock']);
+  // 水曜 12:00（日本時間）：昼休みなので日本株は休み
+  assert.deepEqual(openMarkets(new Date('2026-10-07T03:00:00Z')), ['fx']);
+  // 水曜 23:00（日本時間）＝ ニューヨーク 10:00：米国株と為替
+  assert.deepEqual(openMarkets(new Date('2026-10-07T14:00:00Z')).sort(), ['fx', 'us']);
+  // 日曜：どこも休み
+  assert.deepEqual(openMarkets(new Date('2026-10-11T03:00:00Z')), []);
+});

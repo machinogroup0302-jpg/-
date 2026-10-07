@@ -6,7 +6,7 @@ import { pagedList } from './stockscreener.js';
 import { getProfile, setProfile, getHoldings, setHoldings } from './favorites.js';
 import { sizePosition, replayWithBudget } from './plan.js';
 import { loadRegime, loadCandles, universe, kindOf } from './labview.js';
-import { adviseHolding, exitTiming } from './holdingadvice.js';
+import { adviseHolding, exitTiming, longTermView } from './holdingadvice.js';
 import { searchFx } from './fxpairs.js';
 
 const pct = (v) => (v == null ? '—' : `${Math.round(v * 100)}%`);
@@ -331,7 +331,8 @@ async function adviceFor(mode, list) {
     const hh = { ...h, symbol: sym };
     const adv = adviseHolding(hh, candles[sym], { mode, prices, usdjpy: prices['USDJPY=X'], profile, earningsDate: earnings[h.code], today });
     const timing = adv ? exitTiming(hh, candles[sym], adv, { mode, prices, usdjpy: prices['USDJPY=X'] }) : null;
-    return { h, adv, timing };
+    const longView = adv ? longTermView(hh, candles[sym], adv, { mode, prices, usdjpy: prices['USDJPY=X'] }) : null;
+    return { h, adv, timing, longView };
   });
 }
 
@@ -346,6 +347,21 @@ function timingHtml(t, d) {
       ${t.rows.map((r) => `<tr${t.wait && r.d === t.best.d ? ' class="best"' : ''}><td class="small">最大${r.d}日待つ</td><td class="r small">${y(r.mean)}</td><td class="r small">${y(r.p10)}</td><td class="r small">${Math.round(r.pEscape * 100)}%</td><td class="r small">${Math.round(r.pLine * 100)}%</td></tr>`).join('')}
     </tbody></table></div>
     <p class="small muted" style="margin:4px 0 0">「最大○日待つ」は、${fmtPrice(t.line, d)}（最終ライン）に触れたらすぐ決済、${fmtPrice(t.escape, d)}（${t.losing ? '戻りの目標' : '利益確定の目標'}）に届いたら決済、どちらもなければその日に決済、というやり方です。過去の値動きのくせから何千通りも試した平均で、当たる保証はありません。</p>
+  </div>`;
+}
+
+// 長い目で見ると（1か月〜半年）
+function longHtml(t, d) {
+  const y = (v) => `<span class="${v >= 0 ? 'plus' : 'minus'}">${fmtYen(v)}</span>`;
+  return `<div class="timing">
+    <div class="timing-head">📅 <b>長い目で見ると（1か月〜半年）</b></div>
+    <p class="small" style="margin:4px 0 6px">${esc(t.text)}</p>
+    <ul class="why" style="font-size:13px;color:var(--text)">${t.reasons.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>持つ期間</th><th class="r">平均の損益</th><th class="r">悪いとき<br><span class="muted" style="font-weight:400">（10回に1回）</span></th><th class="r">良いとき<br><span class="muted" style="font-weight:400">（10回に1回）</span></th><th class="r">${fmtPrice(t.escape, d)}に<br>届く</th><th class="r">${fmtPrice(t.line, d)}に<br>触れる</th></tr></thead><tbody>
+      <tr><td class="small">今すぐ決済</td><td class="r small">${y(t.now)}</td><td class="r small">${y(t.now)}</td><td class="r small">${y(t.now)}</td><td class="r small">—</td><td class="r small">—</td></tr>
+      ${t.rows.map((r) => `<tr><td class="small">最大${r.label}</td><td class="r small">${y(r.mean)}</td><td class="r small">${y(r.p10)}</td><td class="r small">${y(r.p90)}</td><td class="r small">${Math.round(r.pEscape * 100)}%</td><td class="r small">${Math.round(r.pLine * 100)}%</td></tr>`).join('')}
+    </tbody></table></div>
+    <p class="small muted" style="margin:4px 0 0">長く持つときは、損切りの線を広め（${fmtPrice(t.line, d)}＝大きな流れが壊れたところ）に置いて試しています。期間が長いほど、結果のばらつき（悪いとき・良いときの差）が大きくなります。</p>
   </div>`;
 }
 
@@ -364,7 +380,7 @@ async function showHoldings(mode) {
   const unit = mode === 'fx' ? '通貨' : '株';
   box.innerHTML = `
     <div class="card"><div class="li-head"><span class="name">${list.length}銘柄の合計の損益（今の値段で）</span><b class="${totalYen >= 0 ? 'plus' : 'minus'}" style="font-size:18px">${fmtYen(totalYen)}</b></div></div>
-    ${rows.map(({ h, adv, timing }) => {
+    ${rows.map(({ h, adv, timing, longView }) => {
       if (!adv) return `<div class="card hold-item"><div class="li-head"><span class="name">${esc(h.name)}</span><button class="icon-btn hold-del" data-id="${esc(h.id)}" aria-label="消す">✕</button></div><p class="small error">値段を取得できませんでした。</p></div>`;
       const v = adv.verdict;
       return `<div class="card hold-item">
@@ -377,6 +393,7 @@ async function showHoldings(mode) {
         </div>
         <ul class="why" style="font-size:13px;color:var(--text)">${adv.reasons.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
         ${timing ? timingHtml(timing, d) : ''}
+        ${longView ? longHtml(longView, d) : ''}
       </div>`;
     }).join('')}
     <p class="small muted">日足で計算しています。この画面を開いている間は5分ごとに自動で最新にします。損切りの線は、値段が有利に動くと自動で引き上げています（利益を守るため）。</p>`;
