@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ドラレコ取付ワークス | タクシー・ハイヤーのドライブレコーダー取り付け</title>
-<meta name="description" content="タクシー・ハイヤー専門のドライブレコーダー取り付けサービス。営業所への出張施工、夜間・早朝対応で稼働を止めません。持ち込み機器・通信型・3カメラ・載せ替えにも対応。">
+<title>タクシー・ハイヤーのドラレコ出張取り付け | 合同会社まちのグループ</title>
+<meta name="description" content="埼玉県を中心に出張対応。タクシー・ハイヤーのドライブレコーダー取り付けは合同会社まちのグループへ。認証工場での整備経験8年、作業の外注なし、前後2カメラ取り付け14,000円（本体持ち込み）。">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
 <style>
@@ -290,9 +290,56 @@
     .devices-grid { grid-template-columns: 1fr; }
     .price-table th, .price-table td { padding: 14px 12px; font-size: 14px; }
   }
+
+  /* Trust */
+  .trust-bar { background: #fff; padding: 0; position: relative; z-index: 2; }
+  .trust-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); background: #fff; border-radius: 18px;
+    box-shadow: 0 20px 50px rgba(13,27,42,.12); margin-top: -56px; overflow: hidden; border: 1px solid var(--line);
+  }
+  .trust-item { padding: 24px 16px; text-align: center; border-right: 1px solid var(--line); }
+  .trust-item:last-child { border-right: none; }
+  .trust-item .v { font-size: 26px; font-weight: 900; line-height: 1.3; color: var(--navy); }
+  .trust-item .v small { font-size: 14px; }
+  .trust-item .v .star { color: var(--yellow-dark); }
+  .trust-item .k { font-size: 13px; color: var(--muted); margin-top: 4px; }
+  .trust-note { font-size: 11px; color: var(--muted); text-align: center; margin-top: 10px; }
+
+  .promise-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 48px; text-align: left; }
+  .promise { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 28px 24px; position: relative; }
+  .promise .ic { width: 48px; height: 48px; border-radius: 12px; background: var(--navy); color: var(--yellow); display: grid; place-items: center; margin-bottom: 14px; }
+  .promise h3 { font-size: 17px; margin-bottom: 8px; line-height: 1.5; }
+  .promise p { font-size: 14px; color: var(--muted); }
+
+  .check-list { max-width: 760px; margin: 40px auto 0; display: grid; grid-template-columns: 1fr 1fr; gap: 10px 24px; text-align: left; }
+  .check-list li { list-style: none; font-size: 15px; font-weight: 500; padding: 12px 16px; background: var(--bg-soft); border-radius: 10px; }
+  .check-list li::before { content: "✓"; color: var(--yellow-dark); font-weight: 900; margin-right: 10px; }
+
+  .company-table { width: 100%; max-width: 760px; margin: 40px auto 0; border-collapse: collapse; text-align: left; }
+  .company-table th, .company-table td { padding: 16px 12px; border-bottom: 1px solid var(--line); font-size: 15px; vertical-align: top; }
+  .company-table th { width: 28%; color: var(--muted); font-weight: 700; font-size: 14px; }
+  .todo { background: #fff3c4; padding: 0 4px; border-radius: 3px; }
+  .pay { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 16px; }
+  .pay span { border: 1px solid var(--line); border-radius: 8px; padding: 4px 12px; font-size: 13px; font-weight: 700; background: #fff; }
+
+  @media (max-width: 900px) {
+    .trust-grid { grid-template-columns: repeat(2, 1fr); }
+    .trust-item:nth-child(2) { border-right: none; }
+    .trust-item:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+    .promise-grid { grid-template-columns: 1fr; }
+    .check-list { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 520px) {
+    .trust-item .v { font-size: 22px; }
+    .company-table th { width: 34%; }
+  }
 </style>
 </head>
 <body>
+<!--
+  情報の出典: 合同会社まちのグループの掲載情報（ミツモア等）を検索結果から引用。
+  class="todo" の箇所は未確認・未入力です。公開前に必ず実際の情報へ差し替えてください。
+-->
 
 <header>
   <div class="container header-inner">
@@ -300,15 +347,15 @@
       <span class="logo-mark">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/></svg>
       </span>
-      ドラレコ取付ワークス
+      まちのグループ
     </a>
     <nav>
       <ul>
+        <li><a href="#promise">安心の約束</a></li>
         <li><a href="#reasons">選ばれる理由</a></li>
-        <li><a href="#devices">対応機器</a></li>
         <li><a href="#price">料金</a></li>
         <li><a href="#flow">施工の流れ</a></li>
-        <li><a href="#faq">よくある質問</a></li>
+        <li><a href="#company">会社概要</a></li>
       </ul>
     </nav>
     <a href="#contact" class="btn btn-primary header-cta">無料見積り</a>
@@ -319,95 +366,144 @@
 <section class="hero">
   <div class="container hero-grid">
     <div>
-      <span class="hero-badge">タクシー・ハイヤー専門の取り付けサービス</span>
+      <span class="hero-badge">タクシー・ハイヤー事業者さまへ ／ 埼玉県を中心に出張対応</span>
       <h1>ドラレコの取り付け、<br><em>営業所まで伺います。</em></h1>
-      <p>車両を止めずに、まとめて施工。<br>夜間・早朝の出張対応で、営業への影響を最小限に抑えます。</p>
+      <p>認証工場で整備に携わってきたスタッフが、自社で責任をもって施工。<br>車両を工場へ運ぶ手間なく、営業への影響を抑えて取り付けます。</p>
       <div class="hero-actions">
         <a href="#contact" class="btn btn-primary">無料で見積りを依頼</a>
         <a href="#price" class="btn btn-ghost">料金を見る</a>
       </div>
       <div class="hero-points">
-        <span>機器の持ち込みOK</span>
-        <span>1台から出張可</span>
-        <span>施工保証つき</span>
+        <span>作業の外注なし</span>
+        <span>本体の持ち込みOK</span>
+        <span>輸入車にも対応</span>
       </div>
     </div>
     <div class="hero-visual">
       <figure class="car-visual">
         <svg viewBox="0 0 400 260" fill="none" aria-label="取り付け箇所の図">
-          <!-- car top view -->
           <rect x="70" y="60" width="260" height="140" rx="56" fill="#22374f" stroke="#3b5675" stroke-width="2"/>
           <rect x="140" y="72" width="120" height="116" rx="18" fill="#2c4562"/>
           <path d="M140 80 Q120 130 140 180" stroke="#5e7d9e" stroke-width="6" fill="none" stroke-linecap="round"/>
           <path d="M260 80 Q282 130 260 180" stroke="#5e7d9e" stroke-width="6" fill="none" stroke-linecap="round"/>
           <rect x="168" y="44" width="64" height="18" rx="4" fill="#f5c518"/>
           <text x="200" y="57" font-size="11" font-weight="900" fill="#0d1b2a" text-anchor="middle">TAXI</text>
-          <!-- wiring -->
           <path d="M268 130 H200 V112 M200 130 H132 M200 130 V150 H160" stroke="#f5c518" stroke-width="2" stroke-dasharray="5 4" opacity=".7"/>
-          <!-- points -->
           <circle class="pulse" cx="268" cy="130" r="14" fill="#f5c518" opacity=".3"/><circle cx="268" cy="130" r="7" fill="#f5c518"/>
           <circle class="pulse" cx="200" cy="112" r="14" fill="#f5c518" opacity=".3"/><circle cx="200" cy="112" r="7" fill="#f5c518"/>
           <circle class="pulse" cx="132" cy="130" r="14" fill="#f5c518" opacity=".3"/><circle cx="132" cy="130" r="7" fill="#f5c518"/>
           <circle cx="160" cy="150" r="6" fill="#fff"/>
-          <!-- labels -->
           <g font-size="12" font-weight="700" fill="#fff">
             <line x1="268" y1="130" x2="340" y2="30" stroke="#fff" stroke-opacity=".4"/><text x="300" y="24">前方カメラ</text>
-            <line x1="200" y1="112" x2="200" y2="240" stroke="#fff" stroke-opacity=".0"/>
             <line x1="200" y1="112" x2="250" y2="236" stroke="#fff" stroke-opacity=".4"/><text x="226" y="252">車内カメラ</text>
             <line x1="132" y1="130" x2="60" y2="30" stroke="#fff" stroke-opacity=".4"/><text x="16" y="24">後方カメラ</text>
             <line x1="160" y1="150" x2="90" y2="236" stroke="#fff" stroke-opacity=".4"/><text x="30" y="252">本体・電源</text>
           </g>
         </svg>
-        <figcaption>配線は内装の内側へ。メーター・無線・決済端末とも干渉させません。</figcaption>
+        <figcaption>配線は内装の内側へ。メーター・無線・決済端末への影響に配慮して施工します。</figcaption>
       </figure>
       <div class="float-card fc-1">
-        <span class="ico" style="background:#fff6d1;color:#0d1b2a"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></span>
-        <div><strong>夜間・早朝もOK</strong><small>車庫に入っている時間に施工</small></div>
+        <span class="ico" style="background:#fff6d1;color:#0d1b2a"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></span>
+        <div><strong>前後2カメラ ¥14,000</strong><small>本体お持ち込みの場合</small></div>
       </div>
       <div class="float-card fc-2">
-        <span class="ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
-        <div><strong>1台 約60〜90分</strong><small>複数名でまとめて施工</small></div>
+        <span class="ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+        <div><strong>自社スタッフが施工</strong><small>作業の外注はしません</small></div>
       </div>
     </div>
+  </div>
+</section>
+
+<!-- Trust bar -->
+<section class="trust-bar">
+  <div class="container">
+    <div class="trust-grid">
+      <div class="trust-item"><div class="v">8<small>年</small></div><div class="k">認証工場での整備実績</div></div>
+      <div class="trust-item"><div class="v"><span class="star">★</span>4.9</div><div class="k">口コミ評価（785件）※</div></div>
+      <div class="trust-item"><div class="v">自社施工</div><div class="k">作業の外注はしません</div></div>
+      <div class="trust-item"><div class="v">出張</div><div class="k">埼玉県を中心に営業所へ伺います</div></div>
+    </div>
+    <p class="trust-note">※ 比較サイト「ミツモア」掲載の評価です。<span class="todo">公開前に最新の数値をご確認ください。</span></p>
   </div>
 </section>
 
 <!-- Problems -->
-<section class="problems">
+<section class="problems" style="margin-top:72px">
   <div class="container center">
     <span class="section-label">PROBLEMS</span>
-    <h2 class="section-title">ドラレコの取り付けで、<br>こんなお困りごとはありませんか？</h2>
+    <h2 class="section-title">ドラレコの取り付けで、<br>こんな不安はありませんか？</h2>
     <div class="problem-grid">
       <div class="problem">
         <div class="q">⏱️</div>
         <h3>車両を何日も止められない</h3>
-        <p>カー用品店や整備工場に預けると、その間は営業できない。台数が多いとなおさら。</p>
+        <p>工場やカー用品店に預けると、その間は営業できない。台数が多いとなおさら。</p>
       </div>
       <div class="problem">
         <div class="q">🔌</div>
-        <h3>配線や機器の干渉が不安</h3>
-        <p>メーター・無線・配車タブレット・決済端末…。業務用の機器が多く、一般の業者だと心配。</p>
+        <h3>大事な業務機器に影響しないか心配</h3>
+        <p>メーター・無線・配車タブレット・決済端末。誰に頼めば安心なのかわからない。</p>
       </div>
       <div class="problem">
-        <div class="q">📦</div>
-        <h3>機器は買ったが付ける人がいない</h3>
-        <p>本部やメーカーから機器は届いたものの、自社に取り付けできる人手がない。</p>
+        <div class="q">💴</div>
+        <h3>あとから料金が上がらないか不安</h3>
+        <p>「見積りより高くなった」「誰が作業に来るのかわからない」…初めての業者は心配。</p>
       </div>
     </div>
-    <p class="arrow-down"><span>タクシー・ハイヤー専門の私たちにお任せください。</span></p>
+    <p class="arrow-down"><span>まちのグループは、その不安をひとつずつ解消します。</span></p>
+  </div>
+</section>
+
+<!-- Promise -->
+<section id="promise">
+  <div class="container center">
+    <span class="section-label">PROMISE</span>
+    <h2 class="section-title">安心してお任せいただくための<br>6つの約束</h2>
+    <p class="section-lead">はじめてご依頼いただく事業者さまにも安心していただけるよう、私たちは次のことをお約束します。</p>
+    <div class="promise-grid">
+      <div class="promise">
+        <div class="ic"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></div>
+        <h3>作業前に料金を確定。<br>無断の追加請求はしません</h3>
+        <p>お見積りの内容にご納得いただいてから作業を始めます。追加の作業が必要な場合は、必ず事前にご説明しご了承をいただきます。</p>
+      </div>
+      <div class="promise">
+        <div class="ic"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg></div>
+        <h3>自社スタッフが施工。<br>作業の外注はしません</h3>
+        <p>お見積りから施工まで、まちのグループのスタッフが対応します。知らない業者が来ることはありません。</p>
+      </div>
+      <div class="promise">
+        <div class="ic"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/></svg></div>
+        <h3>認証工場で培った<br>整備の知識で施工</h3>
+        <p>認証工場で8年間、車の整備に携わってきた経験をもとに、電装・配線を丁寧に施工します。</p>
+      </div>
+      <div class="promise">
+        <div class="ic"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 21h18M5 21V10l7-6 7 6v11"/><path d="M10 21v-6h4v6"/></svg></div>
+        <h3>車内を汚さない・<br>においを残さない</h3>
+        <p>作業スタッフは非喫煙者です。シートや内装は養生してから作業し、お客さまが乗る車内をきれいなままお返しします。</p>
+      </div>
+      <div class="promise">
+        <div class="ic"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>
+        <h3>1台ずつ動作確認して<br>からお引き渡し</h3>
+        <p>録画・画角・電源・既存の業務機器の動作まで確認し、結果をご報告してから作業完了とします。</p>
+      </div>
+      <div class="promise">
+        <div class="ic"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+        <h3>施工後も気軽に相談できる<br>「まちの車屋さん」</h3>
+        <p>取り付け後の不具合やご質問にも対応します。洗車・コーティング・車検・整備まで、車のことはまとめてご相談ください。</p>
+      </div>
+    </div>
   </div>
 </section>
 
 <!-- Reasons -->
-<section id="reasons">
+<section id="reasons" class="flow">
   <div class="container">
     <div class="center">
       <span class="section-label">REASONS</span>
-      <h2 class="section-title">ドラレコ取付ワークスが<br>選ばれる4つの理由</h2>
+      <h2 class="section-title">タクシー・ハイヤー事業者さまに<br>選ばれる理由</h2>
     </div>
     <div class="feature-list">
       <div class="feature">
-        <div class="feature-img">
+        <div class="feature-img" style="background:#fff">
           <svg width="70%" viewBox="0 0 300 180" fill="none">
             <rect x="20" y="110" width="260" height="8" rx="4" fill="#d8e3ee"/>
             <rect x="30" y="66" width="120" height="44" rx="16" fill="#0d1b2a"/>
@@ -424,13 +520,13 @@
         <div>
           <div class="feature-num">01</div>
           <h3>営業所・車庫へ出張施工。<br>車両の移動はいりません</h3>
-          <p>施工スタッフが営業所へ伺い、その場で取り付けます。洗車場や車庫の一角があれば作業可能。車両を工場へ回送する手間も、待ち時間もかかりません。</p>
-          <div class="tags"><span class="tag">出張費込みプランあり</span><span class="tag">屋内・屋外どちらも可</span></div>
+          <p>出張での整備・取り付けが私たちの専門です。営業所や車庫に伺い、その場で取り付けます。車両を工場へ回送する手間も、待ち時間もかかりません。</p>
+          <div class="tags"><span class="tag">出張整備対応</span><span class="tag">営業所・車庫・ご自宅</span></div>
         </div>
       </div>
 
       <div class="feature">
-        <div class="feature-img">
+        <div class="feature-img" style="background:#fff">
           <svg width="62%" viewBox="0 0 200 200" fill="none">
             <circle cx="100" cy="100" r="80" fill="#0d1b2a"/>
             <path d="M128 52A56 56 0 1 0 152 120 44 44 0 0 1 128 52z" fill="#f5c518"/>
@@ -439,14 +535,14 @@
         </div>
         <div>
           <div class="feature-num">02</div>
-          <h3>夜間・早朝・休車日に施工。<br>営業を止めません</h3>
-          <p>シフトの合間や車庫に入っている時間帯を狙って作業します。複数名のチームで並行して施工するため、数十台規模でも短期間で完了。運行計画に合わせてスケジュールを組みます。</p>
-          <div class="tags"><span class="tag">24時間対応</span><span class="tag">大量台数の一斉施工</span><span class="tag">分割施工OK</span></div>
+          <h3>運行に合わせて日程を調整。<br>営業を止めません</h3>
+          <p>シフトの合間や休車日など、車両が空いている時間に合わせて伺います。営業時間外のご希望もお気軽にご相談ください。台数が多い場合は、数回に分けての施工も可能です。</p>
+          <div class="tags"><span class="tag">営業時間外もご相談可</span><span class="tag">分割施工OK</span></div>
         </div>
       </div>
 
       <div class="feature">
-        <div class="feature-img">
+        <div class="feature-img" style="background:#fff">
           <svg width="72%" viewBox="0 0 300 200" fill="none">
             <rect x="30" y="40" width="240" height="120" rx="14" fill="#1b2b40"/>
             <rect x="48" y="58" width="70" height="40" rx="6" fill="#0d1b2a"/><text x="83" y="84" font-size="13" font-weight="900" fill="#f5c518" text-anchor="middle">¥ 730</text>
@@ -457,14 +553,14 @@
         </div>
         <div>
           <div class="feature-num">03</div>
-          <h3>業務車両を知り尽くした<br>きれいで確実な配線</h3>
-          <p>料金メーター、無線機、配車タブレット、決済端末、防犯灯など、タクシー特有の装備を熟知。電源の取り回しやノイズ干渉に配慮し、配線は内装の内側へ隠して見た目もすっきり仕上げます。</p>
-          <div class="tags"><span class="tag">JPN TAXI・クラウン対応</span><span class="tag">ノイズ対策</span><span class="tag">内装を傷つけない施工</span></div>
+          <h3>業務機器に配慮した<br>きれいで確実な配線</h3>
+          <p>料金メーター、無線機、配車タブレット、決済端末など、タクシー・ハイヤー特有の装備に配慮して電源を取り回します。配線は内装の内側へ隠し、見た目もすっきり仕上げます。</p>
+          <div class="tags"><span class="tag">国産車・輸入車対応</span><span class="tag">内装を傷つけない施工</span></div>
         </div>
       </div>
 
       <div class="feature">
-        <div class="feature-img">
+        <div class="feature-img" style="background:#fff">
           <svg width="60%" viewBox="0 0 200 200" fill="none">
             <rect x="40" y="30" width="120" height="150" rx="10" fill="#fff" stroke="#e1e6ec" stroke-width="3"/>
             <rect x="70" y="20" width="60" height="22" rx="6" fill="#0d1b2a"/>
@@ -477,37 +573,10 @@
         </div>
         <div>
           <div class="feature-num">04</div>
-          <h3>動作確認まで責任施工。<br>施工後の保証つき</h3>
-          <p>取り付け後は録画・画角・GPS・通信状態まで1台ずつ確認し、チェックシートをお渡しします。施工が原因の不具合は保証期間内なら無償で再対応します。</p>
-          <div class="tags"><span class="tag">動作チェックシート</span><span class="tag">施工保証1年</span><span class="tag">台帳作成代行</span></div>
+          <h3>機器の手配から<br>まとめてお任せいただけます</h3>
+          <p>お手持ちのドラレコの取り付けはもちろん、本体のご用意からお任せいただくことも可能です。運用に合ったカメラ構成もご提案します。</p>
+          <div class="tags"><span class="tag">本体持ち込みOK</span><span class="tag">本体の手配も可能</span></div>
         </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- Devices -->
-<section id="devices" class="flow">
-  <div class="container center">
-    <span class="section-label">SERVICES</span>
-    <h2 class="section-title">対応している作業</h2>
-    <p class="section-lead">メーカー・機種を問わず対応します。機器のお持ち込みも、こちらでの手配も可能です。</p>
-    <div class="devices-grid">
-      <div class="device-card">
-        <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="15" height="10" rx="2"/><path d="m17 10 5-3v10l-5-3"/></svg></div>
-        <h3>前後2カメラ</h3><p>一般的な前方・後方の2カメラタイプの取り付け。</p>
-      </div>
-      <div class="device-card">
-        <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg></div>
-        <h3>車内カメラ・3カメラ</h3><p>乗客トラブル対策の車内向けカメラ追加。</p>
-      </div>
-      <div class="device-card">
-        <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0M12 19.5h.01"/></svg></div>
-        <h3>通信型ドラレコ</h3><p>LTE通信型・クラウド型の取り付けと開通確認。</p>
-      </div>
-      <div class="device-card">
-        <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 1l4 4-4 4M3 11V9a4 4 0 0 1 4-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 0 1-4 4H3"/></svg></div>
-        <h3>取り外し・載せ替え</h3><p>車両入れ替えや廃車時の取り外し、新車への移設。</p>
       </div>
     </div>
   </div>
@@ -517,21 +586,21 @@
 <section id="price">
   <div class="container center">
     <span class="section-label">PRICE</span>
-    <h2 class="section-title">取り付け料金の目安</h2>
-    <p class="section-lead">車種・機器・台数によって変わりますので、まずはお気軽にお見積りください。</p>
+    <h2 class="section-title">わかりやすい料金</h2>
+    <p class="section-lead">お見積りは無料です。車種・機器・台数をお知らせいただければ、作業前に総額をお伝えします。</p>
     <table class="price-table">
-      <thead><tr><th>作業内容</th><th>工賃（1台・税抜）</th></tr></thead>
+      <thead><tr><th>作業内容</th><th>工賃（1台あたり）</th></tr></thead>
       <tbody>
-        <tr><td>前後2カメラ取り付け<small>電源配線・リアカメラ配線込み</small></td><td><span class="yen">¥12,000〜</span></td></tr>
-        <tr><td>3カメラ（前方・車内・後方）取り付け</td><td><span class="yen">¥16,000〜</span></td></tr>
-        <tr><td>通信型ドラレコ取り付け<small>開通・管理画面での動作確認込み</small></td><td><span class="yen">¥18,000〜</span></td></tr>
-        <tr><td>取り外し</td><td><span class="yen">¥5,000〜</span></td></tr>
-        <tr><td>載せ替え（取り外し＋取り付け）</td><td><span class="yen">¥15,000〜</span></td></tr>
-        <tr><td>出張費<small>対応エリア内・5台以上のご依頼で無料</small></td><td><span class="yen">¥5,000</span></td></tr>
+        <tr><td>前後2カメラ取り付け<small>ドラレコ本体をお持ち込みの場合</small></td><td><span class="yen">¥14,000</span></td></tr>
+        <tr><td>3カメラ（前方・車内・後方）取り付け</td><td><span class="yen todo">要お見積り</span></td></tr>
+        <tr><td>通信型ドラレコ取り付け</td><td><span class="yen todo">要お見積り</span></td></tr>
+        <tr><td>取り外し・載せ替え<small>車両の入れ替え時など</small></td><td><span class="yen todo">要お見積り</span></td></tr>
+        <tr><td>ドラレコ本体のご用意<small>機種のご相談から承ります</small></td><td><span class="yen">お見積り</span></td></tr>
       </tbody>
     </table>
-    <div class="volume"><b>%</b>10台以上のまとめてご依頼で、工賃を割引いたします。夜間・早朝の割増料金もかかりません。</div>
-    <p class="note">※ 掲載料金はサンプルです。実際の料金に差し替えてください。</p>
+    <div class="volume"><b>✓</b>複数台のご依頼は、まとめてお見積りいたします。お見積り後に無断で料金が上がることはありません。</div>
+    <div class="pay"><span>現金</span><span>PayPay</span><span class="todo">請求書払い（要確認）</span></div>
+    <p class="note">※ 税込・税抜の表記、出張費の有無は<span class="todo">公開前にご確認ください</span>。</p>
   </div>
 </section>
 
@@ -539,19 +608,36 @@
 <section id="flow" class="flow">
   <div class="container center">
     <span class="section-label">FLOW</span>
-    <h2 class="section-title">施工の流れ</h2>
-    <p class="section-lead">お問い合わせから最短1週間で施工に伺えます。</p>
+    <h2 class="section-title">ご依頼から完了までの流れ</h2>
+    <p class="section-lead">はじめての方にも安心していただけるよう、各ステップでしっかりご説明します。</p>
     <div class="flow-steps" style="text-align:left">
       <div class="step"><h3>お問い合わせ</h3><p>台数・車種・機器の有無をフォームかお電話でお知らせください。</p></div>
-      <div class="step"><h3>お見積り・日程調整</h3><p>運行計画を伺い、営業に支障のない施工日程をご提案します。</p></div>
-      <div class="step"><h3>出張施工</h3><p>営業所・車庫へ伺って取り付け。1台ずつ動作確認します。</p></div>
-      <div class="step"><h3>完了報告</h3><p>チェックシートと施工台帳をお渡しして完了です。</p></div>
+      <div class="step"><h3>無料お見積り・日程調整</h3><p>総額を明示したお見積りをお出しします。運行に支障のない日程をご提案します。</p></div>
+      <div class="step"><h3>出張施工</h3><p>営業所・車庫へ伺い、養生をしてから丁寧に取り付けます。</p></div>
+      <div class="step"><h3>動作確認・お引き渡し</h3><p>録画や業務機器の動作を一緒に確認し、ご納得いただいてから完了です。</p></div>
     </div>
   </div>
 </section>
 
+<!-- Checks -->
+<section>
+  <div class="container center">
+    <span class="section-label">CHECK</span>
+    <h2 class="section-title">お引き渡し前の確認項目</h2>
+    <p class="section-lead">取り付けて終わりではなく、次の項目を1台ずつ確認してからお引き渡しします。</p>
+    <ul class="check-list">
+      <li>前方・後方・車内カメラの画角</li>
+      <li>エンジン始動と連動した録画開始</li>
+      <li>衝撃検知・イベント録画の動作</li>
+      <li>GPS・時刻の設定</li>
+      <li>料金メーター・無線・決済端末の動作</li>
+      <li>配線の固定と内装の復元状態</li>
+    </ul>
+  </div>
+</section>
+
 <!-- Area -->
-<section id="area">
+<section id="area" class="flow">
   <div class="container center">
     <span class="section-label">AREA</span>
     <h2 class="section-title">対応エリア</h2>
@@ -564,16 +650,16 @@
       </svg>
       <div>
         <div class="area-list">
-          <span>東京都</span><span>神奈川県</span><span>埼玉県</span><span>千葉県</span><span>茨城県（一部）</span>
+          <span>埼玉県</span><span>東京都（ご相談）</span><span>近隣県（ご相談）</span>
         </div>
-        <p>上記以外の地域も、台数によっては出張対応いたします。まずはご相談ください。<br>※ 対応エリアはサンプルです。</p>
+        <p>埼玉県を中心に出張対応しています。その他の地域も、台数や日程によって伺えますのでお気軽にご相談ください。</p>
       </div>
     </div>
   </div>
 </section>
 
 <!-- FAQ -->
-<section id="faq" class="problems">
+<section id="faq">
   <div class="container">
     <div class="center">
       <span class="section-label">FAQ</span>
@@ -581,26 +667,47 @@
     </div>
     <div class="faq-list">
       <details>
+        <summary>見積りのあとに料金が上がることはありますか？</summary>
+        <p>お見積りでお伝えした金額から、無断で料金が上がることはありません。現地で追加の作業が必要とわかった場合は、作業前にご説明し、ご了承をいただいてから進めます。</p>
+      </details>
+      <details>
         <summary>自社で購入したドラレコの取り付けだけでもお願いできますか？</summary>
-        <p>はい、取り付けのみのご依頼が大半です。メーカー・機種を問わず対応しますので、型番をお知らせください。機器の手配から任せたい場合もご相談いただけます。</p>
+        <p>はい、本体お持ち込みでの取り付けに対応しています。前後2カメラの場合は14,000円です。本体のご用意からお任せいただくことも可能です。</p>
       </details>
       <details>
-        <summary>1台だけでも出張してもらえますか？</summary>
-        <p>1台から伺います。対応エリア内で5台以上のご依頼の場合は出張費が無料になります。</p>
-      </details>
-      <details>
-        <summary>1台あたりの作業時間はどれくらいですか？</summary>
-        <p>前後2カメラで約60分、3カメラや通信型で約90分が目安です。台数が多い場合は複数名で並行して作業します。</p>
+        <summary>作業は誰が来ますか？外注業者が来ることはありますか？</summary>
+        <p>作業の外注はしておらず、まちのグループのスタッフが伺います。スタッフは非喫煙者ですので、車内ににおいが残る心配もありません。</p>
       </details>
       <details>
         <summary>メーターや無線、決済端末に影響はありませんか？</summary>
-        <p>業務用機器の配線やノイズ干渉に配慮して施工し、取り付け後に各機器の動作もあわせて確認します。万一施工が原因の不具合があれば保証で対応します。</p>
+        <p>業務用機器の配線に配慮して施工し、取り付け後に各機器の動作もあわせて確認します。施工後に気になる点があればご連絡ください。</p>
       </details>
       <details>
-        <summary>施工場所は屋外の駐車場でも大丈夫ですか？</summary>
-        <p>可能です。ただし雨天時は屋根のある場所をご用意いただくか、日程を調整させていただく場合があります。</p>
+        <summary>1台あたりどのくらい時間がかかりますか？</summary>
+        <p>車種やカメラの台数によって異なります。お見積りの際に目安の作業時間をお伝えし、運行に合わせた日程をご提案します。</p>
+      </details>
+      <details>
+        <summary>支払い方法は何がありますか？</summary>
+        <p>現金のほか、PayPayにも対応しています。法人さまの請求書払いについてはお問い合わせください。</p>
       </details>
     </div>
+  </div>
+</section>
+
+<!-- Company -->
+<section id="company" class="flow">
+  <div class="container center">
+    <span class="section-label">COMPANY</span>
+    <h2 class="section-title">会社概要</h2>
+    <table class="company-table">
+      <tr><th>会社名</th><td>合同会社まちのグループ</td></tr>
+      <tr><th>代表</th><td>望月 <span class="todo">（フルネームを入力）</span></td></tr>
+      <tr><th>事業内容</th><td>出張によるドライブレコーダー等の各種取り付け、洗車・コーティング、車検・整備、自動車保険、中古車販売</td></tr>
+      <tr><th>実績</th><td>認証工場での整備実績 8年</td></tr>
+      <tr><th>対応エリア</th><td>埼玉県を中心に出張対応</td></tr>
+      <tr><th>所在地</th><td><span class="todo">住所を入力</span></td></tr>
+      <tr><th>電話番号</th><td><span class="todo">電話番号を入力</span></td></tr>
+    </table>
   </div>
 </section>
 
@@ -610,21 +717,21 @@
     <div>
       <span class="section-label">CONTACT</span>
       <h2 class="section-title">お見積り・ご相談は<br>無料です</h2>
-      <p class="section-lead">台数や車種が決まっていなくても大丈夫です。担当者より1営業日以内にご連絡いたします。</p>
+      <p class="section-lead">台数や車種が決まっていなくても大丈夫です。お見積りだけのご相談でも、無理な営業はいたしません。</p>
       <div class="tel-box">
         <small>お電話でのお問い合わせ</small>
-        <div class="tel">0120-000-000</div>
-        <small>受付時間 平日 9:00〜18:00</small>
+        <div class="tel"><span class="todo" style="color:var(--navy)">000-0000-0000</span></div>
+        <small>受付時間 <span class="todo" style="color:var(--navy)">要入力</span>（営業時間外もご相談ください）</small>
       </div>
     </div>
     <form id="contact-form">
       <div class="row-2">
-        <div><label for="company">会社名<span class="req">必須</span></label><input id="company" required placeholder="○○交通株式会社"></div>
+        <div><label for="company-name">会社名<span class="req">必須</span></label><input id="company-name" required placeholder="○○交通株式会社"></div>
         <div><label for="name">ご担当者名<span class="req">必須</span></label><input id="name" required placeholder="山田 太郎"></div>
       </div>
       <div class="row-2">
         <div><label for="email">メールアドレス<span class="req">必須</span></label><input id="email" type="email" required placeholder="example@company.jp"></div>
-        <div><label for="tel">電話番号</label><input id="tel" type="tel" placeholder="03-0000-0000"></div>
+        <div><label for="tel">電話番号</label><input id="tel" type="tel" placeholder="048-000-0000"></div>
       </div>
       <div class="row-2">
         <div>
@@ -638,11 +745,11 @@
       </div>
       <div class="row-2">
         <div><label for="car">主な車種</label><input id="car" placeholder="JPN TAXI、クラウン など"></div>
-        <div><label for="place">施工場所（市区町村）</label><input id="place" placeholder="東京都江東区"></div>
+        <div><label for="place">施工場所（市区町村）</label><input id="place" placeholder="さいたま市大宮区"></div>
       </div>
       <div>
         <label for="message">ご要望・ご質問</label>
-        <textarea id="message" placeholder="機器の型番、希望時期、夜間施工希望 など"></textarea>
+        <textarea id="message" placeholder="機器の型番、希望時期、施工希望の時間帯 など"></textarea>
       </div>
       <button type="submit" class="btn btn-primary">無料で見積りを依頼する</button>
       <p class="form-msg" id="form-msg">送信ありがとうございました。担当者よりご連絡いたします。（デモのため実際には送信されません）</p>
@@ -652,8 +759,8 @@
 
 <footer>
   <div class="container footer-inner">
-    <span>© 2026 ドラレコ取付ワークス（サンプル）</span>
-    <span>プライバシーポリシー ／ 会社概要</span>
+    <span>© 2026 合同会社まちのグループ</span>
+    <span>プライバシーポリシー</span>
   </div>
 </footer>
 
