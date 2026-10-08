@@ -467,6 +467,15 @@ function marginNote(mode, h, adv) {
   return `<p class="small" style="margin:4px 0 0;color:var(--warn)">信用${h.side < 0 ? 'の空売り' : 'で買っている'}ので、${perDay ? `1日あたり約${yen0(perDay)}の${h.side < 0 ? '貸株料' : '金利'}がかかっています（目安）。` : `${h.side < 0 ? '貸株料' : '金利'}がかかります。`}${left != null ? (left > 0 ? `制度信用なら、あと約${left}日で決済の期限（6か月）です。` : '制度信用なら、もう決済の期限（6か月）を過ぎています。') : '制度信用なら6か月以内に決済が必要です（一般信用は楽天証券の条件を確認してください）。'}長く持つほど${h.side < 0 ? '貸株料' : '金利'}が増えるので、待つかどうかはそれも考えて決めましょう。</p>`;
 }
 
+// 買い増し：平均の値段（数量で重みをつけた平均）・合計の数量・一番最初に買った日にまとめる
+export function mergeBuy(h, buy) {
+  const buys = [...(h.buys?.length ? h.buys : [{ price: Number(h.price), qty: Number(h.qty), date: h.date || '' }]), buy];
+  const qty = buys.reduce((a, b) => a + b.qty, 0);
+  const price = Math.round((buys.reduce((a, b) => a + b.price * b.qty, 0) / qty) * 10000) / 10000;
+  const dates = buys.map((b) => b.date).filter(Boolean).sort();
+  return { price, qty, date: dates[0] || '', buys };
+}
+
 let addFormTouched = false;
 async function showHoldings(mode) {
   const box = $('hold-list');
@@ -491,7 +500,14 @@ async function showHoldings(mode) {
       return `<div class="card hold-item">
         <div class="li-head"><span class="name">${symLink(symbolOf(mode, h.code), h.name)}<span class="small muted">（押すとチャート）</span></span><span class="badge ${h.side > 0 ? 'buy' : 'sell'}">${mode === 'fx' ? (h.side > 0 ? '買い' : '売り') : h.side < 0 ? '信用・空売り' : h.acct === 'margin' ? '信用買い' : '現物'}</span><button class="icon-btn hold-del" data-id="${esc(h.id)}" aria-label="消す">✕</button></div>
         <div class="verdict ${v.cls}">${v.icon} <b>${v.label}</b></div>
-        <div class="small">${fmtPrice(h.price, d)} で ${Number(h.qty).toLocaleString()}${unit}${h.date ? `（${esc(h.date.slice(5).replace('-', '/'))}）` : ''} → 今 <b>${fmtPrice(adv.now, d)}</b>　<b class="${adv.plPct >= 0 ? 'plus' : 'minus'}">${adv.plYen != null ? fmtYen(adv.plYen) : ''}（${adv.plPct >= 0 ? '+' : ''}${(adv.plPct * 100).toFixed(1)}%）</b></div>
+        <div class="small">${h.buys?.length > 1 ? '平均 ' : ''}${fmtPrice(h.price, d)} で ${Number(h.qty).toLocaleString()}${unit}${h.date ? `（${esc(h.date.slice(5).replace('-', '/'))}${h.buys?.length > 1 ? '〜' : ''}）` : ''} → 今 <b>${fmtPrice(adv.now, d)}</b>　<b class="${adv.plPct >= 0 ? 'plus' : 'minus'}">${adv.plYen != null ? fmtYen(adv.plYen) : ''}（${adv.plPct >= 0 ? '+' : ''}${(adv.plPct * 100).toFixed(1)}%）</b></div>
+        <div class="small muted">計算：（今 ${fmtPrice(adv.now, d)} − ${h.buys?.length > 1 ? '平均' : '買った値段'} ${fmtPrice(h.price, d)}）× ${Number(h.qty).toLocaleString()}${unit}${mode === 'us' ? ' × ドル円' : ''}${h.side < 0 ? '（売りなので逆）' : ''}・手数料と税金は入っていません</div>
+        ${h.buys?.length > 1 ? `<div class="small muted">買い増しの内訳：${h.buys.map((b) => `${b.date ? esc(b.date.slice(5).replace('-', '/')) + ' ' : ''}${fmtPrice(b.price, d)}×${Number(b.qty).toLocaleString()}`).join('、')}</div>` : ''}
+        <details class="hold-edit-box"><summary class="small">直す（値段・数量・日付）</summary>
+          <div class="row" style="margin-top:6px"><input class="input grow" data-edit="price" inputmode="decimal" value="${esc(h.price)}" aria-label="平均の値段"><input class="input grow" data-edit="qty" inputmode="numeric" value="${esc(h.qty)}" aria-label="数量"></div>
+          <div class="row" style="margin-top:6px"><input class="input grow" data-edit="date" type="date" value="${esc(h.date || '')}" aria-label="買った日"><button class="btn primary hold-save" data-id="${esc(h.id)}">保存</button></div>
+          <p class="small muted" style="margin:4px 0 0">左：平均の値段（1株あたり）／右：合計の数量。証券会社の「平均取得価額」「保有数量」を入れると、評価損益がほぼ同じになります。</p>
+        </details>
         <div class="grid2 plan-grid" style="margin-top:6px">
           <div class="stat"><div class="label">${adv.protects ? '利益を守る線' : '損切りの線'}</div><div class="value minus" style="font-size:16px">${fmtPrice(adv.stop, d)}</div><div class="small muted">逆指値の注文を入れておく</div></div>
           <div class="stat"><div class="label">利益確定の目標</div><div class="value plus" style="font-size:16px">${fmtPrice(adv.target, d)}</div><div class="small muted">${adv.wall ? `${esc(adv.wall.label)}（${esc(adv.wall.strength)}）` : '値動きの大きさから'}</div></div>
@@ -509,6 +525,16 @@ async function showHoldings(mode) {
     <p class="small muted">日足で計算しています。この画面を開いている間は5分ごとに自動で最新にします。損切りの線は、値段が有利に動くと自動で引き上げています（利益を守るため）。</p>`;
   // 自動で最新にしても、開いていた「くわしく見る」は開いたままにする
   box.querySelectorAll('details[data-hold]').forEach((el) => el.addEventListener('toggle', () => { if (el.open) openHolds.add(el.dataset.hold); else openHolds.delete(el.dataset.hold); }));
+  box.querySelectorAll('.hold-save').forEach((b) => { b.onclick = () => {
+    const wrap = b.closest('.hold-edit-box');
+    const v = (k) => wrap.querySelector(`[data-edit="${k}"]`).value;
+    const n = (x) => Number(String(x).normalize('NFKC').replace(/[,，円\s]/g, ''));
+    const price = n(v('price')), qty = n(v('qty'));
+    if (!(price > 0) || !(qty > 0)) { alert('値段と数量を数字で入れてください'); return; }
+    // 直したときは、まとめた内訳は消して「平均の値段・合計の数量」として持つ
+    setHoldings(mode, getHoldings(mode).map((x) => (x.id === b.dataset.id ? { ...x, price, qty, date: v('date') || '', buys: [] } : x)));
+    showHoldings(mode);
+  }; });
   box.querySelectorAll('.hold-del').forEach((b) => { b.onclick = () => {
     if (!confirm('この銘柄を消しますか？')) return;
     setHoldings(mode, getHoldings(mode).filter((x) => x.id !== b.dataset.id));
@@ -567,7 +593,14 @@ function initHoldForm() {
     const list = getHoldings(mode);
     // 空売り（株で売りから入っている）は信用でしかできない
     const acct = mode === 'fx' ? 'cash' : side < 0 ? 'margin' : ($('hold-acct').querySelector('[aria-pressed="true"]')?.dataset.v || 'cash');
-    list.push({ id: Date.now().toString(36), code: pick.code, name: pick.name, side, price, qty, date: $('hold-date').value || '', acct });
+    const buy = { price, qty, date: $('hold-date').value || '' };
+    // 同じ銘柄・同じ向き・同じ口座がもうあれば「買い増し」としてまとめる
+    const same = list.find((x) => String(x.code).toUpperCase() === String(pick.code).toUpperCase() && x.side === side && (x.acct || 'cash') === acct);
+    if (same && confirm(`${pick.name}はもう入っています。\n追加で${side > 0 ? '買った' : '売った'}分（買い増し）として、平均の値段と合計の数量にまとめますか？\n\nOK：まとめる\nキャンセル：別々に入れる`)) {
+      Object.assign(same, mergeBuy(same, buy));
+    } else {
+      list.push({ id: Date.now().toString(36), code: pick.code, name: pick.name, side, ...buy, acct, buys: [] });
+    }
     setHoldings(mode, list);
     ['hold-sym', 'hold-price', 'hold-qty', 'hold-amount', 'hold-date'].forEach((id) => { $(id).value = ''; });
     holdPick = null;

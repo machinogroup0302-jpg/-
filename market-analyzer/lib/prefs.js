@@ -143,6 +143,7 @@ function cleanValue(key, value) {
     return value.slice(0, 100).map((x) => ({
       code: str(x?.code, 20), name: str(x?.name, 60), side: Number(x?.side) < 0 ? -1 : 1,
       price: Number(x?.price) || 0, qty: Number(x?.qty) || 0, date: /^\d{4}-\d{2}-\d{2}$/.test(x?.date || '') ? x.date : '', id: str(x?.id, 20), acct: x?.acct === 'margin' ? 'margin' : 'cash',
+      buys: Array.isArray(x?.buys) ? x.buys.slice(0, 50).map((b) => ({ price: Number(b?.price) || 0, qty: Number(b?.qty) || 0, date: /^\d{4}-\d{2}-\d{2}$/.test(b?.date || '') ? b.date : '' })).filter((b) => b.price > 0 && b.qty > 0) : [],
     })).filter((x) => x.code && x.price > 0);
   }
   return value.slice(0, 500).map((x) => ({ code: str(x?.code, 20), name: str(x?.name, 60) })).filter((x) => x.code);
