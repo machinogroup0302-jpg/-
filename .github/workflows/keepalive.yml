@@ -35,7 +35,11 @@ jobs:
             echo "SITE_PASSWORD が未登録のため、サイトを起こすだけにしました"
             exit 0
           fi
-          curl -fsS --retry 2 --max-time 90 -H "x-site-key: $KEY" https://wataru-lupe.onrender.com/api/backup/prefs -o /tmp/new.json
+          # サーバーがまだ前のコピーを読み込めていないとき（503）は、空っぽで上書きしないよう今回は保存しない
+          if ! curl -fsS --retry 2 --max-time 90 -H "x-site-key: $KEY" https://wataru-lupe.onrender.com/api/backup/prefs -o /tmp/new.json; then
+            echo "サイトがまだ前のコピーを読み込めていないので、今回は保存しません"
+            exit 0
+          fi
           new=$(jq -r '.maxTs // 0' /tmp/new.json)
           old=$(jq -r '.maxTs // 0' alerts/prefs.json 2>/dev/null || echo 0)
           if [ "$new" -gt "$old" ]; then
