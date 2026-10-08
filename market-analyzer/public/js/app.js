@@ -15,6 +15,7 @@ import { updateOrderflow, resetOrderflow } from './orderflow.js';
 import { updateFundamentals, resetFundamentals } from './fundview.js';
 import { initLab, updateLab, resetLab, refreshLab } from './labview.js';
 import { updateEarningsCard } from './earningsview.js';
+import { updateOpening } from './openingview.js';
 import { initMine, updateMine } from './mineview.js';
 
 const MODE_NAMES = { fx: '為替', stock: '日本株', us: '米国株' };
@@ -193,7 +194,7 @@ function startApp() {
   initScreener(openChart);
   initStockScreener(openChart);
   initLab(getMode);
-  initMine(getMode);
+  initMine(getMode, (symbol, name) => { showTab('chart'); loadChart(symbol, name, '1d'); });
   initNewsView();
   initTradesView();
   onSymbolChange((st) => {
@@ -201,6 +202,7 @@ function startApp() {
     updateRatings(st, getMode());
     updatePts(st, getMode());
     updateEarningsCard(st, getMode());
+    updateOpening(st, getMode());
     updateOrderflow(st, getMode());
     updateFundamentals(st);
     if (currentTab === 'lab') updateLab(st, getMode());

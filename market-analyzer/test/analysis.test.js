@@ -730,3 +730,31 @@ test('取引時間の判定（日本株・米国株・為替）', async () => {
   // 日曜：どこも休み
   assert.deepEqual(openMarkets(new Date('2026-10-11T03:00:00Z')), []);
 });
+
+
+test('寄り付きのくせ：寄り天・寄り底と、始まり方ごとの割合', async () => {
+  const { openingStats, bucketOf, openingVerdict } = await import('../public/js/openingview.js');
+  const cs = [{ time: 0, open: 100, high: 101, low: 99, close: 100 }];
+  // 大きく上で始まって、寄り天（始まりが一番高い）の日を10日
+  for (let i = 1; i <= 10; i++) { const p = cs[cs.length - 1].close; const o = p * 1.03; cs.push({ time: i, open: o, high: o, low: o * 0.97, close: o * 0.98 }); }
+  // ほぼ同じで始まって、寄り底の日を10日
+  for (let i = 11; i <= 20; i++) { const p = cs[cs.length - 1].close; cs.push({ time: i, open: p, high: p * 1.02, low: p, close: p * 1.015 }); }
+  const st = openingStats(cs);
+  assert.equal(st.days, 20);
+  assert.equal(st.all.top, 0.5);
+  const big = st.buckets[bucketOf(0.03)];
+  assert.equal(big.n, 10);
+  assert.equal(big.top, 1);
+  assert.equal(big.up, 0);
+  assert.ok(/寄り天/.test(openingVerdict(big)));
+  assert.equal(st.buckets[bucketOf(0)].bottom, 1);
+});
+
+test('時刻の書き方（判断した時刻・売買する時刻）', async () => {
+  const { fmtTime, judgedText, execText } = await import('../public/js/sessiontime.js');
+  const t = Date.UTC(2026, 9, 6, 0, 0) / 1000; // 日本時間 10/6 9:00
+  assert.equal(fmtTime(t), '10/6 09:00');
+  assert.ok(judgedText('stock', t).startsWith('10/6 15:30'));
+  assert.ok(judgedText('fx', t, true).startsWith('10/6 09:15'));
+  assert.ok(execText('stock').includes('9:00'));
+});

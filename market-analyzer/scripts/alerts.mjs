@@ -13,6 +13,7 @@ import { adviseHolding, exitTiming, longTermView } from '../public/js/holdingadv
 import { US_LIST } from '../lib/usstocks.js';
 import { startScan, scanStatus } from '../lib/scanner.js';
 import { openMarkets } from '../lib/markethours.js';
+import { fmtTime, judgedText, execText } from '../public/js/sessiontime.js';
 
 const SITE = 'https://wataru-lupe.onrender.com';
 const STATE = new URL('../../alerts/state.json', import.meta.url);
@@ -178,6 +179,7 @@ function describe(s, pf) {
       title: `🟢【${s.day ? 'デイトレ・' : ''}${s.side > 0 ? '買い' : '売り'}】${s.name}${s.day ? `（${hm(s.bar)}の足で判断）` : ''}`,
       lines: [
         s.day ? `今から${s.side > 0 ? '買う' : '売る'}タイミング（今 ${price(s.last, s.mode)}）。その日のうちに必ず決済するやり方です` : `次の取引日の始まりに${s.side > 0 ? '買う' : '売る'}サイン（今 ${price(s.last, s.mode)}）`,
+        `🕒 判断した時刻：${judgedText(s.mode, s.t, !!s.day)}／売買する時刻：${execText(s.mode, !!s.day)}`,
         `勝つ確率の目安：${p}`,
         ...plan,
         ...(s.why || []).map((w) => `・${w}`),
@@ -189,7 +191,7 @@ function describe(s, pf) {
       title: `🔴【${s.day ? 'デイトレ・' : ''}決済しました】${s.name}（${s.ret >= 0 ? '+' : ''}${(s.ret * 100).toFixed(1)}%）`,
       lines: [
         `前にお知らせした${s.side > 0 ? '買い' : '売り'}は、${s.reason}で決済のタイミングになりました（前回の確認から今回までの間に起きました）`,
-        `${price(s.entryPrice, s.mode)} で${s.side > 0 ? '買い' : '売り'} → ${price(s.exitPrice, s.mode)} で決済`,
+        `${s.entryTime ? fmtTime(s.entryTime) + ' に ' : ''}${price(s.entryPrice, s.mode)} で${s.side > 0 ? '買い' : '売り'} → ${s.exitTime ? fmtTime(s.exitTime) + ' に ' : ''}${price(s.exitPrice, s.mode)} で決済`,
         ...(s.why || []).map((w) => `・${w}`),
       ],
     };
@@ -199,7 +201,8 @@ function describe(s, pf) {
     title: `🔴【${s.day ? 'デイトレ・' : ''}決済】${s.name}（${g >= 0 ? '+' : ''}${(g * 100).toFixed(1)}%）`,
     lines: [
       s.day ? `今決済するタイミング：${s.reason}` : `次の取引日の始まりに決済するサイン：${s.reason}`,
-      ...(s.open ? [`${md(s.open.entryDate)}に ${price(s.open.entryPrice, s.mode)} で${s.open.side > 0 ? '買い' : '売り'} → 今 ${price(s.last, s.mode)}`] : []),
+      ...(s.t || s.bar ? [`🕒 判断した時刻：${judgedText(s.mode, s.t || s.bar, !!s.day)}／売買する時刻：${execText(s.mode, !!s.day)}`] : []),
+      ...(s.open ? [`${s.open.entryTime ? fmtTime(s.open.entryTime) : md(s.open.entryDate)} に ${price(s.open.entryPrice, s.mode)} で${s.open.side > 0 ? '買い' : '売り'} → 今 ${price(s.last, s.mode)}`] : []),
       ...(s.why || []).map((w) => `・${w}`),
     ],
   };
@@ -223,16 +226,17 @@ function planForUser(u, kind, groups, book, nowSec) {
     const { r, last } = res;
     const t = r.trades.find((x) => x.side === tr.side && x.entryTime > tr.signalTime);
     if (t) {
-      mine.log.push({ kind, mode: tr.mode, symbol: tr.symbol, name: tr.name, side: tr.side, entryTime: t.entryTime, entryPrice: t.entryPrice, exitTime: t.exitTime, exitPrice: t.exitPrice, ret: t.ret, reasonOut: t.reasonOut });
-      if (!tr.closeSent) out.push({ type: 'close', done: true, mode: tr.mode, day: isDay, name: tr.name, symbol: tr.symbol, side: tr.side, reason: t.reasonOut, why: t.whyOut, entryPrice: t.entryPrice, exitPrice: t.exitPrice, ret: t.ret, date: dayKey(last.time) });
+      mine.log.push({ kind, mode: tr.mode, symbol: tr.symbol, name: tr.name, side: tr.side, notifiedAt: tr.sentAt, closeNotifiedAt: tr.closeSentAt || new Date().toISOString(), entryTime: t.entryTime, entryPrice: t.entryPrice, exitTime: t.exitTime, exitPrice: t.exitPrice, ret: t.ret, reasonOut: t.reasonOut });
+      if (!tr.closeSent) out.push({ type: 'close', done: true, mode: tr.mode, day: isDay, name: tr.name, symbol: tr.symbol, side: tr.side, reason: t.reasonOut, why: t.whyOut, entryPrice: t.entryPrice, exitPrice: t.exitPrice, entryTime: t.entryTime, exitTime: t.exitTime, ret: t.ret, date: dayKey(last.time) });
       delete mine.open[k];
       continue;
     }
     if (r.open && r.open.side === tr.side && r.open.entryTime > tr.signalTime) {
       tr.entryPrice = r.open.entryPrice; tr.entryTime = r.open.entryTime;
       if (r.next?.type === 'close' && !tr.closeSent) {
-        out.push({ ...r.next, mode: tr.mode, day: isDay, name: tr.name, symbol: tr.symbol, open: r.open, last: last.close, date: dayKey(last.time), bar: last.time });
+        out.push({ ...r.next, mode: tr.mode, day: isDay, name: tr.name, symbol: tr.symbol, open: r.open, last: last.close, date: dayKey(last.time), bar: last.time, t: last.time });
         tr.closeSent = true;
+        tr.closeSentAt = new Date().toISOString();
       }
       continue;
     }
