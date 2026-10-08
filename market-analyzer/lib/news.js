@@ -105,7 +105,7 @@ export function scoreItems(items) {
   });
 }
 
-async function fetchRss(url) {
+export async function fetchRss(url) {
   const res = await fetch(url, { headers: { 'User-Agent': UA } });
   if (!res.ok) throw new Error(`ニュース取得に失敗しました (HTTP ${res.status})`);
   return parseRss(await res.text());

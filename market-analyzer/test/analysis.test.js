@@ -786,3 +786,26 @@ test('レバレッジ：振り返りでロスカットを数える', () => {
   // 1回目 +15,000円、2回目は維持率20%を割って -100,000 + 300,000×0.2 = -40,000円
   assert.equal(Math.round(r3.total), 15000 - 40000);
 });
+
+import { themeHeat, THEMES } from '../lib/themes.js';
+import { themeOdds } from '../public/js/themeview.js';
+
+test('テーマ：ニュースの増え方', () => {
+  const now = Date.parse('2026-10-08T00:00:00Z');
+  const at = (h) => ({ date: new Date(now - h * 3600000).toUTCString() });
+  const items = [...Array(20)].map((_, i) => at(i * 2)).concat([...Array(5)].map((_, i) => at(60 + i * 20)));
+  const h = themeHeat(items, now);
+  assert.equal(h.recent, 20);
+  assert.equal(h.before, 5);
+  assert.equal(h.heat, 10);
+  assert.equal(h.label, '急に増えている');
+  assert.ok(THEMES.every((t) => t.stock.every(([c]) => /^\d{4}$/.test(c))));
+});
+
+test('テーマ：似た形のときに上がっていた確率', () => {
+  // ずっと少しずつ上がる銘柄 → 確率は高い
+  const up = [...Array(300)].map((_, i) => ({ close: 100 * 1.002 ** i, volume: 1000 }));
+  const o = themeOdds(up);
+  assert.ok(o.p > 0.9 && o.hits > 100);
+  assert.equal(themeOdds(up.slice(0, 50)), null);
+});

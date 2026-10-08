@@ -203,6 +203,12 @@
 
       <!-- ===== ニュース ===== -->
       <section class="view" id="view-news" hidden>
+        <div class="card" data-fold="themes">
+          <h2>今ニュースで増えているテーマ<span class="sub" id="theme-time"></span></h2>
+          <p class="small muted" style="margin:0 0 8px">いろいろな話題のニュースの数を数えて、最近急に増えているものを上に出します。その話題で動きやすい代表的な銘柄と、「今と似た値動きのとき、10営業日後（約2週間後）に上がっていた確率」も出します。</p>
+          <div id="theme-list"></div>
+          <p class="notice" style="margin-top:8px">確率は、その銘柄の過去2年で「ここ1か月の上がり方」と「出来高の増え方」が今と似ていた日を集めて計算しています。ニュースの数そのものは過去と比べられないので、確率には入っていません。ニュースが出たときにはもう上がっていることも多いので、チャートも見て決めてください。</p>
+        </div>
         <div class="card">
           <form class="row" id="news-form">
             <input class="input grow" id="news-q" placeholder="例: ドル円">

@@ -7,6 +7,7 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { getChart, getHistory } from './lib/market.js';
 import { getNews } from './lib/news.js';
+import { getThemes } from './lib/themes.js';
 import { searchListings, listingMeta, nameFromCache, getListings } from './lib/listings.js';
 import { usName, searchUs, US_LIST, setExtraUs } from './lib/usstocks.js';
 import { getRatings } from './lib/ratings.js';
@@ -275,6 +276,13 @@ async function handleApi(req, res, url) {
       maxPrice: Number(q.get('max')) || 0,
       limit: Number(q.get('limit')) || 100,
     }));
+  }
+  if (route === 'GET /api/themes') {
+    try {
+      return json(res, 200, await getThemes());
+    } catch (e) {
+      return json(res, 502, { error: e.message });
+    }
   }
   if (route === 'GET /api/news') {
     try {

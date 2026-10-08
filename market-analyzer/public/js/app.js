@@ -10,6 +10,7 @@ import { updateRatings, updatePts, resetRatings } from './ratingsview.js';
 import { searchNews } from './newsview.js';
 import { initScreener, autoRefreshList } from './screener.js';
 import { initNewsView, onSymbol as newsOnSymbol } from './newsview.js';
+import { initThemes, updateThemes } from './themeview.js';
 import { initTradesView } from './tradesview.js';
 import { updateOrderflow, resetOrderflow } from './orderflow.js';
 import { updateFundamentals, resetFundamentals } from './fundview.js';
@@ -49,7 +50,7 @@ function showTab(id) {
   }
   document.querySelectorAll('#tabbar button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === id)));
   store.set('tab', id);
-  if (id === 'news') newsOnSymbol(chartState);
+  if (id === 'news') { newsOnSymbol(chartState); updateThemes(getMode()); }
   if (id === 'screener' && getMode() === 'stock') showStockScreener();
   if (id === 'lab') updateLab(chartState, getMode());
   if (id === 'mine') updateMine(getMode());
@@ -173,6 +174,7 @@ function startAutoUpdate() {
       if (due('ratings')) { resetRatings(); updateRatings(chartState, mode); resetFundamentals(); updateFundamentals(chartState); }
     }
     if (currentTab === 'news' && due('news') && $('news-q').value) searchNews($('news-q').value, { silent: true });
+    if (currentTab === 'news' && due('news')) updateThemes(mode, { silent: true });
     if (currentTab === 'screener' && due('screener')) { if (mode === 'stock') autoRefreshStock(); else autoRefreshList(); }
     if (currentTab === 'lab' && due('lab')) refreshLab(mode);
     if (currentTab === 'mine') {
@@ -220,6 +222,13 @@ function startApp() {
   initLab(getMode);
   initMine(getMode, (symbol, name) => { showTab('chart'); loadChart(symbol, name, '1d'); });
   initNewsView();
+  // テーマの銘柄：為替の画面で押したときは日本株に切り替えてからチャートを開く
+  initThemes((symbol, name) => {
+    if (getMode() === 'fx') {
+      store.set('stock_symbol', symbol); store.set('stock_name', name); store.set('stock_tf', '1d');
+      setMode('stock'); applyMode('stock'); showTab('chart');
+    } else { showTab('chart'); loadChart(symbol, name, '1d'); }
+  });
   initTradesView();
   onSymbolChange((st) => {
     if (currentTab === 'news') newsOnSymbol(st);
