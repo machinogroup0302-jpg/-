@@ -315,7 +315,7 @@ export function addOnAdvice(h, candles, adv, { mode = 'stock', unitLabel = null 
   }
   // 損が出ているとき（ナンピン）
   if (techBad || !trendOk || adv.key === 'cut') {
-    return { kind: 'no', icon: '🚫', title: 'ナンピンはしない方がいい', text: `流れが${long ? '下向き' : '上向き'}（テクニカル判定「${adv.tech}」）なので、ここで買い足すと損が大きくなりやすいです。ナンピンより、損切りの線（${fmt(adv.stop)}）を守ることを優先しましょう。` };
+    return { kind: 'no', icon: '🚫', title: 'ナンピンはしない方がいい', text: `${techBad ? `流れが${long ? '下向き' : '上向き'}（テクニカル判定「${adv.tech}」）` : adv.key === 'cut' ? '損切りの線を割っている' : `大きな流れ（25日・75日の平均線）が${long ? '下向き' : '上向き'}`}なので、ここで買い足すと損が大きくなりやすいです。ナンピンより、損切りの線（${fmt(adv.stop)}）を守ることを優先しましょう。` };
   }
   if (sup && Math.abs(now - sup.price) <= a * 1.5 && (long ? r < 45 : r > 55)) {
     const lastStop = sup.price - side * a;
