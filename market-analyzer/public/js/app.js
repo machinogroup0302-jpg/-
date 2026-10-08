@@ -96,16 +96,6 @@ async function openSettings() {
   seg($('pf-risk'), [['1', '1%（慎重）'], ['2', '2%（ふつう）'], ['3', '3%（積極的）']], String(pf.riskPct));
   seg($('pf-maxpos'), [['1', '1つ'], ['2', '2つ'], ['3', '3つ'], ['5', '5つ']], String(pf.maxPos));
   $('pf-day').checked = pf.notifyDay !== false;
-  const acct = ['cash', 'margin', 'both'].includes(pf.stockAcct) ? pf.stockAcct : pf.levStock > 1 ? 'margin' : 'cash';
-  seg($('pf-stock-acct'), [['cash', '現物だけ'], ['margin', '信用だけ'], ['both', '現物と信用']], acct);
-  $('pf-margin-budget').value = pf.stockMarginBudget > 0 ? String(pf.stockMarginBudget) : '';
-  $('pf-short').checked = !!pf.stockShort;
-  const showAcct = () => { const a = segValue($('pf-stock-acct')); $('pf-margin-box').hidden = a !== 'both'; $('pf-short-box').hidden = a === 'cash'; };
-  const acctClick = $('pf-stock-acct').onclick;
-  $('pf-stock-acct').onclick = (e) => { acctClick(e); showAcct(); };
-  showAcct();
-  seg($('pf-fx-sides'), [['both', '買いも売りも'], ['long', '買いだけ'], ['short', '売りだけ']], pf.fxSides || 'both');
-  seg($('pf-lev-us'), [['1', '現物'], ['2', '信用']], pf.levUs > 1 ? '2' : '1');
   $('pf-fx-lots').value = pf.fxLots > 0 ? String(pf.fxLots) : '';
   const quick = $('pf-fx-lots-quick');
   const markLots = () => quick.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.v === (Number($('pf-fx-lots').value) > 0 ? String(Number($('pf-fx-lots').value)) : ''))));
@@ -156,7 +146,7 @@ function saveSettings() {
   if (email && !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email)) { toast('メールアドレスの形が正しくありません'); $('pf-email').focus(); return; }
   const notify = {};
   $('pf-notify').querySelectorAll('button').forEach((b) => { notify[b.dataset.k] = b.getAttribute('aria-pressed') === 'true'; });
-  setProfile({ ...getProfile(), email, budget: parseYen($('pf-budget').value), riskPct: Number(segValue($('pf-risk')) || 2), maxPos: Number(segValue($('pf-maxpos')) || 3), notify, notifyDay: $('pf-day').checked, levStock: (segValue($('pf-stock-acct')) || 'cash') === 'cash' ? 1 : 3.3, stockAcct: segValue($('pf-stock-acct')) || 'cash', stockMarginBudget: parseYen($('pf-margin-budget').value), stockShort: $('pf-short').checked, fxSides: segValue($('pf-fx-sides')) || 'both', levUs: Number(segValue($('pf-lev-us')) || 1), fxLots: Math.max(0, Number($('pf-fx-lots').value) || 0), fxLotSize: Number(segValue($('pf-fx-lotsize')) || 10000) });
+  setProfile({ ...getProfile(), email, budget: parseYen($('pf-budget').value), riskPct: Number(segValue($('pf-risk')) || 2), maxPos: Number(segValue($('pf-maxpos')) || 3), notify, notifyDay: $('pf-day').checked, fxLots: Math.max(0, Number($('pf-fx-lots').value) || 0), fxLotSize: Number(segValue($('pf-fx-lotsize')) || 10000) });
   const favs = parseFavs($('fav-edit').value);
   setFavs(getMode(), favs.length ? favs : DEFAULT_FAVS[getMode()]);
   store.set('candle', segValue($('candle-seg')) || 'jp');

@@ -204,8 +204,8 @@
       <!-- ===== ニュース ===== -->
       <section class="view" id="view-news" hidden>
         <div class="card" data-fold="themes">
-          <h2>今ニュースで増えているテーマ<span class="sub" id="theme-time"></span></h2>
-          <p class="small muted" style="margin:0 0 8px">いろいろな話題のニュースの数を数えて、最近急に増えているものを上に出します。その話題で動きやすい代表的な銘柄と、「今と似た値動きのとき、10営業日後（約2週間後）に上がっていた確率」も出します。</p>
+          <h2>今ニュースで増えているテーマ（上がりやすい・下がりやすい）<span class="sub" id="theme-time"></span></h2>
+          <p class="small muted" style="margin:0 0 8px">いろいろな話題のニュースの数を数えて、最近急に増えているものを上に出します。「上がりやすいテーマ」と「下がりやすいテーマ」に分けて、その話題で動きやすい代表的な銘柄と、「今と似た値動きのとき、10営業日後（約2週間後）に上がっていた（下がっていた）確率」も出します。</p>
           <div id="theme-list"></div>
           <p class="notice" style="margin-top:8px">確率は、その銘柄の過去2年で「ここ1か月の上がり方」と「出来高の増え方」が今と似ていた日を集めて計算しています。ニュースの数そのものは過去と比べられないので、確率には入っていません。ニュースが出たときにはもう上がっていることも多いので、チャートも見て決めてください。</p>
         </div>
@@ -428,15 +428,7 @@
         <label class="small">同時に持つ銘柄の数（いくつに分けるか）</label>
         <div class="seg" id="pf-maxpos"></div>
         <label class="small" style="margin-top:10px;display:block"><b>取引のしかた</b></label>
-        <div class="small muted" style="margin:2px 0 4px">日本株（楽天証券）</div><div class="seg" id="pf-stock-acct"></div>
-        <div id="pf-margin-box" hidden>
-          <div class="small muted" style="margin:6px 0 4px">予算のうち、信用に使うお金（残りは現物）</div>
-          <div class="row"><input class="input grow" id="pf-margin-budget" type="text" inputmode="numeric" placeholder="空欄＝予算の半分"><span class="small">円</span></div>
-        </div>
-        <label class="row small" id="pf-short-box" style="margin:6px 0 0" hidden><input type="checkbox" id="pf-short"> 空売り（売りから入る）もする</label>
-        <div class="small muted" style="margin:8px 0 4px">米国株</div><div class="seg" id="pf-lev-us"></div>
-        <p class="small muted" style="margin:4px 0 0">信用にすると、使えるお金より多く買えるようになります（楽天証券の決まりの範囲まで）。実際に買う量は「1回で減ってもいい額」から計算するので、いつも目いっぱい買うわけではありません。空売りは日本株の信用だけで計算します。信用の金利・貸株料（目安）も差し引いて成績を出します。</p>
-        <div class="small muted" style="margin:10px 0 4px">為替（LION FX）：どちら向きに取引するか</div><div class="seg" id="pf-fx-sides"></div>
+        <p class="small muted" style="margin:2px 0 0">日本株・米国株の「現物／信用／空売り」と、為替の「買いだけ／売りだけ／両方」は、設定しなくても大丈夫です。全部のやり方で過去1年をやり直して、一番良かったやり方を自動で選びます（「あなた専用」で、ほかのやり方の場合も見られます）。</p>
         <div class="small muted" style="margin:10px 0 4px">為替（LION FX）：1回に取引するロット数</div>
         <div class="row"><input class="input grow" id="pf-fx-lots" type="number" inputmode="decimal" min="0" step="0.1" placeholder="空欄＝おまかせ（損切りの幅から計算）"><span class="small">ロット</span></div>
         <div class="chips" id="pf-fx-lots-quick" style="margin:6px 0 0"></div>

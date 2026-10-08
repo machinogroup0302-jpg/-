@@ -8,7 +8,7 @@ import fs from 'node:fs/promises';
 import { getChart } from '../lib/market.js';
 import { runStrategy, regimeLookup, signalOdds, oddsLabel } from '../public/js/strategies.js';
 import { baseUniverse } from '../public/js/universe.js';
-import { sizeFor, orderText, sidesFor } from '../public/js/plan.js';
+import { sizeFor, orderText, waySides, wayProfile, compareWays } from '../public/js/plan.js';
 import { adviseHolding, exitTiming, longTermView } from '../public/js/holdingadvice.js';
 import { US_LIST } from '../lib/usstocks.js';
 import { startScan, scanStatus } from '../lib/scanner.js';
@@ -102,7 +102,7 @@ function signalsFor(mode, list, regime, swingDays, sides = null) {
     if (r.next) signals.push({ ...r.next, mode, name: x.name, symbol: x.symbol, open: r.open, last: last.close, date: dayKey(last.time), t: last.time });
   }
   for (const s of signals) if (s.type === 'open') s.odds = signalOdds(trades, { symbol: s.symbol, side: s.side, strength: s.strength });
-  const out = { signals, results };
+  const out = { signals, results, trades };
   signalCache.set(ck, out);
   return out;
 }
@@ -140,7 +140,7 @@ async function daySignals(mode, users, regime) {
   }));
   // 人によって向き（買いだけ・売りも）が違うので、必要な向きごとに計算する
   const bySides = {};
-  for (const sides of new Set(users.map((u) => sidesFor(u.profile, mode)))) bySides[sides] = dayCompute(mode, list, regime, sides);
+  for (const sides of waySides(mode)) bySides[sides] = dayCompute(mode, list, regime, sides);
   return bySides;
 }
 
@@ -158,7 +158,7 @@ function dayCompute(mode, list, regime, sides) {
   }
   for (const s of signals) if (s.type === 'open') s.odds = signalOdds(trades, { symbol: s.symbol, side: s.side, strength: s.strength });
   console.log(`${NAMES[mode]}（デイトレ・${sides}）: ${list.length}銘柄を計算、サイン${signals.length}件`);
-  return { list, signals, results };
+  return { list, signals, results, trades };
 }
 
 const hm = (t) => new Date((t + 9 * 3600) * 1000).toISOString().slice(11, 16);
@@ -180,7 +180,7 @@ function describe(s, pf) {
     const p = s.odds ? `${Math.round(s.odds.p * 100)}%（${oddsLabel(s.odds)}）` : 'まだ出せません';
     let plan = [];
     if (pf?.budget) {
-      const z = sizeFor(pf, s.mode, s.side, { symbol: s.symbol, price: s.last, stop: s.stopEst, budget: pf.budget, riskPct: pf.riskPct || 2, maxPos: pf.maxPos || 3, prices, usdjpy: prices['USDJPY=X'] });
+      const z = sizeFor(s.wayPf || pf, s.mode, s.side, { symbol: s.symbol, price: s.last, stop: s.stopEst, budget: pf.budget, riskPct: pf.riskPct || 2, maxPos: pf.maxPos || 3, prices, usdjpy: prices['USDJPY=X'] });
       if (z?.qty > 0) plan = [`あなたの予算なら：${orderText(s.side, z)}（${z.kindLabel} 約${Math.round(z.cost).toLocaleString()}円）`, `損切りの値段：${price(s.stopEst, s.mode)}（約−${Math.round(z.maxLoss).toLocaleString()}円）${s.takeEst ? `／目標：${price(s.takeEst, s.mode)}` : ''}`];
       else if (z) plan = [`あなたの予算では見送り：${z.why}`];
     }
@@ -190,6 +190,7 @@ function describe(s, pf) {
         s.day ? `今から${s.side > 0 ? '買う' : '売る'}タイミング（今 ${price(s.last, s.mode)}）。その日のうちに必ず決済するやり方です` : `次の取引日の始まりに${s.side > 0 ? '買う' : '売る'}サイン（今 ${price(s.last, s.mode)}）`,
         `🕒 判断した時刻：${judgedText(s.mode, s.t, !!s.day)}／売買する時刻：${execText(s.mode, !!s.day)}`,
         `勝つ確率の目安：${p}`,
+        ...(s.wayLabel ? [`やり方：${s.wayLabel}（全部のやり方で過去をやり直して、一番良かったものを自動で選んでいます）`] : []),
         ...plan,
         ...(s.why || []).map((w) => `・${w}`),
       ],
@@ -257,13 +258,13 @@ function planForUser(u, kind, groups, book, nowSec) {
   const tracked = new Set(Object.values(mine.open).map((x) => x.symbol));
   const cands = Object.values(groups).flatMap((g) => g.signals)
     .filter((x) => x.type === 'open' && u.modes.includes(x.mode) && !tracked.has(x.symbol) && x.odds && x.odds.p >= 0.5 && x.odds.expect > 0)
-    .map((x) => ({ ...x, size: pf.budget ? sizeFor(pf, x.mode, x.side, { symbol: x.symbol, price: x.last, stop: x.stopEst, budget: pf.budget, riskPct: pf.riskPct || 2, maxPos, prices, usdjpy: prices['USDJPY=X'] }) : null }))
+    .map((x) => ({ ...x, wayPf: u.wayPf?.[x.mode] || pf, wayLabel: u.wayLabel?.[x.mode] || '', size: pf.budget ? sizeFor(u.wayPf?.[x.mode] || pf, x.mode, x.side, { symbol: x.symbol, price: x.last, stop: x.stopEst, budget: pf.budget, riskPct: pf.riskPct || 2, maxPos, prices, usdjpy: prices['USDJPY=X'] }) : null }))
     .filter((x) => !pf.budget || x.size?.qty > 0)
     .sort((a, b) => b.odds.p - a.odds.p);
   for (const x of cands) {
     if (slots <= 0) break;
     out.push(x);
-    mine.open[`${kind}|${x.symbol}`] = { kind, mode: x.mode, symbol: x.symbol, name: x.name, side: x.side, signalTime: x.t, signalPrice: x.last, sentAt: new Date().toISOString() };
+    mine.open[`${kind}|${x.symbol}`] = { kind, mode: x.mode, symbol: x.symbol, name: x.name, side: x.side, signalTime: x.t, signalPrice: x.last, sentAt: new Date().toISOString(), how: x.size?.qty > 0 ? orderText(x.side, x.size) : '' };
     slots--;
   }
   if (mine.log.length > 500) mine.log = mine.log.slice(-500);
@@ -334,7 +335,7 @@ async function morning(users, state, TEST) {
     const toOpen = tracked.filter((t) => !t.entryTime);
     const toClose = tracked.filter((t) => t.entryTime && t.closeSent);
     const holding = tracked.filter((t) => t.entryTime && !t.closeSent);
-    lines.push(['🟢 今日の寄り付きで入る予定', toOpen.length ? toOpen.map((t) => `${t.name}：${t.side > 0 ? '買う' : '売る'}（${morningExec(t.mode)}・${fmtTime(t.signalTime + 6.5 * 3600)}ごろにお知らせ）`) : ['なし']]);
+    lines.push(['🟢 今日の寄り付きで入る予定', toOpen.length ? toOpen.map((t) => `${t.name}：${t.how || (t.side > 0 ? '買う' : '売る')}（${morningExec(t.mode)}・${fmtTime(t.signalTime + 6.5 * 3600)}ごろにお知らせ）`) : ['なし']]);
     lines.push(['🔴 今日の寄り付きで決済する予定', toClose.length ? toClose.map((t) => `${t.name}：決済（${morningExec(t.mode)}）`) : ['なし']]);
     if (holding.length) lines.push(['📒 お知らせ済みで持っている途中', holding.map((t) => `${t.name}：${fmtTime(t.entryTime)} に ${price(t.entryPrice, t.mode)} で${t.side > 0 ? '買い' : '売り'}`)]);
     // 持っている株
@@ -412,7 +413,18 @@ async function main() {
   for (const u of users) {
     const days = u.profile?.swingDays || 30;
     const groups = {};
-    for (const m of u.modes) groups[m] = DAY ? dayLists[m][sidesFor(u.profile, m)] : signalsFor(m, lists[m], regime, days, sidesFor(u.profile, m));
+    // やり方（現物・信用・空売り、為替の向き）は、その人の予算で過去をやり直して一番良かったものを自動で使う
+    u.wayPf = {}; u.wayLabel = {};
+    for (const m of u.modes) {
+      const by = Object.fromEntries(waySides(m).map((v) => [v, DAY ? dayLists[m][v] : signalsFor(m, lists[m], regime, days, v)]));
+      const pf = u.profile || {};
+      const cmp = compareWays(Object.fromEntries(Object.entries(by).map(([k, g]) => [k, g.trades])), m, pf, pf.budget || 1_000_000, prices);
+      const best = cmp.best;
+      groups[m] = by[best.sides];
+      u.wayPf[m] = wayProfile(pf, m, best.key);
+      u.wayLabel[m] = best.label;
+      console.log(`${NAMES[m]}：一番良いやり方は「${best.label}」`);
+    }
     const planned = planForUser(u, DAY ? 'day' : 'swing', groups, book, nowSec);
     const holds = u.modes.flatMap((m) => holdingSignals(m, lists[m], u));
     const keyU = (s) => `${u.uid}|${keyOf(s)}`;

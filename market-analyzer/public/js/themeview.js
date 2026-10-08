@@ -43,15 +43,19 @@ let data = null;
 let loadedAt = 0;
 const oddsCache = new Map(); // `${symbol}` → odds
 const open = new Set();
+let touched = false;
 let modeNow = 'stock';
 
-function stockLine(sym, name, o) {
+function stockLine(sym, name, o, dir = 1) {
   if (!o) return `<li class="small muted">${esc(name)}：データが足りないので計算できませんでした</li>`;
   const notes = [];
-  if (o.r20 > 0.25) notes.push('この1か月でもう大きく上がっているので、高値づかみに注意');
+  const p = dir > 0 ? o.p : 1 - o.p;
+  if (dir > 0 && o.r20 > 0.25) notes.push('この1か月でもう大きく上がっているので、高値づかみに注意');
+  if (dir < 0 && o.r20 < -0.2) notes.push('この1か月でもう大きく下がっているので、下げすぎの反発に注意');
+  if (dir < 0) notes.push('持っていたら損切りの線を確認／空売りするなら信用で');
   if (o.vr > 1.3) notes.push(`出来高がふだんの${o.vr.toFixed(1)}倍（注目が集まっている）`);
   return `<li><div class="li-head"><span class="name"><a href="#" class="sym-link theme-sym" data-symbol="${esc(sym)}" data-name="${esc(name)}">${esc(name)}</a></span>
-    <span class="badge ${oddsBadge(o.p)}">上がる確率 ${Math.round(o.p * 100)}%</span></div>
+    <span class="badge ${dir > 0 ? oddsBadge(p) : p >= 0.6 ? 'sell' : p >= 0.5 ? 'neutral' : 'buy'}">${dir > 0 ? '上がる' : '下がる'}確率 ${Math.round(p * 100)}%</span></div>
     <div class="small muted">5日 ${pct(o.r5, 1)}・20日 ${pct(o.r20, 1)}・似た形${o.hits}回の10日後の平均 ${pct(o.avgRet, 1)}</div>
     ${notes.length ? `<div class="small" style="color:var(--warn)">${esc(notes.join('／'))}</div>` : ''}</li>`;
 }
@@ -72,15 +76,17 @@ async function fillStocks(t, el) {
       oddsCache.set(s, themeOdds(d.candles));
     } catch { oddsCache.set(s, null); }
   }));
-  const rows = list.map(([s, n]) => ({ s, n, o: oddsCache.get(s) })).sort((a, b) => (b.o?.p ?? -1) - (a.o?.p ?? -1));
+  const dir = t.dir || 1;
+  const pv = (o) => (o ? (dir > 0 ? o.p : 1 - o.p) : -1);
+  const rows = list.map(([s, n]) => ({ s, n, o: oddsCache.get(s) })).sort((a, b) => pv(b.o) - pv(a.o));
   const ok = rows.filter((r) => r.o);
-  const avgP = ok.length ? ok.reduce((a, r) => a + r.o.p, 0) / ok.length : null;
-  el.innerHTML = `${avgP != null ? `<p class="small" style="margin:6px 0">このテーマの銘柄の平均：<b>10営業日後に上がっている確率 ${Math.round(avgP * 100)}%</b></p>` : ''}
-    <ul class="list">${rows.map((r) => stockLine(r.s, r.n, r.o)).join('')}</ul>`;
+  const avgP = ok.length ? ok.reduce((a, r) => a + pv(r.o), 0) / ok.length : null;
+  el.innerHTML = `${avgP != null ? `<p class="small" style="margin:6px 0">このテーマの銘柄の平均：<b>10営業日後に${dir > 0 ? '上がって' : '下がって'}いる確率 ${Math.round(avgP * 100)}%</b></p>` : ''}
+    <ul class="list">${rows.map((r) => stockLine(r.s, r.n, r.o, dir)).join('')}</ul>`;
 }
 
 function themeBlock(t, i) {
-  const isOpen = open.has(t.id) || (open.size === 0 && i < 2);
+  const isOpen = open.has(t.id) || (!touched && (i === 0 || i === 100));
   if (isOpen) open.add(t.id);
   const heads = t.headlines.map((h) => `<li class="small"><a href="${esc(h.url)}" target="_blank" rel="noopener noreferrer" style="color:var(--text)">${esc(h.title)}</a> <span class="muted">${esc(h.source)}</span></li>`).join('');
   return `<details class="more-box theme-box" data-id="${esc(t.id)}" ${isOpen ? 'open' : ''}>
@@ -97,14 +103,19 @@ function render() {
   if (!data) return;
   const list = data.themes;
   if (!list.some((t) => t.recent + t.before)) { out.innerHTML = '<p class="small muted">ニュースを取得できませんでした。少し時間をおいて開き直してください。</p>'; return; }
-  const top = list.slice(0, 5), rest = list.slice(5);
-  out.innerHTML = top.map(themeBlock).join('') +
-    (rest.length ? `<details class="more-box"><summary>ほかのテーマ（${rest.length}）</summary>${rest.map((t, i) => themeBlock(t, i + 5)).join('')}</details>` : '');
+  // 上がりやすいテーマと、下がりやすいテーマに分けて出す
+  const group = (items, title, offset) => {
+    const top = items.slice(0, 4), rest = items.slice(4);
+    return `<h3 style="margin:10px 0 6px">${title}</h3>` + top.map((t, i) => themeBlock(t, i + offset)).join('') +
+      (rest.length ? `<details class="more-box"><summary>ほかのテーマ（${rest.length}）</summary>${rest.map((t, i) => themeBlock(t, i + offset + 4)).join('')}</details>` : '');
+  };
+  const ups = list.filter((t) => (t.dir || 1) > 0), downs = list.filter((t) => t.dir < 0);
+  out.innerHTML = group(ups, '📈 ニュースが増えると上がりやすいテーマ', 0) + group(downs, '📉 ニュースが増えると下がりやすいテーマ', 100);
   out.querySelectorAll('.theme-box').forEach((d) => {
     const t = list.find((x) => x.id === d.dataset.id);
     const load = () => fillStocks(t, d.querySelector('.theme-stocks'));
     if (d.open) load();
-    d.addEventListener('toggle', () => { if (d.open) { open.add(t.id); load(); } else open.delete(t.id); });
+    d.addEventListener('toggle', () => { touched = true; if (d.open) { open.add(t.id); load(); } else open.delete(t.id); });
   });
   $('theme-time').textContent = `${new Date(data.at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}時点`;
 }

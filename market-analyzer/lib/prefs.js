@@ -135,7 +135,7 @@ function cleanValue(key, value) {
     if (size > MAX_TRADES_SIZE) throw bad('取引履歴が多すぎて保存できません');
     return value.slice(0, 20000).map((t) => ({
       date: str(t?.date, 30), symbol: str(t?.symbol, 60), side: str(t?.side, 4), qty: numOrNull(t?.qty) ?? 0, price: numOrNull(t?.price) ?? 0,
-      entry: numOrNull(t?.entry), pnl: numOrNull(t?.pnl), openDate: t?.openDate ? str(t.openDate, 30) : null, code: str(t?.code, 20), file: str(t?.file, 20),
+      entry: numOrNull(t?.entry), pnl: numOrNull(t?.pnl), openDate: t?.openDate ? str(t.openDate, 30) : null, code: str(t?.code, 20), file: str(t?.file, 20), kind: ['cash', 'margin', 'short'].includes(t?.kind) ? t.kind : '',
     }));
   }
   if (size > MAX_SIZE) throw bad('保存する内容が正しくありません');

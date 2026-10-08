@@ -284,6 +284,23 @@ export function coach(allTrades, mode = 'fx') {
     if (w.pnl < 0 && b.pnl > 0) add({ cat: '向き', level: 'warn', impact: -w.pnl, title: `${w.key === '買' ? '買い' : '売り'}から入った取引が苦手です`, body: `${b.key === '買' ? '買い' : '売り'}は${b.count}回で${yen(b.pnl)}（勝率${pct(b.winRate)}）、${w.key === '買' ? '買い' : '売り'}は${w.count}回で${yen(w.pnl)}（勝率${pct(w.winRate)}）です。`, rule: `${w.key === '買' ? '買い' : '売り'}で入るのは、チャート画面の判定が「${w.key === '買' ? '上がりそう' : '下がりそう'}」のときだけにしましょう。` });
   }
 
+  // ---------- 9b. やり方（現物・信用・空売り／為替は買い・売り）ごとの成績と、一番いいやり方 ----------
+  const KIND = { cash: '現物', margin: '信用買い', short: '空売り', 買: '買いから入る', 売: '売りから入る' };
+  const ways = (mode === 'fx' ? groupBy(trades.filter((t) => t.side === '買' || t.side === '売'), (t) => t.side) : groupBy(trades.filter((t) => t.kind), (t) => t.kind))
+    .filter((r) => r.count >= 3).sort((a, b) => b.pnl - a.pnl);
+  if (ways.length >= 2) {
+    const best = ways[0], worst = ways[ways.length - 1];
+    const list = ways.map((r) => `${KIND[r.key]}：${r.count}回・${yen(r.pnl)}（勝率${pct(r.winRate)}）`).join('／');
+    add({
+      cat: 'やり方', level: worst.pnl < 0 ? 'warn' : 'good', impact: worst.pnl < 0 ? -worst.pnl : 0,
+      title: `あなたの取引で一番いいのは「${KIND[best.key]}」です`,
+      body: `${list}。`,
+      rule: worst.pnl < 0 ? `「${KIND[worst.key]}」はマイナスなので、しばらく控えて「${KIND[best.key]}」を中心にするのがおすすめです。「${KIND[worst.key]}」をやめていたら合計は<b>${yen(total - worst.pnl)}</b>でした。` : `どのやり方もプラスです。一番成績が良い「${KIND[best.key]}」を中心に続けましょう。`,
+    });
+  } else if (mode !== 'fx' && ways.length === 1) {
+    add({ cat: 'やり方', level: 'good', title: `取引はすべて「${KIND[ways[0].key]}」でした`, body: `${ways[0].count}回・${yen(ways[0].pnl)}（勝率${pct(ways[0].winRate)}）。ほかのやり方（信用・空売り）を試した場合の過去の成績は「あなた専用」→「あなたのプラン」の「やり方で比べると」で見られます。` });
+  }
+
   // ---------- 10. 銘柄 ----------
   const syms = groupBy(trades, (t) => t.symbol || '不明').filter((r) => r.count >= 3).sort((a, b) => a.pnl - b.pnl);
   if (syms.length >= 2 && syms[0].pnl < 0) {

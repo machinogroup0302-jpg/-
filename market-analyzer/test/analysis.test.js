@@ -846,11 +846,34 @@ test('取引のしかた：現物・信用・空売り・為替の向き', () =>
   // 高い株：現物では買えないが信用なら買える
   const big = sizeFor(both, 'stock', 1, { ...args, price: 4000, stop: 3990 });
   assert.equal(big.acct, 'margin');
-  assert.match(lotNote({ ...both }, 1, 4000), /信用なら買える/);
+  assert.match(lotNote({ ...both }, 1, 6000), /信用なら買える/);
   // 向きを決めると、その向きの取引しか出ない
   const cs = [...Array(400)].map((_, i) => { const p = 100 + 10 * Math.sin(i / 12) + i * 0.02; return { time: 1.7e9 + i * 86400, open: p, high: p * 1.01, low: p * 0.99, close: p, volume: 1000 }; });
   const l = runS2(cs, 'combo', { kind: 'fx', sides: 'long' }).trades;
   const sh = runS2(cs, 'combo', { kind: 'fx', sides: 'short' }).trades;
   assert.ok(l.length && l.every((t) => t.side > 0));
   assert.ok(sh.length && sh.every((t) => t.side < 0));
+});
+
+import { compareWays as cmpWays, wayProfile as wayPf, wayNotes as wNotes } from '../public/js/plan.js';
+test('やり方を自動で選ぶ', () => {
+  const mk = (side, ret, n, d0 = 0) => [...Array(n)].map((_, i) => ({ side, ret, stopPct: 0.03, mae: -0.01, entryDate: `2026-0${1 + ((i + d0) % 9)}-${String(1 + (i % 27)).padStart(2, '0')}`, exitDate: `2026-0${1 + ((i + d0) % 9)}-${String(2 + (i % 27)).padStart(2, '0')}`, entryTime: 1.7e9 + i * 86400 * 3, exitTime: 1.7e9 + i * 86400 * 3 + 86400, entryPrice: 100, symbol: '7203.T' }));
+  const long = mk(1, 0.02, 30);
+  const shortLoss = mk(-1, -0.02, 30, 1);
+  const cmp = cmpWays({ long, both: [...long, ...shortLoss] }, 'stock', { riskPct: 2, maxPos: 3 }, 1000000, {});
+  assert.equal(cmp.rows.length, 3);
+  assert.notEqual(cmp.best.key, 'short'); // 空売りが負けているなら選ばない
+  assert.ok(wNotes(cmp, 'stock', 1000000).some((x) => x.includes('空売りはおすすめしません')));
+  assert.equal(wayPf({}, 'stock', 'short').stockShort, true);
+  assert.equal(wayPf({}, 'fx', 'long').fxSides, 'long');
+});
+
+import { coach as coach2 } from '../public/js/tradecoach.js';
+test('取引分析：やり方ごとの成績', () => {
+  const t = (kind, pnl, i) => ({ kind, side: '売', pnl, date: new Date(Date.UTC(2026, 0, 1 + i)).toISOString(), symbol: 'トヨタ' });
+  const list = [...[1, 2, 3, 4].map((i) => t('cash', 5000, i)), ...[5, 6, 7, 8].map((i) => t('short', -3000, i))];
+  const c = coach2(list, 'stock');
+  const f = c.findings.find((x) => x.cat === 'やり方');
+  assert.match(f.title, /現物/);
+  assert.match(f.rule, /空売り/);
 });

@@ -5,7 +5,7 @@ import { pagedList } from './stockscreener.js';
 import { supportResistance } from './levels.js';
 import { monteCarlo } from './forecast.js';
 import { getProfile } from './favorites.js';
-import { sizeFor, orderText, sidesFor } from './plan.js';
+import { sizeFor, orderText, wayOf, wayProfile } from './plan.js';
 
 const DEFAULT_WATCH = {
   fx: ['USDJPY', 'EURJPY', 'GBPJPY', 'AUDJPY', 'NZDJPY', 'CADJPY', 'CHFJPY', 'ZARJPY', 'MXNJPY', 'EURUSD', 'GBPUSD', 'AUDUSD'].join('\n'),
@@ -25,15 +25,16 @@ function sizeNote(r) {
   if (!pf.budget || Math.abs(r.total) <= 10 || !r.atr) return '';
   const side = r.total > 0 ? 1 : -1;
   if (side < 0 && listMode === 'us') return '<div class="small">あなたの設定なら：持っていたら売る候補（米国株は空売りしない計算）</div>';
-  const sides = sidesFor(pf, listMode);
-  if ((side < 0 && sides === 'long') || (side > 0 && sides === 'short')) return `<div class="small muted">あなたの設定（${side > 0 ? '売りだけ' : '買いだけ'}）では入りません</div>`;
+  // やり方は「あなた専用」で一番良かったもの（自動）
+  const way = wayOf(listMode, store.get(`bestway_${listMode}`, null));
+  if ((side < 0 && way.sides === 'long') || (side > 0 && way.sides === 'short')) return `<div class="small muted">おすすめのやり方（${esc(way.label)}）では入りません</div>`;
   const prices = Object.fromEntries(results.filter((x) => x.price).map((x) => [x.symbol, x.price]));
   if (usdjpy) prices['USDJPY=X'] ??= usdjpy;
   const stop = r.price - side * r.atr * 2;
-  const s = sizeFor(pf, listMode, side, { symbol: r.symbol, price: r.price, stop, budget: pf.budget, riskPct: pf.riskPct || 2, maxPos: pf.maxPos || 3, prices, usdjpy: usdjpy || prices['USDJPY=X'] });
+  const s = sizeFor(wayProfile(pf, listMode, way.key), listMode, side, { symbol: r.symbol, price: r.price, stop, budget: pf.budget, riskPct: pf.riskPct || 2, maxPos: pf.maxPos || 3, prices, usdjpy: usdjpy || prices['USDJPY=X'] });
   if (!s) return '';
   if (!(s.qty > 0)) return `<div class="small muted">あなたの設定では入れません：${esc(s.why || '')}</div>`;
-  return `<div class="small">あなたの設定なら：<b>${esc(orderText(side, s))}</b>（${esc(s.kindLabel)} 約${Math.round(s.cost).toLocaleString()}円・損切り ${fmtPrice(stop, digitsFor(r.price))}）</div>`;
+  return `<div class="small">おすすめのやり方なら：<b>${esc(orderText(side, s))}</b>（${esc(s.kindLabel)} 約${Math.round(s.cost).toLocaleString()}円・損切り ${fmtPrice(stop, digitsFor(r.price))}）</div>`;
 }
 
 function scoreOf(candles) {

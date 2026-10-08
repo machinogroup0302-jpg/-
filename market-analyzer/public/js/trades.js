@@ -128,7 +128,11 @@ export function rowsToTrades(rows, headerIndex, map) {
     if (!Number.isNaN(entry) && price && !Number.isNaN(pnl) && pnl !== 0 && price !== entry && /新規約定値/.test(header[entryCol])) {
       side = (price - entry) * pnl > 0 ? '買' : '売';
     }
+    // 株：現物か、信用の買いか、空売り（信用の売り）か（楽天証券などの「取引」「区分」の書き方から見分ける）
+    const rowText = r.join(' ');
+    const kind = /返済買|売建|売埋|信用新規売/.test(rowText) ? 'short' : /信用|返済売|買建|買埋/.test(rowText) ? 'margin' : /現物|特定|NISA|売付/.test(rowText) ? 'cash' : '';
     trades.push({
+      kind,
       date: date.toISOString(),
       symbol: map.symbol != null ? String(r[map.symbol] || '').normalize('NFKC') : '',
       side,
