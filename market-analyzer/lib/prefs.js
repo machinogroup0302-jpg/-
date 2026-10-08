@@ -115,7 +115,8 @@ function cleanProfile(v) {
     notifyDay: v.notifyDay !== false,
     levStock: num(v.levStock, 1, 3.3, 1),
     levUs: num(v.levUs, 1, 2, 1),
-    levFx: num(v.levFx, 1, 25, 25),
+    fxLots: Math.round(num(v.fxLots, 0, 1000, 0) * 10) / 10,
+    fxLotSize: [1000, 10000, 100000].includes(Number(v.fxLotSize)) ? Number(v.fxLotSize) : 10000,
   };
 }
 

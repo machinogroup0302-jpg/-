@@ -764,7 +764,8 @@ import { sizePosition as sizePos2, replayWithBudget as replay2, levFor, MAINT } 
 test('レバレッジ：設定の範囲と、量・必要なお金', () => {
   assert.equal(levFor({ levStock: 5 }, 'stock'), 3.3);
   assert.equal(levFor({}, 'stock'), 1);
-  assert.equal(levFor({ levFx: 10 }, 'fx'), 10);
+  assert.equal(levFor({ levStock: 2 }, 'stock'), 3.3);
+  assert.equal(levFor({}, 'fx'), 25);
   const base = { mode: 'stock', symbol: '7203.T', price: 1000, stop: 900, budget: 300000, riskPct: 100, maxPos: 1 };
   const one = sizePos2({ ...base, leverage: 1 });
   const three = sizePos2({ ...base, leverage: 3 });
@@ -808,4 +809,19 @@ test('テーマ：似た形のときに上がっていた確率', () => {
   const o = themeOdds(up);
   assert.ok(o.p > 0.9 && o.hits > 100);
   assert.equal(themeOdds(up.slice(0, 50)), null);
+});
+
+import { sizeOpts as sizeOpts2 } from '../public/js/plan.js';
+test('為替：ロット数で決める', () => {
+  const o = sizeOpts2({ fxLots: 2, fxLotSize: 10000 }, 'fx');
+  const z = sizePos2({ mode: 'fx', symbol: 'USDJPY=X', price: 150, stop: 149, budget: 1000000, riskPct: 2, maxPos: 3, ...o });
+  assert.equal(z.qty, 20000);
+  assert.equal(z.lots, 2);
+  assert.equal(z.cost, 120000); // 300万円 ÷ 25
+  assert.equal(z.maxLoss, 20000);
+  assert.equal(Math.round(z.effLev * 10) / 10, 3);
+  assert.equal(z.over, false);
+  const big = sizePos2({ mode: 'fx', symbol: 'USDJPY=X', price: 150, stop: 149, budget: 100000, riskPct: 2, maxPos: 3, ...o });
+  assert.equal(big.qty, 0); // 証拠金が足りない
+  assert.deepEqual(sizeOpts2({ fxLots: 0 }, 'fx'), { leverage: 25 });
 });

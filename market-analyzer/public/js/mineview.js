@@ -4,7 +4,7 @@ import { api, $, esc, store, fmtPrice, fmtYen } from './util.js';
 import { runStrategy, signalOdds, oddsLabel, oddsText } from './strategies.js';
 import { pagedList } from './stockscreener.js';
 import { getProfile, setProfile, getHoldings, setHoldings } from './favorites.js';
-import { sizePosition, replayWithBudget, levFor, MAINT } from './plan.js';
+import { sizePosition, replayWithBudget, levFor, sizeOpts, kindText, quoteToJpy, LEV_LIMIT, MAINT } from './plan.js';
 import { loadRegime, loadCandles, universe, kindOf } from './labview.js';
 import { adviseHolding, exitTiming, longTermView } from './holdingadvice.js';
 import { searchFx } from './fxpairs.js';
@@ -146,16 +146,31 @@ function renderPlan(r, mode) {
   const pf = getProfile();
   const budget = pf.budget || 1_000_000;
   const d = digitsOf(mode);
-  const rule = { budget, riskPct: pf.riskPct, maxPos: pf.maxPos };
+  const lev = levFor(pf, mode);
+  const rule = { budget, riskPct: pf.riskPct, maxPos: pf.maxPos, capLev: lev };
   // 過去1年をあなたのルールでやり直す：全部やった場合と、確率の目安が高いものだけやった場合
   const all = replayWithBudget(r.trades, rule);
   const picky = replayWithBudget(r.trades, { ...rule, minOdds: 0.55 });
   const usePicky = picky.trades >= 5 && picky.total > all.total;
   const minOdds = usePicky ? 0.55 : 0.5;
-  const lev = levFor(pf, mode);
-  const sz = (x, stop) => sizePosition({ mode, symbol: x.symbol, price: x.last, stop, budget, riskPct: pf.riskPct, maxPos: pf.maxPos, prices: r.prices, usdjpy: r.usdjpy, leverage: lev });
-  // レバレッジをかけて「1銘柄に 予算÷数×倍率 の金額」で入っていたら（損切りの幅で量を減らさない）
-  const levRows = [1, lev].filter((v, i, a) => a.indexOf(v) === i).map((L) => ({ L, r: replayWithBudget(r.trades, { ...rule, minOdds: usePicky ? 0.55 : 0, leverage: L, maint: MAINT[mode] }) }));
+  const sz = (x, stop) => sizePosition({ mode, symbol: x.symbol, price: x.last, stop, budget, riskPct: pf.riskPct, maxPos: pf.maxPos, prices: r.prices, usdjpy: r.usdjpy, ...sizeOpts(pf, mode) });
+  // 取引のしかたで比べる：株は現物と信用（目いっぱい使った場合）、為替はおまかせと毎回同じロット数
+  const base = { ...rule, minOdds: usePicky ? 0.55 : 0 };
+  let levRows;
+  if (mode === 'fx') {
+    const lots = pf.fxLots > 0 ? pf.fxLots : 1, size = pf.fxLots > 0 ? (pf.fxLotSize || 10000) : 10000;
+    const notionalOf = (t) => lots * size * t.entryPrice * (quoteToJpy(t.symbol, r.prices) || 0);
+    levRows = [
+      { label: `おまかせ${pf.fxLots > 0 ? '' : '（あなたの設定）'}`, r: replayWithBudget(r.trades, base) },
+      { label: `毎回${lots}ロット${pf.fxLots > 0 ? '（あなたの設定）' : '（参考）'}`, r: replayWithBudget(r.trades, { ...base, notionalOf, maint: MAINT.fx }) },
+    ];
+  } else {
+    const L = LEV_LIMIT[mode];
+    levRows = [
+      { label: `現物${lev === 1 ? '（あなたの設定）' : ''}`, r: replayWithBudget(r.trades, { ...base, leverage: 1, maint: MAINT[mode] }) },
+      { label: `信用で約${L}倍まで使う${lev > 1 ? '（あなたの設定）' : '（参考）'}`, r: replayWithBudget(r.trades, { ...base, leverage: L, maint: MAINT[mode] }) },
+    ];
+  }
   const opens = r.next.filter((x) => x.type === 'open').map((x) => ({ ...x, size: sz(x, x.stopEst) }))
     .sort((a, b) => (b.odds?.p || 0) - (a.odds?.p || 0));
   const good = opens.filter((x) => x.odds && x.odds.p >= minOdds && x.odds.expect > 0);
@@ -165,7 +180,7 @@ function renderPlan(r, mode) {
   const replayCard = (t, x) => `<div class="stat"><div class="label">${t}</div><div class="value ${x.total >= 0 ? 'plus' : 'minus'}">${fmtYen(x.total)}</div><div class="small muted">${x.trades}回・勝率${pct(x.winRate)}・一番減ったとき ${fmtYen(-x.maxDD)}${x.losscuts ? `・<b class="minus">ロスカット${x.losscuts}回</b>` : ''}${x.broke ? '・<b class="minus">途中で資金がなくなった</b>' : ''}</div></div>`;
   $('lab-plan').innerHTML = `
     ${pf.budget ? '' : '<p class="notice" style="margin:0 0 8px">予算がまだ入っていないので、100万円で計算しています。右上の⚙（設定）の「あなたの設定」で入れてください。</p>'}
-    <div class="plan-rule small">予算 <b>${yen0(budget)}</b>　／　1回で減ってもいい額 <b>${yen0(budget * pf.riskPct / 100)}</b>（${pf.riskPct}%）　／　同時に <b>${pf.maxPos}銘柄</b>まで（1銘柄 ${yen0(budget / pf.maxPos)}まで）　／　レバレッジ <b>${lev}倍</b></div>
+    <div class="plan-rule small">予算 <b>${yen0(budget)}</b>　／　1回で減ってもいい額 <b>${yen0(budget * pf.riskPct / 100)}</b>（${pf.riskPct}%）　／　同時に <b>${pf.maxPos}銘柄</b>まで（1銘柄 ${yen0(budget / pf.maxPos)}まで）　／　取引のしかた <b>${esc(kindText(pf, mode))}</b></div>
     <button class="btn block" id="plan-settings" style="margin:8px 0 4px">予算・ルールを変える</button>
 
     <h3>✅ 今やるといいこと<span class="sub">${nextText()}</span></h3>
@@ -175,7 +190,8 @@ function renderPlan(r, mode) {
       return `<li class="plan-pick">
         <div class="li-head"><span class="name">${symLink(x.symbol, x.name)}</span>${sideBadge(x.side)}</div>
         ${timeLine(mode, x.t)}
-        <div class="plan-order"><b>${x.side > 0 ? '買う' : '売る'}：${s.qty.toLocaleString()}${s.unitLabel}</b>（今 ${fmtPrice(x.last, d)}・${s.kindLabel} 約${yen0(s.cost)}）</div>
+        <div class="plan-order"><b>${x.side > 0 ? '買う' : '売る'}：${s.lots ? `${s.lots}ロット（${s.qty.toLocaleString()}${s.unitLabel}）` : `${s.qty.toLocaleString()}${s.unitLabel}`}</b>（今 ${fmtPrice(x.last, d)}・${s.kindLabel} 約${yen0(s.cost)}${s.effLev ? `・実際は予算の約${s.effLev.toFixed(1)}倍の取引` : ''}）</div>
+        ${s.over ? `<p class="small" style="color:var(--warn);margin:2px 0">⚠ ${s.lots}ロットだと、損切りまでいくと約${yen0(s.maxLoss)}減ります（1回で減ってもいい${yen0(s.riskYen)}を超えています）。ロット数を減らすか、設定でおまかせにするのがおすすめです。</p>` : ''}
         <div class="grid2 plan-grid">
           <div class="stat"><div class="label">損切りの値段</div><div class="value minus" style="font-size:16px">${fmtPrice(x.stopEst, d)}</div><div class="small muted">ここまで来たら決済：約−${yen0(s.maxLoss)}</div></div>
           <div class="stat"><div class="label">利益確定の目標</div><div class="value plus" style="font-size:16px">${x.takeEst ? fmtPrice(x.takeEst, d) : '—'}</div><div class="small muted">${gain ? `届いたら決済：約+${yen0(gain)}` : '判定が変わるまで持つ'}</div></div>
@@ -193,11 +209,13 @@ function renderPlan(r, mode) {
 
     <h3>📊 あなたの予算で、このやり方を1年続けていたら</h3>
     <div class="grid2">${replayCard('サインが出たら全部やる', all)}${replayCard('確率の目安55%以上だけやる', picky)}</div>
-    <h3>レバレッジで比べると<span class="sub">1銘柄 ${yen0(budget / pf.maxPos)} × 倍率の金額で入った場合</span></h3>
-    <div class="grid2">${levRows.map(({ L, r: x }) => replayCard(L === 1 ? 'レバレッジなし（1倍）' : `あなたの設定 ${L}倍`, x)).join('')}</div>
-    <p class="small muted" style="margin:4px 0 0">レバレッジの比べ方は、損切りの幅で量を減らさずに「予算÷同時に持つ数×倍率」の金額で入った計算です。持っている間に一番不利になったところで、${mode === 'fx' ? '証拠金維持率が100%' : mode === 'us' ? '保証金が取引金額の25%' : '保証金維持率が20%'}を割ったら「ロスカット（強制決済）」としています。${lev === 1 ? '設定（⚙）でレバレッジを上げると、その倍率でも比べられます。' : ''}</p>
+    <h3>取引のしかたで比べると<span class="sub">${mode === 'fx' ? 'ロット数で比べた場合' : '現物と信用で比べた場合'}</span></h3>
+    <div class="grid2">${levRows.map((x) => replayCard(esc(x.label), x.r)).join('')}</div>
+    <p class="small muted" style="margin:4px 0 0">${mode === 'fx'
+    ? '「おまかせ」は損切りの幅から毎回の量を決めた場合、「毎回○ロット」はいつも同じ量で取引した場合です。'
+    : `「信用で約${LEV_LIMIT[mode]}倍まで使う」は、損切りの幅で量を減らさずに「予算÷同時に持つ数×${LEV_LIMIT[mode]}」の金額でいつも入った場合です（いちばん攻めた場合の目安）。`}持っている間に一番不利になったところで、${mode === 'fx' ? '証拠金維持率が100%' : mode === 'us' ? '保証金が取引金額の25%' : '保証金維持率が20%'}を割ったら「ロスカット（強制決済）」としています。設定（⚙）の「取引のしかた」で変えられます。</p>
     <p class="small" style="margin:6px 0 0"><b>おすすめ：</b>${usePicky ? '確率の目安が55%以上のサインだけに絞る方が成績が良かったので、上の「今やるといいこと」も55%以上に絞っています。' : '絞らずにサインどおりにやる方が成績が良かったので、50%以上のサインを出しています。'}</p>
-    <p class="notice" style="margin-top:8px">過去の値動きでの計算です。日本株は100株単位、為替は1,000通貨単位で、レバレッジは設定の${lev}倍で計算しています（為替の証拠金は国内の決まりの25倍で計算）。手数料などは差し引いていますが、実際の値段（次の日の始まりの値段）は少しずれます。最終的な判断はご自身で行ってください。</p>
+    <p class="notice" style="margin-top:8px">過去の値動きでの計算です。日本株は100株単位、為替は1,000通貨単位で、取引のしかたは「${esc(kindText(pf, mode))}」で計算しています（為替の証拠金は国内の決まりの25倍で計算）。手数料などは差し引いていますが、実際の値段（次の日の始まりの値段）は少しずれます。最終的な判断はご自身で行ってください。</p>
     ${updatedNote(r)}`;
   $('plan-settings').onclick = () => $('open-settings').click();
 }

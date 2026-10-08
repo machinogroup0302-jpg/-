@@ -5,16 +5,25 @@
 
 export const FX_LEVERAGE = 25;
 
-// ---------------- レバレッジ ----------------
-// あなたの設定のレバレッジ（日本株は現物＝1倍か信用で最大3.3倍、米国株は最大2倍、為替は最大25倍）
+// ---------------- 取引のしかた ----------------
+// 日本株・米国株は「現物」か「信用」か（信用なら、使えるお金の約3.3倍・米国株は約2倍まで買える）
+// 為替は「1回に何ロット取引するか」（空欄＝おまかせ：損切りの幅から量を計算）。証拠金は国内の決まりで25倍
 export const LEV_LIMIT = { stock: 3.3, us: 2, fx: 25 };
 // ロスカット（強制決済）になる目安：口座のお金が、取引している金額のこの割合を下回ると強制決済
 // 日本株の信用は保証金維持率20%、米国株の信用は25%、為替（国内FX）は証拠金維持率100%（＝取引金額の4%）
 export const MAINT = { stock: 0.2, us: 0.25, fx: 1 / FX_LEVERAGE };
 export function levFor(profile, mode) {
-  const v = Number(profile?.[{ stock: 'levStock', us: 'levUs', fx: 'levFx' }[mode]]);
-  return Math.max(1, Math.min(LEV_LIMIT[mode] || 1, Number.isFinite(v) && v > 0 ? v : 1));
+  if (mode === 'fx') return FX_LEVERAGE;
+  const v = Number(profile?.[mode === 'us' ? 'levUs' : 'levStock']);
+  return v > 1 ? LEV_LIMIT[mode] || 1 : 1;
 }
+// sizePosition に渡す「取引のしかた」
+export function sizeOpts(profile, mode) {
+  const o = { leverage: levFor(profile, mode) };
+  if (mode === 'fx' && Number(profile?.fxLots) > 0) { o.fxLots = Number(profile.fxLots); o.fxLotSize = Number(profile.fxLotSize) || 10000; }
+  return o;
+}
+export const kindText = (profile, mode) => (mode === 'fx' ? (Number(profile?.fxLots) > 0 ? `毎回${profile.fxLots}ロット（1ロット＝${(Number(profile.fxLotSize) || 10000).toLocaleString()}通貨）` : 'ロット数はおまかせ') : levFor(profile, mode) > 1 ? `信用（最大約${LEV_LIMIT[mode]}倍）` : '現物');
 const CCY = ['USD', 'EUR', 'GBP', 'AUD', 'NZD', 'CAD', 'CHF', 'ZAR', 'MXN', 'TRY', 'CNH', 'HKD', 'SGD', 'NOK', 'SEK'];
 
 // 為替：値段の単位（決済通貨）が1動いたら何円か。例：EURUSD → USDJPY の値段
@@ -31,7 +40,7 @@ export function quoteToJpy(symbol, prices) {
 /**
  * @param {object} p { mode, symbol, price, stop, side, budget, riskPct, maxPos, prices, usdjpy }
  */
-export function sizePosition({ mode, symbol, price, stop, budget, riskPct, maxPos, prices = {}, usdjpy = null, leverage = null }) {
+export function sizePosition({ mode, symbol, price, stop, budget, riskPct, maxPos, prices = {}, usdjpy = null, leverage = null, fxLots = 0, fxLotSize = 10000 }) {
   const riskYen = budget * riskPct / 100;
   // 1銘柄に使えるお金。レバレッジをかけると、その倍の金額まで取引できる
   const lev = leverage ?? (mode === 'fx' ? FX_LEVERAGE : 1);
@@ -52,6 +61,15 @@ export function sizePosition({ mode, symbol, price, stop, budget, riskPct, maxPo
     unit = 1000; unitLabel = '通貨'; kindLabel = '必要な証拠金';
     costPerUnit = price * 1000 * q; lossPerUnit = dist * 1000 * q;
   }
+  // 為替でロット数を決めているとき：その量で取引し、証拠金が足りるか・損切りでいくら減るかを出す
+  if (mode === 'fx' && fxLots > 0) {
+    const qty = Math.round(fxLots * fxLotSize);
+    const k = qty / unit;
+    const notional = k * costPerUnit, maxLoss = k * lossPerUnit, cost = notional / FX_LEVERAGE;
+    const res = { unit, unitLabel, kindLabel, costPerUnit, lossPerUnit, riskYen, cap, lev: FX_LEVERAGE, lots: fxLots, effLev: budget ? notional / budget : null };
+    if (cost > budget / maxPos) return { ...res, qty: 0, why: `${fxLots}ロットだと証拠金が約${Math.round(cost).toLocaleString()}円必要（1銘柄に使える${Math.round(budget / maxPos).toLocaleString()}円を超える）` };
+    return { ...res, qty, cost, notional, maxLoss, perPrice: maxLoss / dist, over: maxLoss > riskYen };
+  }
   const byRisk = Math.floor(riskYen / lossPerUnit);
   const byCash = Math.floor(cap / costPerUnit);
   const n = Math.min(byRisk, byCash);
@@ -68,7 +86,7 @@ export function sizePosition({ mode, symbol, price, stop, budget, riskPct, maxPo
  * 過去1年の取引を、あなたの予算・ルールでやり直したらどうなったか
  * trades: { entryDate, exitDate, ret, stopPct, odds? }
  */
-export function replayWithBudget(trades, { budget, riskPct, maxPos, minOdds = 0, leverage = 0, maint = 0 }) {
+export function replayWithBudget(trades, { budget, riskPct, maxPos, minOdds = 0, leverage = 0, maint = 0, notionalOf = null, capLev = 1 }) {
   // leverage を入れると「1銘柄に 予算÷同時に持つ数 × レバレッジ の金額で入る」計算にする（損切りの幅で量を減らさない）
   const list = trades.filter((t) => !minOdds || (t.odds && t.odds.p >= minOdds)).slice().sort((a, b) => a.entryDate.localeCompare(b.entryDate));
   const open = [];
@@ -89,13 +107,17 @@ export function replayWithBudget(trades, { budget, riskPct, maxPos, minOdds = 0,
     if (open.length >= maxPos) { skipped++; continue; }
     const alloc = budget / maxPos;
     let yen;
-    if (leverage) {
-      const notional = alloc * leverage;
+    if (leverage || notionalOf) {
+      // notionalOf があれば、その取引の金額（為替で毎回同じロット数など）
+      const notional = notionalOf ? notionalOf(t) : alloc * leverage;
+      // 証拠金（保証金）が足りなくて、そもそも入れない取引は飛ばす
+      if (!(notional > 0) || notional * maint >= alloc) { skipped++; continue; }
       // 持っている間に一番不利だったとき、その銘柄に分けたお金が「維持率」を割ったらロスカット
       const limit = -alloc + notional * maint; // これより損が大きくなると強制決済（マイナスの数）
       if (t.mae != null && notional * t.mae <= limit) { yen = limit; losscuts++; } else yen = t.ret * notional;
     } else {
-      const size = Math.min(alloc, t.stopPct > 0 ? (budget * riskPct / 100) / t.stopPct : alloc);
+      // capLev：信用・為替なら、1銘柄に使えるお金のその倍まで（量はふだん損切りの幅で決まる）
+      const size = Math.min(alloc * capLev, t.stopPct > 0 ? (budget * riskPct / 100) / t.stopPct : alloc);
       yen = t.ret * size;
     }
     open.push({ ...t, yen });

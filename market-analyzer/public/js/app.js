@@ -96,9 +96,10 @@ async function openSettings() {
   seg($('pf-risk'), [['1', '1%（慎重）'], ['2', '2%（ふつう）'], ['3', '3%（積極的）']], String(pf.riskPct));
   seg($('pf-maxpos'), [['1', '1つ'], ['2', '2つ'], ['3', '3つ'], ['5', '5つ']], String(pf.maxPos));
   $('pf-day').checked = pf.notifyDay !== false;
-  seg($('pf-lev-stock'), [['1', '現物（1倍）'], ['2', '信用 2倍'], ['3.3', '信用 3.3倍']], String(pf.levStock ?? 1));
-  seg($('pf-lev-us'), [['1', '現物（1倍）'], ['2', '信用 2倍']], String(pf.levUs ?? 1));
-  seg($('pf-lev-fx'), [['1', '1倍'], ['3', '3倍'], ['5', '5倍'], ['10', '10倍'], ['25', '25倍']], String(pf.levFx ?? 25));
+  seg($('pf-lev-stock'), [['1', '現物'], ['3.3', '信用（最大約3.3倍）']], pf.levStock > 1 ? '3.3' : '1');
+  seg($('pf-lev-us'), [['1', '現物'], ['2', '信用（最大約2倍）']], pf.levUs > 1 ? '2' : '1');
+  $('pf-fx-lots').value = pf.fxLots > 0 ? String(pf.fxLots) : '';
+  seg($('pf-fx-lotsize'), [['1000', '1,000通貨'], ['10000', '1万通貨'], ['100000', '10万通貨']], String(pf.fxLotSize || 10000));
   $('pf-notify').innerHTML = [['fx', '為替'], ['stock', '日本株'], ['us', '米国株']].map(([k, v]) => `<button type="button" class="chip" data-k="${k}" aria-pressed="${!!pf.notify?.[k]}">${v}のサインを通知</button>`).join('');
   renderSyncStatus();
   renderAccount();
@@ -141,7 +142,7 @@ function saveSettings() {
   if (email && !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email)) { toast('メールアドレスの形が正しくありません'); $('pf-email').focus(); return; }
   const notify = {};
   $('pf-notify').querySelectorAll('button').forEach((b) => { notify[b.dataset.k] = b.getAttribute('aria-pressed') === 'true'; });
-  setProfile({ ...getProfile(), email, budget: parseYen($('pf-budget').value), riskPct: Number(segValue($('pf-risk')) || 2), maxPos: Number(segValue($('pf-maxpos')) || 3), notify, notifyDay: $('pf-day').checked, levStock: Number(segValue($('pf-lev-stock')) || 1), levUs: Number(segValue($('pf-lev-us')) || 1), levFx: Number(segValue($('pf-lev-fx')) || 25) });
+  setProfile({ ...getProfile(), email, budget: parseYen($('pf-budget').value), riskPct: Number(segValue($('pf-risk')) || 2), maxPos: Number(segValue($('pf-maxpos')) || 3), notify, notifyDay: $('pf-day').checked, levStock: Number(segValue($('pf-lev-stock')) || 1), levUs: Number(segValue($('pf-lev-us')) || 1), fxLots: Math.max(0, Number($('pf-fx-lots').value) || 0), fxLotSize: Number(segValue($('pf-fx-lotsize')) || 10000) });
   const favs = parseFavs($('fav-edit').value);
   setFavs(getMode(), favs.length ? favs : DEFAULT_FAVS[getMode()]);
   store.set('candle', segValue($('candle-seg')) || 'jp');
