@@ -73,6 +73,8 @@ function cost(kind) {
   return kind === 'fx' ? 0.0003 : 0.001; // 往復の費用（スプレッド・手数料の目安）
 }
 
+const TECH_MEMO = new WeakMap();
+
 export function runStrategy(candles, id, { kind = 'stock', pair = '', regime = null, fundamentalRatio = null, days = 250, intraday = false, maxHold = null, sides = null } = {}) {
   // デイトレ（intraday）：15分足などで売買し、その日のうちに必ず決済する（持ち越さない）
   const NEXT = intraday ? '次の足の始まりの値段' : '次の日の始まりの値段';
@@ -95,7 +97,14 @@ export function runStrategy(candles, id, { kind = 'stock', pair = '', regime = n
   let pending = null; // 次の日の始まりに行う売買
   let realized = 0;
 
-  const techAt = (i) => technicalSummary(candles.slice(Math.max(0, i - 199), i + 1));
+  // テクニカル判定は重いので、同じ値動き・同じ日なら前の計算を使い回す（向きを変えた計算などで何度も呼ばれるため）
+  let memo = TECH_MEMO.get(candles);
+  if (!memo) TECH_MEMO.set(candles, (memo = new Map()));
+  const techAt = (i) => {
+    let ts = memo.get(i);
+    if (!ts) memo.set(i, (ts = technicalSummary(candles.slice(Math.max(0, i - 199), i + 1))));
+    return ts;
+  };
 
   for (let i = start; i < candles.length; i++) {
     const c = candles[i];

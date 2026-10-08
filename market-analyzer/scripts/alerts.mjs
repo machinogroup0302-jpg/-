@@ -8,8 +8,8 @@ import fs from 'node:fs/promises';
 import { getChart } from '../lib/market.js';
 import { runStrategy, regimeLookup, signalOdds, oddsLabel } from '../public/js/strategies.js';
 import { baseUniverse } from '../public/js/universe.js';
-import { sizeFor, orderText, waySides, wayProfile, compareWays } from '../public/js/plan.js';
-import { adviseHolding, exitTiming, longTermView } from '../public/js/holdingadvice.js';
+import { sizeFor, orderText, waySides, wayProfile, compareWays, budgets } from '../public/js/plan.js';
+import { adviseHolding, exitTiming, longTermView, addOnAdvice } from '../public/js/holdingadvice.js';
 import { US_LIST } from '../lib/usstocks.js';
 import { startScan, scanStatus } from '../lib/scanner.js';
 import { openMarkets } from '../lib/markethours.js';
@@ -119,7 +119,8 @@ function holdingSignals(mode, list, u) {
     if (!adv || adv.key === 'hold') continue;
     const timing = exitTiming(hh, x.candles, adv, { mode, prices, usdjpy: prices['USDJPY=X'] });
     const longView = longTermView(hh, x.candles, adv, { mode, prices, usdjpy: prices['USDJPY=X'] });
-    out.push({ type: 'hold', mode, name: h.name, symbol: x.symbol, side: h.side, key: adv.key, adv, timing, longView, date: adv.date, h });
+    const addOn = addOnAdvice(hh, x.candles, adv, { mode });
+    out.push({ type: 'hold', mode, name: h.name, symbol: x.symbol, side: h.side, key: adv.key, adv, timing, longView, addOn, date: adv.date, h });
   }
   return out;
 }
@@ -171,6 +172,7 @@ function describe(s, pf) {
       lines: [
         `${price(s.h.price, s.mode)}で${s.h.side > 0 ? '買い' : '売り'} → 今 ${price(a.now, s.mode)}（${a.plPct >= 0 ? '+' : ''}${(a.plPct * 100).toFixed(1)}%${a.plYen != null ? `・${a.plYen >= 0 ? '+' : '−'}${Math.abs(Math.round(a.plYen)).toLocaleString()}円` : ''}）`,
         ...a.reasons.map((w) => `・${w}`),
+        ...(s.addOn ? [`${s.addOn.icon} ${s.addOn.title}：${s.addOn.text}`] : []),
         ...(s.timing ? [`⏱ 10日以内で見ると：${s.timing.text}`] : []),
         ...(s.longView ? [`📅 長い目で見ると：${s.longView.text}`, ...s.longView.reasons.map((w) => `　・${w}`)] : []),
       ],
@@ -346,7 +348,8 @@ async function morning(users, state, TEST) {
         if (!x) continue;
         const adv = adviseHolding({ ...h, symbol: x.symbol }, x.candles, { mode: m, prices, usdjpy: prices['USDJPY=X'], profile: u.profile, today });
         if (!adv) continue;
-        holds.push(`${h.name}：${adv.verdict.icon}${adv.verdict.label}（今 ${price(adv.now, m)}・${adv.plPct >= 0 ? '+' : ''}${(adv.plPct * 100).toFixed(1)}%）／${adv.protects ? '利益を守る線' : '損切りの線'} ${price(adv.stop, m)}`);
+        const ao = addOnAdvice({ ...h, symbol: x.symbol }, x.candles, adv, { mode: m });
+        holds.push(`${h.name}：${adv.verdict.icon}${adv.verdict.label}（今 ${price(adv.now, m)}・${adv.plPct >= 0 ? '+' : ''}${(adv.plPct * 100).toFixed(1)}%）／${adv.protects ? '利益を守る線' : '損切りの線'} ${price(adv.stop, m)}${ao ? `／${ao.icon}${ao.title}` : ''}`);
       }
     }
     lines.push(['📦 持っている株', holds.length ? holds : ['入力されていません（サイトの「あなた専用」→「持っている株」で入れられます）']]);
@@ -418,7 +421,8 @@ async function main() {
     for (const m of u.modes) {
       const by = Object.fromEntries(waySides(m).map((v) => [v, DAY ? dayLists[m][v] : signalsFor(m, lists[m], regime, days, v)]));
       const pf = u.profile || {};
-      const cmp = compareWays(Object.fromEntries(Object.entries(by).map(([k, g]) => [k, g.trades])), m, pf, pf.budget || 1_000_000, prices);
+      const bg = budgets(pf);
+      const cmp = compareWays(Object.fromEntries(Object.entries(by).map(([k, g]) => [k, g.trades])), m, pf, m === 'fx' ? bg.cash : bg.total, prices);
       const best = cmp.best;
       groups[m] = by[best.sides];
       u.wayPf[m] = wayProfile(pf, m, best.key);

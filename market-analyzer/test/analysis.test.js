@@ -878,3 +878,40 @@ test('取引分析：やり方ごとの成績', () => {
   assert.match(f.title, /現物/);
   assert.match(f.rule, /空売り/);
 });
+
+import { parseBoard, summarize as crowdSum, sentimentOf } from '../lib/crowd.js';
+import { budgets } from '../public/js/plan.js';
+import { addOnAdvice, adviseHolding as advH } from '../public/js/holdingadvice.js';
+test('みんなの声：投稿から強気・弱気の割合', () => {
+  const html = `<script>window.__X__={"items":[${['明日は絶対上がる！ストップ高', 'まだまだ上昇期待、ガチホ', 'もう天井、暴落くるぞ', '押し目で買い増しした', '決算待ちで様子見です'].map((t) => `{"body":"${t}"}`).join(',')}]}</script>`;
+  const posts = parseBoard(html);
+  assert.equal(posts.length, 5);
+  const s = crowdSum(posts.map((text) => ({ text })));
+  assert.equal(s.bull, 3);
+  assert.equal(s.bear, 1);
+  assert.equal(s.sure, 1);
+  assert.equal(sentimentOf('損切りして撤退'), -1);
+});
+
+test('予算：現物と信用・空売りを分ける', () => {
+  assert.deepEqual(budgets({ budget: 500000, marginBudget: 300000 }), { cash: 500000, margin: 300000, sep: true, total: 800000 });
+  assert.equal(budgets({ budget: 500000 }).sep, false);
+  const pf = { budget: 500000, marginBudget: 300000, riskPct: 2, maxPos: 1, ...wayPf({}, 'stock', 'cashShort') };
+  const args = { symbol: '7203.T', price: 1000, stop: 900, budget: 500000, riskPct: 2, maxPos: 1 };
+  const buy = sizeFor(pf, 'stock', 1, args);
+  assert.equal(buy.qty, 100); // 1回で減っていい額は (50万+30万)×2%＝1.6万 → 損切り幅100円なので100株（160株は100株単位で100）
+  const sh = sizeFor(pf, 'stock', -1, { ...args, stop: 1100 });
+  assert.equal(sh.acct, 'margin');
+});
+
+test('買い増し・ナンピンのアドバイス', () => {
+  const up = [...Array(200)].map((_, i) => { const p = 100 + i * 0.5 + Math.sin(i / 3) * 2; return { time: 1.7e9 + i * 86400, open: p, high: p + 1, low: p - 1, close: p, volume: 1000 }; });
+  const h = { symbol: 'X.T', side: 1, price: 150, qty: 200 };
+  const adv = advH(h, up, { mode: 'stock' });
+  const a = addOnAdvice(h, up, adv, { mode: 'stock' });
+  assert.ok(['add', 'wait', 'none'].includes(a.kind));
+  const down = up.map((c, i) => ({ ...c, close: 300 - i * 0.8, open: 300 - i * 0.8, high: 301 - i * 0.8, low: 299 - i * 0.8 }));
+  const h2 = { symbol: 'X.T', side: 1, price: 200, qty: 200 };
+  const a2 = addOnAdvice(h2, down, advH(h2, down, { mode: 'stock' }), { mode: 'stock' });
+  assert.equal(a2.kind, 'no'); // 下がり続けているならナンピンしない
+});

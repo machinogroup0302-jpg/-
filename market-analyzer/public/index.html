@@ -125,6 +125,10 @@
           <h2>注文・約定分析<span class="sub">今日の買いと売りの割合</span></h2>
           <div id="orderflow-box"></div>
         </div>
+        <div class="card" data-fold="crowd">
+          <h2>みんなの声（個人投資家）<span class="sub" id="crowd-name"></span></h2>
+          <div id="crowd-box"><p class="small muted">チャートで銘柄を選ぶと表示します</p></div>
+        </div>
         <div class="card">
           <h2><button type="button" class="term" data-term="fundamental">ファンダメンタルズ分析<span class="q" aria-hidden="true">?</span></button><span class="sub">上がる要因・下がる要因</span></h2>
           <p class="small muted" style="margin-top:-4px"><span class="only-fx">金利・世界の不安の大きさ・株価の流れ・介入のニュース</span><span class="only-equity">会社の割安さ・成長・稼ぐ力・借金・ニュース</span>から、値段が上がりそうか下がりそうかを判定します。</p>
@@ -425,9 +429,12 @@
         <div class="chips" id="pf-notify" style="margin:6px 0 4px"></div>
         <label class="row small" style="margin:2px 0 6px"><input type="checkbox" id="pf-day"> デイトレのタイミングも、取引時間中に15分ごとに調べて、そのつど知らせる</label>
         <p class="small" id="mail-status" style="margin:0 0 10px"></p>
-        <label class="small" for="pf-budget">使えるお金（予算）</label>
+        <label class="small" for="pf-budget">現物の予算（現物で買うお金・為替の証拠金もこの金額で計算）</label>
         <div class="row"><input class="input grow" id="pf-budget" type="text" inputmode="numeric" placeholder="例: 500000"><span class="small">円</span></div>
         <p class="small muted" id="pf-budget-view" style="margin:2px 0 8px"></p>
+        <label class="small" for="pf-margin-budget2">信用・空売りの予算（信用口座の保証金）</label>
+        <div class="row"><input class="input grow" id="pf-margin-budget2" type="text" inputmode="numeric" placeholder="空欄＝現物の予算と同じお金から使う"><span class="small">円</span></div>
+        <p class="small muted" id="pf-margin-view" style="margin:2px 0 8px"></p>
         <label class="small">1回の取引で、最大どれだけ減ってもいいか</label>
         <div class="seg" id="pf-risk" style="margin-bottom:8px"></div>
         <label class="small">同時に持つ銘柄の数（いくつに分けるか）</label>

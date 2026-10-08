@@ -23,6 +23,14 @@ export function sizeOpts(profile, mode) {
   if (mode === 'fx' && Number(profile?.fxLots) > 0) { o.fxLots = Number(profile.fxLots); o.fxLotSize = Number(profile.fxLotSize) || 10000; }
   return o;
 }
+// 予算：現物の予算と、信用・空売りの予算（信用口座の保証金）。信用の予算が空なら、現物と同じお金から使う
+export function budgets(pf) {
+  const cash = Number(pf?.budget) || 1_000_000;
+  const sep = Number(pf?.marginBudget) > 0;
+  const margin = sep ? Number(pf.marginBudget) : cash;
+  return { cash, margin, sep, total: sep ? cash + margin : cash };
+}
+
 // 買うときの口座：'cash'（現物）・'margin'（信用）・'mix'（現物で買える分は現物、足りない分は信用）
 export function acctOf(profile, mode) {
   if (mode === 'fx') return 'fx';
@@ -51,11 +59,15 @@ export const CARRY = { long: 0.028, short: 0.011 };
 
 // やり方に合わせて「どの口座で・どれだけ」入るか
 export function sizeFor(profile, mode, side, args) {
-  if (mode === 'fx') return sizePosition({ ...args, mode, ...sizeOpts(profile, mode) });
+  if (mode === 'fx') { const z = sizePosition({ ...args, mode, ...sizeOpts(profile, mode) }); return z && { ...z, lotSize: Number(profile?.fxLotSize) || 10000 }; }
   const acct = acctOf(profile, mode);
   const L = LEV_LIMIT[mode];
-  const cashZ = () => { const z = sizePosition({ ...args, mode, leverage: 1 }); return z && { ...z, acct: 'cash', acctText: '現物' }; };
-  const marginZ = () => { const z = sizePosition({ ...args, mode, leverage: L }); return z && { ...z, acct: 'margin', acctText: '信用' }; };
+  // args.budget は現物の予算。信用・空売りの予算が別にあれば、そちらを信用の上限に使う（1回で減ってもいい額は合計から）
+  const sep = Number(profile?.marginBudget) > 0;
+  const mb = sep ? Number(profile.marginBudget) : args.budget;
+  const riskBase = sep ? args.budget + mb : args.budget;
+  const cashZ = () => { const z = sizePosition({ ...args, mode, budget: riskBase, capBudget: args.budget, leverage: 1 }); return z && { ...z, acct: 'cash', acctText: '現物' }; };
+  const marginZ = () => { const z = sizePosition({ ...args, mode, budget: riskBase, capBudget: mb, leverage: L }); return z && { ...z, acct: 'margin', acctText: '信用' }; };
   if (side < 0) {
     if (mode !== 'stock' || !profile?.stockShort) return { qty: 0, why: mode === 'us' ? '米国株は空売りしない計算です' : 'このやり方では空売りしません' };
     return marginZ();
@@ -69,7 +81,7 @@ export function sizeFor(profile, mode, side, args) {
   // 現物で買える分は現物、足りない分は信用で買い足す
   // 信用の分の保証金は、現物で買った株を担保（代用・評価は8割）にして出す
   const per = m.notional / m.qty;
-  const maxExtra = Math.floor((c.notional * 0.8 * L) / per / m.unit) * m.unit;
+  const maxExtra = Math.floor((((sep ? mb / (args.maxPos || 3) : 0) + c.notional * 0.8) * L) / per / m.unit) * m.unit;
   const extra = Math.min(m.qty - c.qty, maxExtra);
   if (!(extra > 0)) return c;
   const qty = c.qty + extra;
@@ -78,7 +90,7 @@ export function sizeFor(profile, mode, side, args) {
 }
 // 「現物で買う：100株」「信用で空売り：100株」「2ロット（20,000通貨）買う」のような書き方
 export function orderText(side, s) {
-  const amount = s.lots ? `${s.lots}ロット（${s.qty.toLocaleString()}${s.unitLabel}）` : `${s.qty.toLocaleString()}${s.unitLabel}`;
+  const amount = s.lots ? `${s.lots}ロット（${s.qty.toLocaleString()}${s.unitLabel}）` : s.lotSize ? `${Math.round((s.qty / s.lotSize) * 10) / 10}ロット（${s.qty.toLocaleString()}${s.unitLabel}）` : `${s.qty.toLocaleString()}${s.unitLabel}`;
   if (!s.acct) return `${side > 0 ? '買う' : '売る'}：${amount}`;
   if (s.acct === 'mix') return `現物で買う：${s.cashQty.toLocaleString()}${s.unitLabel}＋信用で買う：${s.marginQty.toLocaleString()}${s.unitLabel}（合計${s.qty.toLocaleString()}${s.unitLabel}）`;
   return `${s.acctText}で${side > 0 ? '買う' : '空売り'}：${amount}`;
@@ -185,10 +197,13 @@ export function replayWithBudget(trades, { budget, riskPct, maxPos, minOdds = 0,
       // 株：買いは口座（現物・信用・現物＋信用）ごとの上限まで、空売りは信用。量はふだん損切りの幅で決まる
       const risk = t.stopPct > 0 ? (budget * riskPct / 100) / t.stopPct : alloc;
       const kind = t.side < 0 ? 'margin' : acct.long;
-      const size = Math.min(kind === 'cash' ? alloc : alloc * acct.L, risk);
+      // 現物の予算・信用の予算から、1銘柄に使える上限（現物＋信用は、買った株も担保に8割で使う）
+      const cA = (acct.cash ?? budget) / maxPos, mA = (acct.margin ?? budget) / maxPos;
+      const cap = kind === 'cash' ? cA : kind === 'margin' ? mA * acct.L : cA + ((acct.sep ? mA : 0) + cA * 0.8) * acct.L;
+      const size = Math.min(cap, risk);
       yen = t.ret * size;
       // 信用の金利・貸株料：信用で入った分だけ（現物＋信用なら、現物で足りない分だけ）
-      const onMargin = kind === 'margin' ? size : kind === 'mix' ? Math.max(0, size - alloc) : 0;
+      const onMargin = kind === 'margin' ? size : kind === 'mix' ? Math.max(0, size - cA) : 0;
       if (onMargin && t.exitTime && t.entryTime) yen -= onMargin * (t.side < 0 ? CARRY.short : CARRY.long) * Math.max(1, (t.exitTime - t.entryTime) / 86400) / 365;
     } else {
       // capLev：信用・為替なら、1銘柄に使えるお金のその倍まで（量はふだん損切りの幅で決まる）
@@ -261,8 +276,10 @@ export function wayProfile(pf, mode, key) {
 
 // そのやり方で過去をやり直すときの条件
 export function replayOpts(mode, w, pf, prices = {}) {
-  const base = { budget: pf.budget || 1_000_000, riskPct: pf.riskPct || 2, maxPos: pf.maxPos || 3 };
-  if (mode !== 'fx') return { ...base, acct: { long: w.long, L: LEV_LIMIT[mode] } };
+  const b = budgets(pf);
+  const base = { budget: mode === 'fx' ? b.cash : b.total, riskPct: pf.riskPct || 2, maxPos: pf.maxPos || 3 };
+  if (mode !== 'fx') return { ...base, acct: { long: w.long, L: LEV_LIMIT[mode], cash: b.cash, margin: b.margin, sep: b.sep } };
+  base.budget = b.cash;
   const lots = pf.fxLots > 0 ? pf.fxLots : 0, size = pf.fxLotSize || 10000;
   return lots ? { ...base, notionalOf: (t) => lots * size * t.entryPrice * (quoteToJpy(t.symbol, prices) || 0), maint: MAINT.fx } : { ...base, capLev: FX_LEVERAGE };
 }
@@ -272,7 +289,8 @@ export function replayOpts(mode, w, pf, prices = {}) {
  * tradesBy: { long: [...], short: [...], both: [...] }（向きごとの過去の取引）
  */
 export function compareWays(tradesBy, mode, pf, budget, prices = {}) {
-  const p = { ...pf, budget };
+  // budget：比べるときの基準（予算の合計）。それぞれの口座の予算は pf から読む
+  const p = pf.budget ? pf : { ...pf, budget };
   const rows = WAYS[mode].filter((w) => tradesBy[w.sides]).map((w) => ({ ...w, r: replayWithBudget(tradesBy[w.sides], replayOpts(mode, w, p, prices)) }));
   if (!rows.length) return { rows, best: null };
   // おすすめ：途中で資金がなくならず、一番減ったときが予算の35%以内のもの。
@@ -312,4 +330,17 @@ export function wayNotes(cmp, mode, budget) {
     if (mode === 'us') notes.push('米国株は空売りなしで計算しています。');
   }
   return notes;
+}
+
+// ---------------- 為替：pips（どれだけ動いたか）とロット ----------------
+// 円の通貨ペアは0.01円＝1pips（1銭）、それ以外は0.0001＝1pips
+export const pipOf = (symbol) => (/JPY/i.test(String(symbol).replace(/=X$/, '').slice(3, 6)) ? 0.01 : 0.0001);
+export const pipsOf = (symbol, side, from, to) => (side * (to - from)) / pipOf(symbol);
+export const pipsText = (v) => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(1)}pips`;
+// 為替：あなたのロット設定（おまかせなら1ロット）で、その値動きがいくらになるか
+export function fxLotYen(pf, symbol, side, from, to, prices = {}) {
+  const lots = pf?.fxLots > 0 ? pf.fxLots : 1, size = pf?.fxLotSize || 10000;
+  const q = quoteToJpy(symbol, prices);
+  if (!q) return null;
+  return { lots, size, yen: side * (to - from) * lots * size * q, auto: !(pf?.fxLots > 0) };
 }

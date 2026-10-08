@@ -303,6 +303,46 @@ export function coach(allTrades, mode = 'fx', { siteBest = '' } = {}) {
     });
   }
 
+  // ---------- 9c. 振り返り：信用を使っていたら・空売りしていたら ----------
+  if (mode !== 'fx') {
+    const cash = trades.filter((t) => t.kind === 'cash'), longs = trades.filter((t) => t.kind === 'cash' || t.kind === 'margin');
+    const cashPnl = sum(cash.map((t) => t.pnl));
+    const lines = [];
+    if (cash.length >= 3) {
+      lines.push(cashPnl > 0
+        ? `現物の取引（${cash.length}回・${yen(cashPnl)}）を、信用で約3.3倍の量にしていたら合計は約${yen(cashPnl * 3.3)}でした（勝ちも負けも3.3倍・金利は別）。勝てているので、信用で量を増やす価値はあります。ただし負けたときの減り方も3.3倍です。`
+        : `現物の取引（${cash.length}回・${yen(cashPnl)}）はマイナスなので、信用で量を増やすと損も約3.3倍（約${yen(cashPnl * 3.3)}）になっていました。今は信用は使わない方がいいです。`);
+    }
+    const lostLongs = longs.filter((t) => t.pnl < 0);
+    if (lostLongs.length >= 3) {
+      lines.push(`買って負けた取引が${lostLongs.length}回（${yen(sum(lostLongs.map((t) => t.pnl)))}）あります。値段が下がる流れのときは、買わずに休むか、空売り（信用の売り）で入る方が合っていた可能性があります。チャート画面の判定が「売り」のときは買わないようにしましょう。`);
+    }
+    if (lines.length) add({ cat: 'やり方', level: cashPnl > 0 ? 'good' : 'warn', impact: lostLongs.length >= 3 ? -sum(lostLongs.map((t) => t.pnl)) * 0.3 : 0, title: '信用・空売りを使っていたら（振り返り）', body: lines.join('<br>') });
+  }
+
+  // ---------- 9d. ナンピン・買い増し ----------
+  // 同じ銘柄・同じ向きで、前の分を持っている間に入り直した取引：不利な値段ならナンピン、有利な値段なら買い増し
+  const opened = trades.filter((t) => t.openDate && t.entry != null && (t.side === '買' || t.side === '売' || t.kind));
+  const addType = (t) => {
+    const isShort = t.side === '売' && mode === 'fx' ? true : t.kind === 'short';
+    const prev = opened.find((u) => u !== t && u.symbol === t.symbol && u.side === t.side && u.openDate < t.openDate && new Date(u.date) > new Date(t.openDate));
+    if (!prev) return null;
+    const worse = isShort ? t.entry > prev.entry : t.entry < prev.entry;
+    return worse ? 'nanpin' : 'add';
+  };
+  const marked = opened.map((t) => ({ t, k: addType(t) })).filter((x) => x.k);
+  const nan = marked.filter((x) => x.k === 'nanpin').map((x) => x.t), adds = marked.filter((x) => x.k === 'add').map((x) => x.t);
+  if (nan.length >= 2 || adds.length >= 2) {
+    const sm = (a) => (a.length ? `${a.length}回・${yen(sum(a.map((t) => t.pnl)))}（勝率${pct(a.filter((t) => t.pnl > 0).length / a.length)}）` : 'なし');
+    const nanBad = nan.length >= 2 && sum(nan.map((t) => t.pnl)) < 0;
+    add({
+      cat: 'ナンピン', level: nanBad ? 'bad' : 'good', impact: nanBad ? -sum(nan.map((t) => t.pnl)) : 0,
+      title: nanBad ? 'ナンピン（下がって買い足す）で損を広げています' : 'ナンピン・買い増しの成績',
+      body: `ナンピン（不利な値段で買い足した分）：${sm(nan)}<br>買い増し（有利な値段で買い足した分）：${sm(adds)}`,
+      rule: nanBad ? `ナンピンはやめましょう。買い足すなら、利益が出ていて流れが続いているときの「買い増し」だけにするのがおすすめです。ナンピンしなければ合計は<b>${yen(total - sum(nan.map((t) => t.pnl)))}</b>でした。` : nan.length ? 'ナンピンは今のところうまくいっていますが、下がり続けると損が一気に大きくなります。買い足すのは支え（下値の目安）の近くだけにして、割ったら全部損切りしましょう。' : '買い増しはうまく使えています。',
+    });
+  }
+
   // ---------- 10. 銘柄 ----------
   const syms = groupBy(trades, (t) => t.symbol || '不明').filter((r) => r.count >= 3).sort((a, b) => a.pnl - b.pnl);
   if (syms.length >= 2 && syms[0].pnl < 0) {

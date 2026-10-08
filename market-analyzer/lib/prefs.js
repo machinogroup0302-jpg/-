@@ -108,6 +108,7 @@ function cleanProfile(v) {
   return {
     email,
     budget: Math.round(num(v.budget, 0, 1e10, 0)),
+    marginBudget: Math.round(num(v.marginBudget, 0, 1e10, 0)),
     riskPct: num(v.riskPct, 0.5, 10, 2),
     maxPos: Math.round(num(v.maxPos, 1, 10, 3)),
     swingDays: Math.round(num(v.swingDays, 1, 120, 30)),

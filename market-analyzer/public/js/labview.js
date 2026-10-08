@@ -7,7 +7,8 @@ import { baseUniverse } from './universe.js';
 import { pagedList } from './stockscreener.js';
 import { futureTimes } from './forecast.js';
 import { getFavs, getProfile } from './favorites.js';
-import { SIDES_TEXT, wayOf } from './plan.js';
+import { SIDES_TEXT, wayOf, pipsOf, pipsText, fxLotYen } from './plan.js';
+import { adviseHolding, addOnAdvice } from './holdingadvice.js';
 // 向きは「あなた専用」で一番良かったやり方に合わせる（まだ計算していなければ、株は買いだけ・為替は両方）
 const bestWay = (mode) => wayOf(mode, getProfile().bestWay?.[mode]);
 
@@ -94,6 +95,28 @@ function renderForecast() {
 }
 
 // ---------------- 自動売買 ----------------
+// 計算の上で持っているとき：買い増し・ナンピンしてよいか
+function openAddOn(r) {
+  if (!r.open) return '';
+  const h = { symbol: ctx.symbol, side: r.open.side, price: r.open.entryPrice, qty: ctx.mode === 'stock' ? 100 : ctx.mode === 'fx' ? 10000 : 10, date: r.open.entryDate };
+  const adv = adviseHolding(h, ctx.candles, { mode: ctx.mode });
+  const ao = adv ? addOnAdvice(h, ctx.candles, adv, { mode: ctx.mode }) : null;
+  return ao ? `<p class="small" style="margin:4px 0 0">${ao.icon} <b>${esc(ao.title)}</b>：${esc(ao.text)}</p>` : '';
+}
+
+// 為替：何pips動いて、あなたのロット数ならいくらだったか
+function fxCell(t) {
+  if (ctx.mode !== 'fx') return '';
+  const p = pipsOf(ctx.symbol, t.side, t.entryPrice, t.exitPrice);
+  const y = fxLotYen(getProfile(), ctx.symbol, t.side, t.entryPrice, t.exitPrice);
+  return `<div class="small">${pipsText(p)}</div>${y ? `<div class="small muted">${y.lots}ロットなら ${fmtYen(y.yen)}</div>` : ''}`;
+}
+function fxNote() {
+  const pf = getProfile();
+  const units = 1_000_000 / (ctx.candles[ctx.candles.length - 1].close * (/JPY$/.test(ctx.symbol.replace(/=X$/, '')) ? 1 : 150));
+  return `<p class="small muted" style="margin:6px 0 0">「損益」は100万円分（今の値段で約${(units / (pf.fxLotSize || 10000)).toFixed(1)}ロット）で取引した場合です。pipsは動いた幅（円の通貨ペアは1pips＝1銭）、「○ロットなら」はあなたの設定のロット数${pf.fxLots > 0 ? '' : '（おまかせなので1ロットで計算）'}での損益です${/JPY$/.test(ctx.symbol.replace(/=X$/, '')) ? '' : '（円以外の通貨ペアは円に直せないので省略）'}。</p>`;
+}
+
 // この銘柄だけで、向き（買いだけ・売り（空売り）だけ・両方）を変えたらどうだったか
 function sidesLine(kind) {
   if (ctx.mode === 'us') return '';
@@ -119,6 +142,7 @@ function renderTrades() {
       <div class="stat"><div class="label">比較：買ってずっと持っていた場合</div><div class="value ${s.buyHold >= 0 ? 'plus' : 'minus'}">${fmtYen(s.buyHold)}</div></div>
     </div>
     <p class="small" style="margin:8px 0 0"><b>今の状態：</b>${r.open ? `${r.open.side > 0 ? '買い' : '売り'}で持っています（${esc(r.open.entryDate)}に${fmtPrice(r.open.entryPrice, d)}で入った・今の含み損益 <span class="${r.open.unreal >= 0 ? 'plus' : 'minus'}">${fmtYen(r.open.unreal)}</span>）` : '持っていません'}${nextTxt ? `<br><b>次の予定：</b>${nextTxt}` : ''}</p>
+    ${openAddOn(r)}
     ${sidesLine(kind)}
     <p class="small muted" style="margin:4px 0 0">${esc(s.from)}〜${esc(s.to)}（${r.daily.length}取引日）</p>`;
 
@@ -148,7 +172,7 @@ function renderTrades() {
     ${r.trades.slice().reverse().map((t) => `<tr>
       <td class="small"><span class="badge ${t.side > 0 ? 'buy' : 'sell'}">${t.side > 0 ? '買い' : '売り'}</span> ${esc(t.entryDate.slice(5).replace('-', '/'))}<div class="num">${fmtPrice(t.entryPrice, d)}</div><div class="muted" style="font-size:11px">${esc(t.reasonIn)}</div></td>
       <td class="small">${esc(t.exitDate.slice(5).replace('-', '/'))}（${t.days}日）<div class="num">${fmtPrice(t.exitPrice, d)}</div><div class="muted" style="font-size:11px">${esc(t.reasonOut)}</div></td>
-      <td class="r small"><b class="${t.pnl >= 0 ? 'plus' : 'minus'}">${fmtYen(t.pnl)}</b><div class="muted">${(t.ret * 100).toFixed(2)}%</div></td></tr>`).join('')}</tbody></table>` : '<p class="empty">この期間は取引がありませんでした</p>';
+      <td class="r small"><b class="${t.pnl >= 0 ? 'plus' : 'minus'}">${fmtYen(t.pnl)}</b><div class="muted">${(t.ret * 100).toFixed(2)}%</div>${fxCell(t)}</td></tr>`).join('')}</tbody></table>${kind === 'fx' ? fxNote() : ''}` : '<p class="empty">この期間は取引がありませんでした</p>';
 
   // 1日ずつの損益（新しい順・取引があった日は内容も表示）
   $('lab-s-daily').innerHTML = `<table class="tbl"><thead><tr><th>日付</th><th class="r">その日の損益</th><th class="r">累計</th><th>状態</th></tr></thead><tbody>
@@ -267,7 +291,8 @@ export async function loadCandles(syms, out, tf = '1d', minLen = 200) {
       out.innerHTML = `<p class="small muted"><span class="spinner"></span> 過去のデータを読み込み中… ${done} / ${syms.length}</p>`;
     }
   };
-  await Promise.all([worker(), worker(), worker()]);
+  // 8つずつ並べて読み込む（サーバー側でも少しの間おぼえているので速い）
+  await Promise.all([...Array(8)].map(worker));
   return list;
 }
 

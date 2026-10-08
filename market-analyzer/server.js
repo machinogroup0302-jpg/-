@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { getChart, getHistory } from './lib/market.js';
 import { getNews } from './lib/news.js';
 import { getThemes } from './lib/themes.js';
+import { getCrowd } from './lib/crowd.js';
 import { searchListings, listingMeta, nameFromCache, getListings } from './lib/listings.js';
 import { usName, searchUs, US_LIST, setExtraUs } from './lib/usstocks.js';
 import { getRatings } from './lib/ratings.js';
@@ -276,6 +277,14 @@ async function handleApi(req, res, url) {
       maxPrice: Number(q.get('max')) || 0,
       limit: Number(q.get('limit')) || 100,
     }));
+  }
+  if (route === 'GET /api/crowd') {
+    const q = url.searchParams;
+    try {
+      return json(res, 200, await getCrowd({ symbol: String(q.get('symbol') || '').slice(0, 20), name: String(q.get('name') || '').slice(0, 40), mode: q.get('mode') || 'stock' }));
+    } catch (e) {
+      return json(res, 502, { error: e.message });
+    }
   }
   if (route === 'GET /api/themes') {
     try {

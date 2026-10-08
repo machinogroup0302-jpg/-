@@ -281,3 +281,46 @@ export function longTermView(h, candles, adv, { mode, prices = {}, usdjpy = null
   }
   return { rows, line, escape, losing, text, reasons, now: pl(now) };
 }
+
+// ---------------- 買い増し・ナンピン ----------------
+// 利益が出ているとき：流れが続いていれば「買い増し」してよいか、どこで買うか
+// 損が出ているとき：下がったところで買い足す「ナンピン」をしてよいか、するならどこで・どれだけか
+export function addOnAdvice(h, candles, adv, { mode = 'stock', unitLabel = null } = {}) {
+  if (!adv || !candles || candles.length < 80) return null;
+  const side = h.side < 0 ? -1 : 1, long = side > 0;
+  const closes = candles.map((c) => c.close);
+  const now = adv.now, a = adv.atr, r = adv.rsi ?? 50;
+  const ma25 = sma(closes, 25), ma75 = sma(closes, 75);
+  const trendOk = long ? ma25 > ma75 && now > ma75 : ma25 < ma75 && now < ma75;
+  const techOk = long ? /買い/.test(adv.tech) : /売り/.test(adv.tech);
+  const techBad = long ? /売り/.test(adv.tech) : /買い/.test(adv.tech);
+  const unit = unitLabel || (mode === 'fx' ? '通貨' : '株');
+  const lot = mode === 'stock' ? 100 : mode === 'fx' ? 1000 : 1;
+  const qty = Number(h.qty) || 0, entry = Number(h.price);
+  const half = Math.max(lot, Math.floor(qty / 2 / lot) * lot);
+  const newAvg = (p) => (entry * qty + p * half) / (qty + half);
+  // 今より有利でない側（買いなら下）にある一番近い「支え」
+  const lv = supportResistance(candles).filter((l) => (long ? l.kind === 'support' && l.price < now : l.kind === 'resistance' && l.price > now))
+    .sort((x, y) => (long ? y.price - x.price : x.price - y.price));
+  const sup = lv[0];
+  const verb = long ? '買い' : '売り';
+  if (adv.plPct >= 0) {
+    if (trendOk && techOk && (long ? r < 70 : r > 30)) {
+      const dip = long ? Math.max(ma25, sup?.price ?? 0) : Math.min(ma25, sup?.price ?? Infinity);
+      const near = Math.abs(now - dip) <= a * 2;
+      return { kind: 'add', icon: '➕', title: `${verb}増しOK`, text: `流れが${long ? '上向き' : '下向き'}で、テクニカル判定も「${adv.tech}」です。${verb}増しするなら${near ? `少し${long ? '下がった' : '上がった'}ところ（${fmt(dip)}付近＝${sup && Math.abs(sup.price - dip) < 1e-9 ? '支え' : '25日の平均'}）` : '今の値段でも'}で、今の数量の半分（${half.toLocaleString()}${unit}）までがおすすめ。そうすると平均は${fmt(newAvg(near ? dip : now))}になります。損切りの線（${fmt(adv.stop)}）は全部の数量に入れておきましょう。` };
+    }
+    if (long ? r >= 70 : r <= 30) return { kind: 'wait', icon: '⏸', title: `${verb}増しは待つ`, text: `RSIが${Math.round(r)}で${long ? '上がりすぎ' : '下がりすぎ'}です。${verb}増しするなら、${fmt(long ? ma25 : ma25)}付近（25日の平均）まで戻ってからにしましょう。` };
+    return { kind: 'none', icon: '✋', title: `${verb}増しは見送り`, text: `利益は出ていますが、流れ（テクニカル判定「${adv.tech}」）が強くないので、${verb}増しより今の分を守る方を優先しましょう。` };
+  }
+  // 損が出ているとき（ナンピン）
+  if (techBad || !trendOk || adv.key === 'cut') {
+    return { kind: 'no', icon: '🚫', title: 'ナンピンはしない方がいい', text: `流れが${long ? '下向き' : '上向き'}（テクニカル判定「${adv.tech}」）なので、ここで買い足すと損が大きくなりやすいです。ナンピンより、損切りの線（${fmt(adv.stop)}）を守ることを優先しましょう。` };
+  }
+  if (sup && Math.abs(now - sup.price) <= a * 1.5 && (long ? r < 45 : r > 55)) {
+    const lastStop = sup.price - side * a;
+    return { kind: 'nanpin', icon: '🔽', title: 'ナンピンするならここ', text: `大きな流れはまだ${long ? '上向き' : '下向き'}で、すぐ近くに支え（${fmt(sup.price)}・${sup.strength || ''}）があります。ナンピンするなら${fmt(sup.price)}付近で、今の数量の半分（${half.toLocaleString()}${unit}）まで。平均は${fmt(newAvg(sup.price))}になり、そこまで戻れば損なしです。ただし${fmt(lastStop)}を割ったら、買い足した分も含めて全部損切りしましょう。` };
+  }
+  return { kind: 'wait', icon: '⏸', title: 'ナンピンは急がない', text: `大きな流れはまだ${long ? '上向き' : '下向き'}ですが、${sup ? `支え（${fmt(sup.price)}）まで${long ? '下がって' : '上がって'}、そこで止まるのを確かめてから` : '下げ止まりを確かめてから'}にしましょう。今すぐ買い足すのはおすすめしません。` };
+}
+const fmt = (v) => Number(Number(v).toPrecision(6)).toLocaleString('ja-JP', { maximumFractionDigits: 4 });

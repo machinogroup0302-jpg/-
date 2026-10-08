@@ -9,7 +9,7 @@ import { setScreenerMode } from './screener.js';
 import { updateRatings, updatePts, resetRatings } from './ratingsview.js';
 import { searchNews } from './newsview.js';
 import { initScreener, autoRefreshList } from './screener.js';
-import { initNewsView, onSymbol as newsOnSymbol } from './newsview.js';
+import { initNewsView, onSymbol as newsOnSymbol, updateCrowd } from './newsview.js';
 import { initThemes, updateThemes } from './themeview.js';
 import { initTradesView } from './tradesview.js';
 import { updateOrderflow, resetOrderflow } from './orderflow.js';
@@ -50,7 +50,7 @@ function showTab(id) {
   }
   document.querySelectorAll('#tabbar button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === id)));
   store.set('tab', id);
-  if (id === 'news') { newsOnSymbol(chartState); updateThemes(getMode()); }
+  if (id === 'news') { newsOnSymbol(chartState); updateThemes(getMode()); updateCrowd(chartState, getMode()); }
   if (id === 'screener' && getMode() === 'stock') showStockScreener();
   if (id === 'lab') { updateLab(chartState, getMode()); showWaysCard($('lab-ways'), getMode()); }
   if (id === 'mine') updateMine(getMode());
@@ -92,6 +92,7 @@ async function openSettings() {
   const pf = getProfile();
   $('pf-email').value = pf.email || '';
   $('pf-budget').value = pf.budget ? String(pf.budget) : '';
+  $('pf-margin-budget2').value = pf.marginBudget ? String(pf.marginBudget) : '';
   showBudget();
   seg($('pf-risk'), [['1', '1%（慎重）'], ['2', '2%（ふつう）'], ['3', '3%（積極的）']], String(pf.riskPct));
   seg($('pf-maxpos'), [['1', '1つ'], ['2', '2つ'], ['3', '3つ'], ['5', '5つ']], String(pf.maxPos));
@@ -115,6 +116,8 @@ const parseYen = (t) => Number(String(t).normalize('NFKC').replace(/[,，円\s]/
 function showBudget() {
   const v = parseYen($('pf-budget').value);
   $('pf-budget-view').textContent = v ? `＝ ${v.toLocaleString()}円${v >= 10000 ? `（${(v / 10000).toLocaleString()}万円）` : ''}` : '未入力のときは、計算に100万円を使います';
+  const m = parseYen($('pf-margin-budget2').value);
+  $('pf-margin-view').textContent = m ? `＝ ${m.toLocaleString()}円${m >= 10000 ? `（${(m / 10000).toLocaleString()}万円）` : ''}。信用で買う・空売りは、この保証金の約3.3倍まで。1回で減ってもいい額は、2つの予算の合計から計算します` : '空欄のときは、現物の予算と同じお金から信用・空売りもする計算です';
 }
 
 function renderMailStatus() {
@@ -146,7 +149,7 @@ function saveSettings() {
   if (email && !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email)) { toast('メールアドレスの形が正しくありません'); $('pf-email').focus(); return; }
   const notify = {};
   $('pf-notify').querySelectorAll('button').forEach((b) => { notify[b.dataset.k] = b.getAttribute('aria-pressed') === 'true'; });
-  setProfile({ ...getProfile(), email, budget: parseYen($('pf-budget').value), riskPct: Number(segValue($('pf-risk')) || 2), maxPos: Number(segValue($('pf-maxpos')) || 3), notify, notifyDay: $('pf-day').checked, fxLots: Math.max(0, Number($('pf-fx-lots').value) || 0), fxLotSize: Number(segValue($('pf-fx-lotsize')) || 10000) });
+  setProfile({ ...getProfile(), email, budget: parseYen($('pf-budget').value), marginBudget: parseYen($('pf-margin-budget2').value), riskPct: Number(segValue($('pf-risk')) || 2), maxPos: Number(segValue($('pf-maxpos')) || 3), notify, notifyDay: $('pf-day').checked, fxLots: Math.max(0, Number($('pf-fx-lots').value) || 0), fxLotSize: Number(segValue($('pf-fx-lotsize')) || 10000) });
   const favs = parseFavs($('fav-edit').value);
   setFavs(getMode(), favs.length ? favs : DEFAULT_FAVS[getMode()]);
   store.set('candle', segValue($('candle-seg')) || 'jp');
@@ -179,7 +182,7 @@ function startAutoUpdate() {
       if (due('ratings')) { resetRatings(); updateRatings(chartState, mode); resetFundamentals(); updateFundamentals(chartState); }
     }
     if (currentTab === 'news' && due('news') && $('news-q').value) searchNews($('news-q').value, { silent: true });
-    if (currentTab === 'news' && due('news')) updateThemes(mode, { silent: true });
+    if (currentTab === 'news' && due('news')) { updateThemes(mode, { silent: true }); updateCrowd(chartState, mode, { silent: true }); }
     if (currentTab === 'screener' && due('screener')) { if (mode === 'stock') autoRefreshStock(); else autoRefreshList(); }
     if (currentTab === 'lab' && due('lab')) { refreshLab(mode); showWaysCard($('lab-ways'), mode); }
     if (currentTab === 'mine') {
@@ -236,7 +239,7 @@ function startApp() {
   });
   initTradesView();
   onSymbolChange((st) => {
-    if (currentTab === 'news') newsOnSymbol(st);
+    if (currentTab === 'news') { newsOnSymbol(st); updateCrowd(st, getMode()); }
     updateRatings(st, getMode());
     updatePts(st, getMode());
     updateEarningsCard(st, getMode());
@@ -269,6 +272,7 @@ function startApp() {
   $('open-settings').addEventListener('click', openSettings);
   initAccount();
   $('pf-budget').addEventListener('input', showBudget);
+  $('pf-margin-budget2').addEventListener('input', showBudget);
   $('pf-notify').addEventListener('click', (e) => {
     const b = e.target.closest('button');
     if (b) b.setAttribute('aria-pressed', String(b.getAttribute('aria-pressed') !== 'true'));
