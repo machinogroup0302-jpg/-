@@ -4,7 +4,7 @@ import { api, $, esc, store, fmtPrice, fmtYen } from './util.js';
 import { runStrategy, signalOdds, oddsLabel, oddsText } from './strategies.js';
 import { pagedList } from './stockscreener.js';
 import { getProfile, setProfile, getHoldings, setHoldings, syncState } from './favorites.js';
-import { replayWithBudget, kindText, sizeFor, orderText, WAYS, wayOf, waySides, wayProfile, compareWays, wayNotes, replayOpts, budgets, pipsOf, pipsText } from './plan.js';
+import { replayWithBudget, kindText, sizeFor, orderText, WAYS, wayOf, waySides, wayProfile, compareWays, wayNotes, replayOpts, budgets, pipsOf, pipsText, CARRY } from './plan.js';
 import { loadRegime, loadCandles, universe, kindOf } from './labview.js';
 import { adviseHolding, exitTiming, longTermView, addOnAdvice } from './holdingadvice.js';
 import { searchFx } from './fxpairs.js';
@@ -529,7 +529,7 @@ function marginNote(mode, h, adv) {
   const perDay = notional ? notional * rate / 365 : null;
   const days = h.date ? Math.floor((Date.now() - Date.parse(h.date)) / 86400000) : null;
   const left = days != null ? 182 - days : null;
-  return `<p class="small" style="margin:4px 0 0;color:var(--warn)">信用${h.side < 0 ? 'の空売り' : 'で買っている'}ので、${perDay ? `1日あたり約${yen0(perDay)}の${h.side < 0 ? '貸株料' : '金利'}がかかっています（目安）。` : `${h.side < 0 ? '貸株料' : '金利'}がかかります。`}${left != null ? (left > 0 ? `制度信用なら、あと約${left}日で決済の期限（6か月）です。` : '制度信用なら、もう決済の期限（6か月）を過ぎています。') : '制度信用なら6か月以内に決済が必要です（一般信用は楽天証券の条件を確認してください）。'}長く持つほど${h.side < 0 ? '貸株料' : '金利'}が増えるので、待つかどうかはそれも考えて決めましょう。</p>`;
+  return `<p class="small" style="margin:4px 0 0;color:var(--warn)">${h.side < 0 ? '信用で空売りしている' : '信用で買っている'}ので、${perDay ? `1日あたり約${yen0(perDay)}の${h.side < 0 ? '貸株料' : '金利'}がかかっています（目安）。` : `${h.side < 0 ? '貸株料' : '金利'}がかかります。`}${left != null ? (left > 0 ? `制度信用なら、あと約${left}日で決済の期限（6か月）です。` : '制度信用なら、もう決済の期限（6か月）を過ぎています。') : '制度信用なら6か月以内に決済が必要です（一般信用は楽天証券の条件を確認してください）。'}長く持つほど${h.side < 0 ? '貸株料' : '金利'}が増えるので、待つかどうかはそれも考えて決めましょう。</p>`;
 }
 
 // 買い増し：平均の値段（数量で重みをつけた平均）・合計の数量・一番最初に買った日にまとめる
