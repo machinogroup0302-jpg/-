@@ -90,16 +90,18 @@ const signalCache = new Map();
 function signalsFor(mode, list, regime, swingDays) {
   const ck = `${mode}|${swingDays}`;
   if (signalCache.has(ck)) return signalCache.get(ck);
-  const trades = [], signals = [];
+  const trades = [], signals = [], results = new Map();
   for (const x of list) {
     const r = runStrategy(x.candles, 'combo', { kind: mode, pair: x.code, regime, maxHold: swingDays });
     for (const t of r.trades) trades.push({ ...t, symbol: x.symbol });
     const last = x.candles[x.candles.length - 1];
-    if (r.next) signals.push({ ...r.next, mode, name: x.name, symbol: x.symbol, open: r.open, last: last.close, date: dayKey(last.time) });
+    results.set(x.symbol, { r, x, last });
+    if (r.next) signals.push({ ...r.next, mode, name: x.name, symbol: x.symbol, open: r.open, last: last.close, date: dayKey(last.time), t: last.time });
   }
   for (const s of signals) if (s.type === 'open') s.odds = signalOdds(trades, { symbol: s.symbol, side: s.side, strength: s.strength });
-  signalCache.set(ck, signals);
-  return signals;
+  const out = { signals, results };
+  signalCache.set(ck, out);
+  return out;
 }
 
 // その人が持っている株：損切り・決済・利益確定のタイミング
@@ -133,21 +135,20 @@ async function daySignals(mode, users, regime) {
       if (cs && cs.length >= 150) list.push({ code, name, symbol: mode === 'fx' ? `${code}=X` : mode === 'stock' ? `${code}.T` : code, candles: cs });
     }
   }));
-  const trades = [], signals = [];
+  const trades = [], signals = [], results = new Map();
   const nowSec = Date.now() / 1000;
   for (const x of list) {
     const last = x.candles[x.candles.length - 1];
     prices[x.symbol] = last.close;
     const r = runStrategy(x.candles, 'combo', { kind: mode, pair: x.code, regime, intraday: true, days: mode === 'fx' ? 1000 : 600 });
     for (const t of r.trades) trades.push({ ...t, symbol: x.symbol });
+    results.set(x.symbol, { r, x, last });
     // 最新の足が古い（取引が止まっている）ときは知らせない
-    if (r.next && nowSec - last.time < 45 * 60) signals.push({ ...r.next, mode, day: true, name: x.name, symbol: x.symbol, open: r.open, last: last.close, date: dayKey(last.time), bar: last.time });
+    if (r.next && nowSec - last.time < 45 * 60) signals.push({ ...r.next, mode, day: true, name: x.name, symbol: x.symbol, open: r.open, last: last.close, date: dayKey(last.time), bar: last.time, t: last.time });
   }
   for (const s of signals) if (s.type === 'open') s.odds = signalOdds(trades, { symbol: s.symbol, side: s.side, strength: s.strength });
-  // メールがうるさくならないように、勝つ確率の目安が50%未満の「入る」サインは送らない（サイトでは見られる）
-  for (let i = signals.length - 1; i >= 0; i--) if (signals[i].type === 'open' && signals[i].odds && signals[i].odds.p < 0.5) signals.splice(i, 1);
   console.log(`${NAMES[mode]}（デイトレ）: ${list.length}/${syms.length}銘柄を計算、サイン${signals.length}件`);
-  return { list, signals };
+  return { list, signals, results };
 }
 
 const hm = (t) => new Date((t + 9 * 3600) * 1000).toISOString().slice(11, 16);
@@ -183,6 +184,16 @@ function describe(s, pf) {
       ],
     };
   }
+  if (s.done) {
+    return {
+      title: `🔴【${s.day ? 'デイトレ・' : ''}決済しました】${s.name}（${s.ret >= 0 ? '+' : ''}${(s.ret * 100).toFixed(1)}%）`,
+      lines: [
+        `前にお知らせした${s.side > 0 ? '買い' : '売り'}は、${s.reason}で決済のタイミングになりました（前回の確認から今回までの間に起きました）`,
+        `${price(s.entryPrice, s.mode)} で${s.side > 0 ? '買い' : '売り'} → ${price(s.exitPrice, s.mode)} で決済`,
+        ...(s.why || []).map((w) => `・${w}`),
+      ],
+    };
+  }
   const g = s.open ? s.open.side * (s.last / s.open.entryPrice - 1) : 0;
   return {
     title: `🔴【${s.day ? 'デイトレ・' : ''}決済】${s.name}（${g >= 0 ? '+' : ''}${(g * 100).toFixed(1)}%）`,
@@ -192,6 +203,68 @@ function describe(s, pf) {
       ...(s.why || []).map((w) => `・${w}`),
     ],
   };
+}
+
+// ---------------- あなたのプランに合わせて選び、お知らせした売買を記録する ----------------
+// ・「入る」は、勝つ確率の目安50%以上・平均で得・予算内で買えるものを、同時に持つ数まで（あなたのプランと同じ考え方）
+// ・「決済」は、メールで「入る」をお知らせしたものだけ（知らない取引の決済は送らない）
+// ・お知らせした売買は、入った値段・決済した値段・損益を記録していく
+function planForUser(u, kind, groups, book, nowSec) {
+  const mine = (book[u.uid] ||= { open: {}, log: [] });
+  const pf = u.profile || {};
+  const maxPos = pf.maxPos || 3;
+  const out = [];
+  const isDay = kind === 'day';
+  // 1) お知らせ済みの取引を確かめる
+  for (const [k, tr] of Object.entries(mine.open)) {
+    if (tr.kind !== kind || !groups[tr.mode]) continue;
+    const res = groups[tr.mode].results.get(tr.symbol);
+    if (!res) continue;
+    const { r, last } = res;
+    const t = r.trades.find((x) => x.side === tr.side && x.entryTime > tr.signalTime);
+    if (t) {
+      mine.log.push({ kind, mode: tr.mode, symbol: tr.symbol, name: tr.name, side: tr.side, entryTime: t.entryTime, entryPrice: t.entryPrice, exitTime: t.exitTime, exitPrice: t.exitPrice, ret: t.ret, reasonOut: t.reasonOut });
+      if (!tr.closeSent) out.push({ type: 'close', done: true, mode: tr.mode, day: isDay, name: tr.name, symbol: tr.symbol, side: tr.side, reason: t.reasonOut, why: t.whyOut, entryPrice: t.entryPrice, exitPrice: t.exitPrice, ret: t.ret, date: dayKey(last.time) });
+      delete mine.open[k];
+      continue;
+    }
+    if (r.open && r.open.side === tr.side && r.open.entryTime > tr.signalTime) {
+      tr.entryPrice = r.open.entryPrice; tr.entryTime = r.open.entryTime;
+      if (r.next?.type === 'close' && !tr.closeSent) {
+        out.push({ ...r.next, mode: tr.mode, day: isDay, name: tr.name, symbol: tr.symbol, open: r.open, last: last.close, date: dayKey(last.time), bar: last.time });
+        tr.closeSent = true;
+      }
+      continue;
+    }
+    // 入る前に条件が変わって入らなかったもの（デイトレは4時間、スイングは5日で忘れる）
+    if (nowSec - tr.signalTime > (isDay ? 4 * 3600 : 5 * 86400)) delete mine.open[k];
+  }
+  // 2) 新しく入る
+  let slots = maxPos - Object.values(mine.open).filter((x) => x.kind === kind).length;
+  const tracked = new Set(Object.values(mine.open).map((x) => x.symbol));
+  const cands = Object.values(groups).flatMap((g) => g.signals)
+    .filter((x) => x.type === 'open' && u.modes.includes(x.mode) && !tracked.has(x.symbol) && x.odds && x.odds.p >= 0.5 && x.odds.expect > 0)
+    .map((x) => ({ ...x, size: pf.budget ? sizePosition({ mode: x.mode, symbol: x.symbol, price: x.last, stop: x.stopEst, budget: pf.budget, riskPct: pf.riskPct || 2, maxPos, prices, usdjpy: prices['USDJPY=X'] }) : null }))
+    .filter((x) => !pf.budget || x.size?.qty > 0)
+    .sort((a, b) => b.odds.p - a.odds.p);
+  for (const x of cands) {
+    if (slots <= 0) break;
+    out.push(x);
+    mine.open[`${kind}|${x.symbol}`] = { kind, mode: x.mode, symbol: x.symbol, name: x.name, side: x.side, signalTime: x.t, signalPrice: x.last, sentAt: new Date().toISOString() };
+    slots--;
+  }
+  if (mine.log.length > 500) mine.log = mine.log.slice(-500);
+  return out;
+}
+
+// これまでにメールでお知らせした売買の成績
+function recordLine(book, uid, pf) {
+  const log = book[uid]?.log || [];
+  if (!log.length) return 'メールでお知らせした売買の記録：まだ決済まで終わった取引はありません（入った値段・決済した値段・損益を自動で記録していきます）';
+  const wins = log.filter((t) => t.ret > 0).length;
+  const total = log.reduce((a, t) => a + t.ret, 0);
+  const yen = pf?.budget ? log.reduce((a, t) => a + t.ret * (pf.budget / (pf.maxPos || 3)), 0) : null;
+  return `メールでお知らせした売買の記録：これまで${log.length}回・勝率${Math.round((wins / log.length) * 100)}%・1回平均${((total / log.length) * 100).toFixed(2)}%${yen != null ? `（あなたの予算で1銘柄${Math.round(pf.budget / (pf.maxPos || 3)).toLocaleString()}円ずつなら合計 ${yen >= 0 ? '+' : '−'}${Math.abs(Math.round(yen)).toLocaleString()}円）` : ''}`;
 }
 
 const ORDER = { hold: 0, open: 1, close: 2 };
@@ -206,18 +279,18 @@ async function sendMail(to, subject, text, html) {
   await tr.sendMail({ from: `売買サイン <${MAIL_USER}>`, to, subject, text, html });
 }
 
-function buildMail(fresh, modes, pf, today, TEST, day = false) {
+function buildMail(fresh, modes, pf, today, TEST, day = false, record = '') {
   const buys = fresh.filter((s) => s.type === 'open').length, closes = fresh.filter((s) => s.type === 'close').length, holds = fresh.filter((s) => s.type === 'hold').length;
   const head = day ? `【今のタイミング ${hm(Date.now() / 1000)}】` : '【売買サイン】';
   const subject = TEST ? `【テスト】売買サインのメールが届くか確認しています（${md(today)}）` : `${head}${modes.map((m) => NAMES[m]).join('・')}：${holds ? `持っている株${holds}件・` : ''}新しく入る${buys}件・決済${closes}件（${md(today)}）`;
   const blocks = fresh.map((s) => describe(s, pf));
   const note = '※ 過去の値動きから計算した練習用のサインです。勝つ確率は目安で、当たる保証はありません。売買はご自身の判断で行ってください。';
   const testNote = TEST ? ['このメールが届いていれば設定は完了です。これからは新しいサインが出たときにお知らせします。', `今の新しいサイン：${fresh.length}件`, ''] : [];
-  const text = [subject, '', ...testNote, ...blocks.flatMap((b) => [b.title, ...b.lines, '']), `くわしくはサイトの「あなた専用」：${SITE}`, '', note].join('\n');
+  const text = [subject, '', ...testNote, ...blocks.flatMap((b) => [b.title, ...b.lines, '']), ...(record ? [`📒 ${record}`, ''] : []), `くわしくはサイトの「あなた専用」：${SITE}`, '', note].join('\n');
   const html = `<div style="font-family:sans-serif;font-size:14px;line-height:1.6">
     <h2 style="font-size:16px">${esc(subject)}</h2>${testNote.length ? `<p>${testNote.filter(Boolean).map(esc).join('<br>')}</p>` : ''}
     ${blocks.map((b) => `<div style="border:1px solid #ddd;border-radius:10px;padding:10px 12px;margin:10px 0"><b style="font-size:15px">${esc(b.title)}</b><br>${b.lines.map(esc).join('<br>')}</div>`).join('')}
-    <p><a href="${SITE}">サイトで見る（あなた専用）</a></p><p style="color:#888;font-size:12px">${esc(note)}</p></div>`;
+    ${record ? `<p style="background:#f4f6f9;border-radius:8px;padding:8px 10px">📒 ${esc(record)}</p>` : ''}<p><a href="${SITE}">サイトで見る（あなた専用）</a></p><p style="color:#888;font-size:12px">${esc(note)}</p></div>`;
   return { subject, text, html };
 }
 
@@ -260,26 +333,28 @@ async function main() {
 
   const today = dayKey(Date.now() / 1000);
   const now = new Date().toISOString();
-  let sentAny = false;
+  const nowSec = Date.now() / 1000;
+  const book = TEST ? JSON.parse(JSON.stringify(state.book || {})) : (state.book ||= {});
   for (const u of users) {
     const days = u.profile?.swingDays || 30;
-    const all = u.modes.flatMap((m) => (DAY ? [...dayLists[m].signals, ...holdingSignals(m, lists[m], u)] : [...signalsFor(m, lists[m], regime, days), ...holdingSignals(m, lists[m], u)]));
+    const groups = {};
+    for (const m of u.modes) groups[m] = DAY ? dayLists[m] : signalsFor(m, lists[m], regime, days);
+    const planned = planForUser(u, DAY ? 'day' : 'swing', groups, book, nowSec);
+    const holds = u.modes.flatMap((m) => holdingSignals(m, lists[m], u));
     const keyU = (s) => `${u.uid}|${keyOf(s)}`;
-    const fresh = all.filter((s) => {
-      const age = (Date.parse(today) - Date.parse(s.date)) / 86400000;
-      return age <= 4 && !state.sent[keyU(s)] && !(u.uid === 'admin' && state.sent[keyOf(s)]);
-    }).sort((a, b) => ORDER[a.type] - ORDER[b.type] || (b.odds?.p || 0) - (a.odds?.p || 0));
-    if (!fresh.length && !TEST) { console.log(`${u.uid === 'admin' ? '持ち主' : 'ほかの人'}：新しいサインはありません`); continue; }
-    const m = buildMail(fresh, u.modes, u.profile, today, TEST, DAY);
+    // 持っている株のお知らせは、同じ内容を1日1回まで
+    const freshHolds = holds.filter((s) => !state.sent[keyU(s)]);
+    const fresh = [...freshHolds, ...planned].sort((a, b) => ORDER[a.type] - ORDER[b.type] || (b.odds?.p || 0) - (a.odds?.p || 0));
+    if (!fresh.length && !TEST) { console.log(`${u.uid === 'admin' ? '持ち主' : 'ほかの人'}：新しいお知らせはありません`); continue; }
+    const m = buildMail(fresh, u.modes, u.profile, today, TEST, DAY, recordLine(book, u.uid, u.profile));
     try {
       await sendMail(u.to, m.subject, m.text, m.html);
       console.log(`メールを送りました（${fresh.length}件）`);
     } catch (e) { console.log('メールを送れませんでした:', e.message); continue; }
-    if (TEST) continue; // テストのときは「送った」記録を残さない（本番でもう一度お知らせする）
-    for (const s of fresh) state.sent[keyU(s)] = now;
-    sentAny = true;
+    if (TEST) continue; // テストのときは記録を残さない
+    for (const s of freshHolds) state.sent[keyU(s)] = now;
   }
-  if (!sentAny) return;
+  if (TEST) return;
   // 30日より前の記録は消す
   for (const [k, v] of Object.entries(state.sent)) if (Date.now() - Date.parse(v) > 30 * 86400000) delete state.sent[k];
   await fs.mkdir(new URL('.', STATE), { recursive: true });
