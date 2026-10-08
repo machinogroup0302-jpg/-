@@ -361,6 +361,9 @@ async function boot() {
     return;
   }
   me = st.user || { id: 'admin', name: '持ち主', admin: true };
+  // 今動いているサイトの版（直したものが届いているか確かめるため、設定のいちばん下に出す）
+  const ver = document.getElementById('site-version');
+  if (ver) ver.textContent = `サイトの版：${st.version || '—'}`;
   if (st.loginRequired && !st.loggedIn) {
     $('login').hidden = false;
     $('login-form').addEventListener('submit', async (e) => {

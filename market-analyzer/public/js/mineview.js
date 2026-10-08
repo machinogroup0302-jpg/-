@@ -558,7 +558,11 @@ async function showHoldingsInner(mode) {
     box.innerHTML = '<div class="card"><p class="small muted">まだ入力されていません。上の欄に、持っている銘柄・買った値段・数量を入れて「追加する」を押してください。</p></div>';
     return;
   }
-  if (!box.querySelector('.hold-item')) box.innerHTML = '<div class="card"><p class="small muted"><span class="spinner"></span> 今の値段を調べています…</p></div>';
+  // 値段が届く前でも、入力した内容はすぐ見せる（値段は届いたら書き足す）
+  if (!box.querySelector('.hold-item')) {
+    const u = mode === 'fx' ? '通貨' : '株';
+    box.innerHTML = list.map((h) => `<div class="card hold-item"><div class="li-head"><span class="name">${esc(h.name)}</span><span class="small muted">${fmtPrice(h.price, mode === 'stock' ? 1 : mode === 'us' ? 2 : 3)} で ${Number(h.qty).toLocaleString()}${u}</span></div><p class="small muted"><span class="spinner"></span> 今の値段を調べています…（15秒ほどで出ます）</p></div>`).join('');
+  }
   const rows = await adviceFor(mode, list);
   if (getModeFn() !== mode) return;
   const d = mode === 'stock' ? 1 : mode === 'us' ? 2 : 3;

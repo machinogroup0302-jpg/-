@@ -114,7 +114,7 @@ async function handleApi(req, res, url) {
 
   if (route === 'GET /api/status') {
     const uid = await currentUser(req);
-    return json(res, 200, { loginRequired: !!SITE_PASSWORD, loggedIn: !!uid, user: uid ? { id: uid, name: await userName(uid), admin: uid === ADMIN } : null });
+    return json(res, 200, { version: (process.env.RENDER_GIT_COMMIT || 'local').slice(0, 7), loginRequired: !!SITE_PASSWORD, loggedIn: !!uid, user: uid ? { id: uid, name: await userName(uid), admin: uid === ADMIN } : null });
   }
   if (route === 'POST /api/login') {
     const body = await readBody(req);
@@ -315,7 +315,7 @@ async function serveStatic(req, res, url) {
   try {
     const data = await fs.readFile(file);
     const type = TYPES[path.extname(file)] || 'application/octet-stream';
-    send(res, 200, data, { 'Content-Type': type, 'Cache-Control': file.endsWith('.html') ? 'no-cache' : 'public, max-age=300' });
+    send(res, 200, data, { 'Content-Type': type, 'Cache-Control': /\.(html|js|css)$/.test(file) ? 'no-cache' : 'public, max-age=300' });
   } catch {
     send(res, 404, 'not found');
   }
