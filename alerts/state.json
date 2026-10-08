@@ -8,6 +8,9 @@
   "admin|day|USDCAD=X|close|0|1791364803": "2026-10-07T09:20:09.274Z",
   "admin|day|CHFJPY=X|close|0|1791375939": "2026-10-07T12:25:44.038Z",
   "admin|day|USDJPY=X|close|0|1791380977": "2026-10-07T13:49:40.702Z",
-  "admin|day|GBPUSD=X|close|0|1791417351": "2026-10-07T23:56:11.375Z"
+  "admin|day|GBPUSD=X|close|0|1791417351": "2026-10-07T23:56:11.375Z",
+  "admin|5803.T|hold|cut|2026-10-08": "2026-10-08T00:28:56.230Z",
+  "admin|day|SEKJPY=X|close|0|1791419087": "2026-10-08T00:28:56.230Z",
+  "admin|day|NZDUSD=X|close|0|1791419327": "2026-10-08T00:28:56.230Z"
  }
 }
