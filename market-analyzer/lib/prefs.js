@@ -113,6 +113,9 @@ function cleanProfile(v) {
     swingDays: Math.round(num(v.swingDays, 1, 120, 30)),
     notify: { fx: !!v.notify?.fx, stock: !!v.notify?.stock, us: !!v.notify?.us },
     notifyDay: v.notifyDay !== false,
+    levStock: num(v.levStock, 1, 3.3, 1),
+    levUs: num(v.levUs, 1, 2, 1),
+    levFx: num(v.levFx, 1, 25, 25),
   };
 }
 

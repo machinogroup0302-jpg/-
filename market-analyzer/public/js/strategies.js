@@ -21,6 +21,8 @@ export const STRATEGIES = {
 };
 
 const CAPITAL = 1_000_000;
+// 持っている間に一番不利だったときの損益の割合（ロスカットの計算に使う。マイナスの数）
+const maeOf = (pos, high, low) => (pos.side > 0 ? Math.min(pos.trough, low) / pos.entryPrice - 1 : 1 - Math.max(pos.peak, high) / pos.entryPrice);
 const num = (v) => Number(Number(v).toPrecision(6)).toLocaleString('ja-JP', { maximumFractionDigits: 4 });
 // 「（ゴールデンクロス＝…）」のような補足を外して短くする
 const short = (t) => String(t).replace(/（[^）]*）/g, '');
@@ -109,7 +111,7 @@ export function runStrategy(candles, id, { kind = 'stock', pair = '', regime = n
         const ret = pos.side * (c.open / pos.entryPrice - 1) - cost(kind);
         const pnl = CAPITAL * ret;
         realized += pnl;
-        trades.push({ side: pos.side, entryDate: dayKey(candles[pos.entryIdx].time), entryTime: candles[pos.entryIdx].time, entryPrice: pos.entryPrice, exitDate: dayKey(c.time), exitTime: c.time, exitPrice: c.open, ret, pnl, stopPct: Math.abs(pos.entryPrice - pos.stop0) / pos.entryPrice, reasonIn: pos.reason, reasonOut: pending.reason, strength: pos.strength, whyIn: pos.why, whyOut: pending.why || [], days: i - pos.entryIdx });
+        trades.push({ side: pos.side, mae: maeOf(pos, c.open, c.open), entryDate: dayKey(candles[pos.entryIdx].time), entryTime: candles[pos.entryIdx].time, entryPrice: pos.entryPrice, exitDate: dayKey(c.time), exitTime: c.time, exitPrice: c.open, ret, pnl, stopPct: Math.abs(pos.entryPrice - pos.stop0) / pos.entryPrice, reasonIn: pos.reason, reasonOut: pending.reason, strength: pos.strength, whyIn: pos.why, whyOut: pending.why || [], days: i - pos.entryIdx });
         events.push(`決済（${pending.reason}）`);
         pos = null;
       }
@@ -123,7 +125,7 @@ export function runStrategy(candles, id, { kind = 'stock', pair = '', regime = n
       const ret = pos.side * (price / pos.entryPrice - 1) - cost(kind);
       const pnl = CAPITAL * ret;
       realized += pnl;
-      trades.push({ side: pos.side, entryDate: dayKey(candles[pos.entryIdx].time), entryTime: candles[pos.entryIdx].time, entryPrice: pos.entryPrice, exitDate: dayKey(c.time), exitTime: c.time, exitPrice: price, ret, pnl, stopPct: Math.abs(pos.entryPrice - pos.stop0) / pos.entryPrice, reasonIn: pos.reason, reasonOut: 'その日の取引時間が終わるので決済（持ち越さない）', strength: pos.strength, whyIn: pos.why, whyOut: [`${BAR} ${num(price)}`, 'デイトレなので、次の日に持ち越さずに決済'], days: i - pos.entryIdx });
+      trades.push({ side: pos.side, mae: maeOf(pos, c.high, c.low), entryDate: dayKey(candles[pos.entryIdx].time), entryTime: candles[pos.entryIdx].time, entryPrice: pos.entryPrice, exitDate: dayKey(c.time), exitTime: c.time, exitPrice: price, ret, pnl, stopPct: Math.abs(pos.entryPrice - pos.stop0) / pos.entryPrice, reasonIn: pos.reason, reasonOut: 'その日の取引時間が終わるので決済（持ち越さない）', strength: pos.strength, whyIn: pos.why, whyOut: [`${BAR} ${num(price)}`, 'デイトレなので、次の日に持ち越さずに決済'], days: i - pos.entryIdx });
       events.push('決済（その日の終わり）');
       pos = null;
       pending = null;

@@ -8,7 +8,7 @@ import fs from 'node:fs/promises';
 import { getChart } from '../lib/market.js';
 import { runStrategy, regimeLookup, signalOdds, oddsLabel } from '../public/js/strategies.js';
 import { baseUniverse } from '../public/js/universe.js';
-import { sizePosition } from '../public/js/plan.js';
+import { sizePosition, levFor } from '../public/js/plan.js';
 import { adviseHolding, exitTiming, longTermView } from '../public/js/holdingadvice.js';
 import { US_LIST } from '../lib/usstocks.js';
 import { startScan, scanStatus } from '../lib/scanner.js';
@@ -173,7 +173,7 @@ function describe(s, pf) {
     const p = s.odds ? `${Math.round(s.odds.p * 100)}%（${oddsLabel(s.odds)}）` : 'まだ出せません';
     let plan = [];
     if (pf?.budget) {
-      const z = sizePosition({ mode: s.mode, symbol: s.symbol, price: s.last, stop: s.stopEst, budget: pf.budget, riskPct: pf.riskPct || 2, maxPos: pf.maxPos || 3, prices, usdjpy: prices['USDJPY=X'] });
+      const z = sizePosition({ mode: s.mode, symbol: s.symbol, price: s.last, stop: s.stopEst, budget: pf.budget, riskPct: pf.riskPct || 2, maxPos: pf.maxPos || 3, prices, usdjpy: prices['USDJPY=X'], leverage: levFor(pf, s.mode) });
       if (z?.qty > 0) plan = [`あなたの予算なら：${z.qty.toLocaleString()}${z.unitLabel}（${z.kindLabel} 約${Math.round(z.cost).toLocaleString()}円）`, `損切りの値段：${price(s.stopEst, s.mode)}（約−${Math.round(z.maxLoss).toLocaleString()}円）${s.takeEst ? `／目標：${price(s.takeEst, s.mode)}` : ''}`];
       else if (z) plan = [`あなたの予算では見送り：${z.why}`];
     }
@@ -250,7 +250,7 @@ function planForUser(u, kind, groups, book, nowSec) {
   const tracked = new Set(Object.values(mine.open).map((x) => x.symbol));
   const cands = Object.values(groups).flatMap((g) => g.signals)
     .filter((x) => x.type === 'open' && u.modes.includes(x.mode) && !tracked.has(x.symbol) && x.odds && x.odds.p >= 0.5 && x.odds.expect > 0)
-    .map((x) => ({ ...x, size: pf.budget ? sizePosition({ mode: x.mode, symbol: x.symbol, price: x.last, stop: x.stopEst, budget: pf.budget, riskPct: pf.riskPct || 2, maxPos, prices, usdjpy: prices['USDJPY=X'] }) : null }))
+    .map((x) => ({ ...x, size: pf.budget ? sizePosition({ mode: x.mode, symbol: x.symbol, price: x.last, stop: x.stopEst, budget: pf.budget, riskPct: pf.riskPct || 2, maxPos, prices, usdjpy: prices['USDJPY=X'], leverage: levFor(pf, x.mode) }) : null }))
     .filter((x) => !pf.budget || x.size?.qty > 0)
     .sort((a, b) => b.odds.p - a.odds.p);
   for (const x of cands) {

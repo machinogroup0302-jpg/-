@@ -4,7 +4,7 @@ import { api, $, esc, store, fmtPrice, fmtYen } from './util.js';
 import { runStrategy, signalOdds, oddsLabel, oddsText } from './strategies.js';
 import { pagedList } from './stockscreener.js';
 import { getProfile, setProfile, getHoldings, setHoldings } from './favorites.js';
-import { sizePosition, replayWithBudget } from './plan.js';
+import { sizePosition, replayWithBudget, levFor, MAINT } from './plan.js';
 import { loadRegime, loadCandles, universe, kindOf } from './labview.js';
 import { adviseHolding, exitTiming, longTermView } from './holdingadvice.js';
 import { searchFx } from './fxpairs.js';
@@ -152,17 +152,20 @@ function renderPlan(r, mode) {
   const picky = replayWithBudget(r.trades, { ...rule, minOdds: 0.55 });
   const usePicky = picky.trades >= 5 && picky.total > all.total;
   const minOdds = usePicky ? 0.55 : 0.5;
-  const sz = (x, stop) => sizePosition({ mode, symbol: x.symbol, price: x.last, stop, budget, riskPct: pf.riskPct, maxPos: pf.maxPos, prices: r.prices, usdjpy: r.usdjpy });
+  const lev = levFor(pf, mode);
+  const sz = (x, stop) => sizePosition({ mode, symbol: x.symbol, price: x.last, stop, budget, riskPct: pf.riskPct, maxPos: pf.maxPos, prices: r.prices, usdjpy: r.usdjpy, leverage: lev });
+  // レバレッジをかけて「1銘柄に 予算÷数×倍率 の金額」で入っていたら（損切りの幅で量を減らさない）
+  const levRows = [1, lev].filter((v, i, a) => a.indexOf(v) === i).map((L) => ({ L, r: replayWithBudget(r.trades, { ...rule, minOdds: usePicky ? 0.55 : 0, leverage: L, maint: MAINT[mode] }) }));
   const opens = r.next.filter((x) => x.type === 'open').map((x) => ({ ...x, size: sz(x, x.stopEst) }))
     .sort((a, b) => (b.odds?.p || 0) - (a.odds?.p || 0));
   const good = opens.filter((x) => x.odds && x.odds.p >= minOdds && x.odds.expect > 0);
   const picks = good.filter((x) => x.size?.qty > 0).slice(0, pf.maxPos);
   const rest = opens.filter((x) => !picks.includes(x));
   const closes = r.next.filter((x) => x.type === 'close');
-  const replayCard = (t, x) => `<div class="stat"><div class="label">${t}</div><div class="value ${x.total >= 0 ? 'plus' : 'minus'}">${fmtYen(x.total)}</div><div class="small muted">${x.trades}回・勝率${pct(x.winRate)}・一番減ったとき ${fmtYen(-x.maxDD)}</div></div>`;
+  const replayCard = (t, x) => `<div class="stat"><div class="label">${t}</div><div class="value ${x.total >= 0 ? 'plus' : 'minus'}">${fmtYen(x.total)}</div><div class="small muted">${x.trades}回・勝率${pct(x.winRate)}・一番減ったとき ${fmtYen(-x.maxDD)}${x.losscuts ? `・<b class="minus">ロスカット${x.losscuts}回</b>` : ''}${x.broke ? '・<b class="minus">途中で資金がなくなった</b>' : ''}</div></div>`;
   $('lab-plan').innerHTML = `
     ${pf.budget ? '' : '<p class="notice" style="margin:0 0 8px">予算がまだ入っていないので、100万円で計算しています。右上の⚙（設定）の「あなたの設定」で入れてください。</p>'}
-    <div class="plan-rule small">予算 <b>${yen0(budget)}</b>　／　1回で減ってもいい額 <b>${yen0(budget * pf.riskPct / 100)}</b>（${pf.riskPct}%）　／　同時に <b>${pf.maxPos}銘柄</b>まで（1銘柄 ${yen0(budget / pf.maxPos)}まで）</div>
+    <div class="plan-rule small">予算 <b>${yen0(budget)}</b>　／　1回で減ってもいい額 <b>${yen0(budget * pf.riskPct / 100)}</b>（${pf.riskPct}%）　／　同時に <b>${pf.maxPos}銘柄</b>まで（1銘柄 ${yen0(budget / pf.maxPos)}まで）　／　レバレッジ <b>${lev}倍</b></div>
     <button class="btn block" id="plan-settings" style="margin:8px 0 4px">予算・ルールを変える</button>
 
     <h3>✅ 今やるといいこと<span class="sub">${nextText()}</span></h3>
@@ -190,8 +193,11 @@ function renderPlan(r, mode) {
 
     <h3>📊 あなたの予算で、このやり方を1年続けていたら</h3>
     <div class="grid2">${replayCard('サインが出たら全部やる', all)}${replayCard('確率の目安55%以上だけやる', picky)}</div>
+    <h3>レバレッジで比べると<span class="sub">1銘柄 ${yen0(budget / pf.maxPos)} × 倍率の金額で入った場合</span></h3>
+    <div class="grid2">${levRows.map(({ L, r: x }) => replayCard(L === 1 ? 'レバレッジなし（1倍）' : `あなたの設定 ${L}倍`, x)).join('')}</div>
+    <p class="small muted" style="margin:4px 0 0">レバレッジの比べ方は、損切りの幅で量を減らさずに「予算÷同時に持つ数×倍率」の金額で入った計算です。持っている間に一番不利になったところで、${mode === 'fx' ? '証拠金維持率が100%' : mode === 'us' ? '保証金が取引金額の25%' : '保証金維持率が20%'}を割ったら「ロスカット（強制決済）」としています。${lev === 1 ? '設定（⚙）でレバレッジを上げると、その倍率でも比べられます。' : ''}</p>
     <p class="small" style="margin:6px 0 0"><b>おすすめ：</b>${usePicky ? '確率の目安が55%以上のサインだけに絞る方が成績が良かったので、上の「今やるといいこと」も55%以上に絞っています。' : '絞らずにサインどおりにやる方が成績が良かったので、50%以上のサインを出しています。'}</p>
-    <p class="notice" style="margin-top:8px">過去の値動きでの計算です。日本株は100株単位、為替は1,000通貨単位・レバレッジ25倍で計算しています。手数料などは差し引いていますが、実際の値段（次の日の始まりの値段）は少しずれます。最終的な判断はご自身で行ってください。</p>
+    <p class="notice" style="margin-top:8px">過去の値動きでの計算です。日本株は100株単位、為替は1,000通貨単位で、レバレッジは設定の${lev}倍で計算しています（為替の証拠金は国内の決まりの25倍で計算）。手数料などは差し引いていますが、実際の値段（次の日の始まりの値段）は少しずれます。最終的な判断はご自身で行ってください。</p>
     ${updatedNote(r)}`;
   $('plan-settings').onclick = () => $('open-settings').click();
 }

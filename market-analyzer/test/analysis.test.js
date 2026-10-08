@@ -758,3 +758,31 @@ test('時刻の書き方（判断した時刻・売買する時刻）', async ()
   assert.ok(judgedText('fx', t, true).startsWith('10/6 09:15'));
   assert.ok(execText('stock').includes('9:00'));
 });
+
+import { sizePosition as sizePos2, replayWithBudget as replay2, levFor, MAINT } from '../public/js/plan.js';
+
+test('レバレッジ：設定の範囲と、量・必要なお金', () => {
+  assert.equal(levFor({ levStock: 5 }, 'stock'), 3.3);
+  assert.equal(levFor({}, 'stock'), 1);
+  assert.equal(levFor({ levFx: 10 }, 'fx'), 10);
+  const base = { mode: 'stock', symbol: '7203.T', price: 1000, stop: 900, budget: 300000, riskPct: 100, maxPos: 1 };
+  const one = sizePos2({ ...base, leverage: 1 });
+  const three = sizePos2({ ...base, leverage: 3 });
+  assert.equal(one.qty, 300);
+  assert.equal(three.qty, 900);
+  assert.equal(three.cost, 300000); // 保証金は 90万円 ÷ 3
+  assert.equal(three.notional, 900000);
+});
+
+test('レバレッジ：振り返りでロスカットを数える', () => {
+  const trades = [
+    { entryDate: '2026-01-01', exitDate: '2026-01-05', ret: 0.05, mae: -0.01, stopPct: 0.05 },
+    { entryDate: '2026-01-06', exitDate: '2026-01-09', ret: -0.02, mae: -0.3, stopPct: 0.05 },
+  ];
+  const r1 = replay2(trades, { budget: 100000, riskPct: 2, maxPos: 1, leverage: 1, maint: MAINT.stock });
+  assert.equal(r1.losscuts, 0);
+  const r3 = replay2(trades, { budget: 100000, riskPct: 2, maxPos: 1, leverage: 3, maint: MAINT.stock });
+  assert.equal(r3.losscuts, 1);
+  // 1回目 +15,000円、2回目は維持率20%を割って -100,000 + 300,000×0.2 = -40,000円
+  assert.equal(Math.round(r3.total), 15000 - 40000);
+});
