@@ -1,0 +1,143 @@
+/* 高級感のあるデザイン（このファイルを読み込まなければ元のデザインに戻る） */
+:root {
+  --bg: #0a0c10;
+  --surface: #12151b;
+  --surface-2: #1a1e26;
+  --border: #2a2a2a;
+  --text: #ece6da;
+  --muted: #9a9384;
+  --accent: #c9a96a;
+  --accent-2: #e6cf9a;
+  --accent-text: #15120c;
+  --warn: #d6a84e;
+  --gold-line: color-mix(in srgb, var(--accent) 28%, transparent);
+  --up: #e0645f;
+  --down: #6f9ce8;
+  --buy: #e0645f;
+  --sell: #6f9ce8;
+  --serif: "Shippori Mincho", "Noto Serif JP", "Hiragino Mincho ProN", "Yu Mincho", serif;
+  --radius: 16px;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #f6f2ea;
+    --surface: #fffdf8;
+    --surface-2: #f1ebdf;
+    --border: #e2d8c4;
+    --text: #221d15;
+    --muted: #7a705f;
+    --accent: #9c7a3c;
+    --accent-2: #b8955a;
+    --accent-text: #fffaf0;
+    --up: #c8423d;
+    --down: #3c69b8;
+    --buy: #c8423d;
+    --sell: #3c69b8;
+  }
+}
+:root[data-theme="light"] {
+  --bg: #f6f2ea;
+  --surface: #fffdf8;
+  --surface-2: #f1ebdf;
+  --border: #e2d8c4;
+  --text: #221d15;
+  --muted: #7a705f;
+  --accent: #9c7a3c;
+  --accent-2: #b8955a;
+  --accent-text: #fffaf0;
+  --up: #c8423d;
+  --down: #3c69b8;
+  --buy: #c8423d;
+  --sell: #3c69b8;
+}
+:root[data-candle="global"] { --up: #2fa596; --down: #e0645f; --buy: #2fa596; --sell: #e0645f; }
+
+body {
+  background:
+    radial-gradient(1200px 600px at 50% -200px, color-mix(in srgb, var(--accent) 9%, transparent), transparent 70%),
+    var(--bg);
+  background-attachment: fixed;
+  letter-spacing: .02em;
+}
+
+/* 見出しは明朝体で */
+.card h2, .dlg-head h2, .topbar h1, .login h2, .term-item h3 {
+  font-family: var(--serif);
+  font-weight: 700;
+  letter-spacing: .06em;
+}
+.card h2::before {
+  content: ""; width: 3px; height: 1em; border-radius: 2px; flex: none;
+  background: linear-gradient(180deg, var(--accent-2), var(--accent));
+}
+.card h2:has(> .fold-btn:only-child)::before, .login h2::before { display: none; }
+
+/* ヘッダー */
+.topbar {
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  border-bottom: 1px solid var(--gold-line);
+}
+.icon-btn { background: var(--surface); border-color: var(--gold-line); color: var(--accent); }
+
+/* カード */
+.card {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--surface) 100%, #fff 2%), var(--surface));
+  border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--border));
+  box-shadow: 0 1px 0 color-mix(in srgb, #fff 4%, transparent) inset, 0 10px 30px -18px rgba(0,0,0,.55);
+  padding: 16px;
+}
+.stat { background: var(--surface-2); border: 1px solid color-mix(in srgb, var(--accent) 10%, transparent); }
+.stat .value, .quote .qprice, .gauge .big { font-family: var(--serif); letter-spacing: .01em; }
+.notice { border: 1px solid color-mix(in srgb, var(--accent) 12%, transparent); }
+
+/* ボタン */
+.btn { border-radius: 12px; border-color: var(--gold-line); }
+.btn.primary {
+  background: linear-gradient(135deg, var(--accent-2), var(--accent) 60%);
+  border-color: transparent; color: var(--accent-text); font-weight: 700; letter-spacing: .08em;
+  box-shadow: 0 6px 18px -8px color-mix(in srgb, var(--accent) 70%, transparent);
+}
+.mode-seg button[aria-pressed="true"] {
+  background: linear-gradient(135deg, var(--accent-2), var(--accent) 60%);
+  color: var(--accent-text);
+}
+.seg { border-color: var(--gold-line); }
+.seg button[aria-pressed="true"] { color: var(--accent); box-shadow: 0 0 0 1px var(--gold-line), 0 1px 3px rgba(0,0,0,.25); }
+.mode-seg button[aria-pressed="true"] { color: var(--accent-text); box-shadow: none; }
+.chip { border-color: var(--gold-line); }
+.fold-btn { border-color: var(--gold-line); color: var(--accent); background: transparent; }
+.input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+details > summary { color: var(--accent); }
+.progress span { background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
+
+/* 下のタブ */
+.tabbar {
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  border-top: 1px solid var(--gold-line);
+}
+.tabbar button { position: relative; letter-spacing: .04em; }
+.tabbar button[aria-selected="true"] { color: var(--accent); }
+.tabbar button[aria-selected="true"]::before {
+  content: ""; position: absolute; top: 0; left: 28%; right: 28%; height: 2px; border-radius: 0 0 2px 2px;
+  background: linear-gradient(90deg, transparent, var(--accent-2), transparent);
+}
+
+/* 表 */
+.tbl th { color: var(--muted); font-weight: 600; letter-spacing: .04em; border-bottom-color: var(--gold-line); }
+
+/* ダイアログ */
+dialog { border: 1px solid var(--gold-line) !important; }
+.dlg-head { border-bottom-color: var(--gold-line); }
+
+/* ログイン画面 */
+.login .card { padding: 28px 22px; text-align: center; }
+.login .card .input { text-align: left; }
+.login h2 { justify-content: center; font-size: 22px; margin-bottom: 2px; color: var(--accent); }
+.login h2::after {
+  content: ""; position: absolute; margin-top: 2.1em; width: 56px; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+}
+.login h2 { position: relative; padding-bottom: 10px; }
+.card h2 .sub, .card h2 .fold-btn, .card h2 .badge { font-family: var(--font); letter-spacing: .02em; font-weight: 500; }
+.card h2 .fold-btn { font-weight: 700; }
