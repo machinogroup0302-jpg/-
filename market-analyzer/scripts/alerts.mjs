@@ -20,8 +20,10 @@ const STATE = new URL('../../alerts/state.json', import.meta.url);
 let MODES = (process.argv[2] || 'stock,fx,us').split(',');
 // "day" のときは、取引時間中の市場をデイトレの足（15分足）で見る
 const DAY = MODES.includes('day');
+// "morning" のときは、朝8:30の「今日のプラン」（その日の予定のまとめ）を送る
+const MORNING = MODES.includes('morning');
 const OPEN = DAY ? openMarkets() : [];
-if (DAY) MODES = ['stock', 'fx', 'us'];
+if (DAY || MORNING) MODES = ['stock', 'fx', 'us'];
 const NAMES = { fx: '為替', stock: '日本株', us: '米国株' };
 const dayKey = (t) => new Date((t + 9 * 3600) * 1000).toISOString().slice(0, 10);
 const md = (d) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
@@ -298,6 +300,66 @@ function buildMail(fresh, modes, pf, today, TEST, day = false, record = '') {
   return { subject, text, html };
 }
 
+// ---------------- 朝8:30「今日のプラン」 ----------------
+// ・今日の寄り付き（朝9時）で買う・売る予定（きのうの夕方にお知らせしたもの）
+// ・今日の寄り付きで決済する予定のもの、お知らせ済みで持っている途中のもの
+// ・持っている株の今の状態と損切りの線
+// ・決算発表が近い銘柄（持っている株・お気に入り）
+async function earningsSoon(codes, today) {
+  try {
+    const d = JSON.parse(await fs.readFile(new URL('../data/earnings.json', import.meta.url), 'utf8'));
+    const end = new Date(Date.parse(today) + 7 * 86400000).toISOString().slice(0, 10);
+    return d.items.filter((x) => codes.has(x.code) && x.date >= today && x.date <= end);
+  } catch { return []; }
+}
+
+const morningExec = (mode) => (mode === 'stock' ? '朝9:00の寄り付き' : mode === 'us' ? '今夜の米国の取引開始' : 'すでに朝7時ごろに入っている予定');
+
+async function morning(users, state, TEST) {
+  const today = dayKey(Date.now() / 1000);
+  const book = state.book || {};
+  const lists = {};
+  for (const mode of MODES) if (users.some((u) => u.modes.includes(mode) && (u.holdings?.[mode] || []).length)) lists[mode] = await loadMode(mode, users, { holdingsOnly: true });
+  for (const u of users) {
+    const lines = [];
+    const mine = book[u.uid]?.open || {};
+    const tracked = Object.values(mine).filter((t) => t.kind === 'swing' && u.modes.includes(t.mode));
+    const toOpen = tracked.filter((t) => !t.entryTime);
+    const toClose = tracked.filter((t) => t.entryTime && t.closeSent);
+    const holding = tracked.filter((t) => t.entryTime && !t.closeSent);
+    lines.push(['🟢 今日の寄り付きで入る予定', toOpen.length ? toOpen.map((t) => `${t.name}：${t.side > 0 ? '買う' : '売る'}（${morningExec(t.mode)}・${fmtTime(t.signalTime + 6.5 * 3600)}ごろにお知らせ）`) : ['なし']]);
+    lines.push(['🔴 今日の寄り付きで決済する予定', toClose.length ? toClose.map((t) => `${t.name}：決済（${morningExec(t.mode)}）`) : ['なし']]);
+    if (holding.length) lines.push(['📒 お知らせ済みで持っている途中', holding.map((t) => `${t.name}：${fmtTime(t.entryTime)} に ${price(t.entryPrice, t.mode)} で${t.side > 0 ? '買い' : '売り'}`)]);
+    // 持っている株
+    const holds = [];
+    for (const m of u.modes) {
+      for (const h of u.holdings?.[m] || []) {
+        const x = lists[m]?.find((y) => y.code.toUpperCase() === String(h.code).toUpperCase());
+        if (!x) continue;
+        const adv = adviseHolding({ ...h, symbol: x.symbol }, x.candles, { mode: m, prices, usdjpy: prices['USDJPY=X'], profile: u.profile, today });
+        if (!adv) continue;
+        holds.push(`${h.name}：${adv.verdict.icon}${adv.verdict.label}（今 ${price(adv.now, m)}・${adv.plPct >= 0 ? '+' : ''}${(adv.plPct * 100).toFixed(1)}%）／${adv.protects ? '利益を守る線' : '損切りの線'} ${price(adv.stop, m)}`);
+      }
+    }
+    lines.push(['📦 持っている株', holds.length ? holds : ['入力されていません（サイトの「あなた専用」→「持っている株」で入れられます）']]);
+    // 決算発表が近い銘柄
+    const codes = new Set([...(u.holdings?.stock || []), ...(u.favs?.stock || [])].map((x) => String(x.code)));
+    const soon = u.modes.includes('stock') ? await earningsSoon(codes, today) : [];
+    if (soon.length) lines.push(['📅 1週間以内に決算発表', soon.map((x) => `${x.name}：${Number(x.date.slice(5, 7))}/${Number(x.date.slice(8, 10))}${x.date === today ? '（今日）' : ''}`)]);
+    const subject = `【今日のプラン ${md(today)}】入る${toOpen.length}件・決済${toClose.length}件・持っている株${holds.length}件`;
+    const record = recordLine(state.book || {}, u.uid, u.profile);
+    const text = [subject, '', ...lines.flatMap(([h, ls]) => [h, ...ls.map((l) => `・${l}`), '']), `📒 ${record}`, '', `くわしくはサイトの「あなた専用」：${SITE}`, '', '※ 練習用のサインと目安です。売買はご自身の判断で行ってください。'].join('\n');
+    const html = `<div style="font-family:sans-serif;font-size:14px;line-height:1.6"><h2 style="font-size:16px">${esc(subject)}</h2>
+      ${lines.map(([h, ls]) => `<div style="border:1px solid #ddd;border-radius:10px;padding:10px 12px;margin:10px 0"><b>${esc(h)}</b><br>${ls.map((l) => `・${esc(l)}`).join('<br>')}</div>`).join('')}
+      <p style="background:#f4f6f9;border-radius:8px;padding:8px 10px">📒 ${esc(record)}</p><p><a href="${SITE}">サイトで見る（あなた専用）</a></p>
+      <p style="color:#888;font-size:12px">※ 練習用のサインと目安です。売買はご自身の判断で行ってください。</p></div>`;
+    try {
+      await sendMail(u.to, subject, text, html);
+      console.log('今日のプランを送りました');
+    } catch (e) { console.log('メールを送れませんでした:', e.message); }
+  }
+}
+
 async function main() {
   let state = { sent: {} };
   try { state = JSON.parse(await fs.readFile(STATE, 'utf8')); } catch { /* 初回 */ }
@@ -321,6 +383,7 @@ async function main() {
   const regime = regimeLookup({ vix, tnx, nikkei });
   { const u = await candles('USDJPY=X'); if (u) prices['USDJPY=X'] = u[u.length - 1].close; }
   const lists = {}, dayLists = {};
+  if (MORNING) return morning(users, state, TEST);
   if (DAY) {
     // デイトレ：今開いている市場だけ。デイトレの通知をオンにしている人だけ
     for (const u of users) u.modes = u.modes.filter((m) => OPEN.includes(m) && u.profile?.notifyDay !== false);
