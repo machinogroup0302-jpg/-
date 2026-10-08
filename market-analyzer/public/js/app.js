@@ -17,7 +17,7 @@ import { updateFundamentals, resetFundamentals } from './fundview.js';
 import { initLab, updateLab, resetLab, refreshLab } from './labview.js';
 import { updateEarningsCard } from './earningsview.js';
 import { updateOpening } from './openingview.js';
-import { initMine, updateMine } from './mineview.js';
+import { initMine, updateMine, showWaysCard } from './mineview.js';
 
 const MODE_NAMES = { fx: '為替', stock: '日本株', us: '米国株' };
 function applyMode(mode) {
@@ -52,7 +52,7 @@ function showTab(id) {
   store.set('tab', id);
   if (id === 'news') { newsOnSymbol(chartState); updateThemes(getMode()); }
   if (id === 'screener' && getMode() === 'stock') showStockScreener();
-  if (id === 'lab') updateLab(chartState, getMode());
+  if (id === 'lab') { updateLab(chartState, getMode()); showWaysCard($('lab-ways'), getMode()); }
   if (id === 'mine') updateMine(getMode());
   window.scrollTo({ top: 0 });
 }
@@ -156,7 +156,7 @@ function saveSettings() {
   applyTheme();
   $('settings').close();
   toast('保存しました');
-  if (currentTab === 'lab') updateLab(chartState, getMode());
+  if (currentTab === 'lab') { updateLab(chartState, getMode()); showWaysCard($('lab-ways'), getMode()); }
   if (currentTab === 'mine') updateMine(getMode());
 }
 
@@ -181,7 +181,7 @@ function startAutoUpdate() {
     if (currentTab === 'news' && due('news') && $('news-q').value) searchNews($('news-q').value, { silent: true });
     if (currentTab === 'news' && due('news')) updateThemes(mode, { silent: true });
     if (currentTab === 'screener' && due('screener')) { if (mode === 'stock') autoRefreshStock(); else autoRefreshList(); }
-    if (currentTab === 'lab' && due('lab')) refreshLab(mode);
+    if (currentTab === 'lab' && due('lab')) { refreshLab(mode); showWaysCard($('lab-ways'), mode); }
     if (currentTab === 'mine') {
       if (store.get('mine_sub', 'plan') === 'hold') { if (due('hold')) updateMine(mode); } else if (due('mine')) updateMine(mode, { force: true });
     }

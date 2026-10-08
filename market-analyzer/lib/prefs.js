@@ -121,10 +121,14 @@ function cleanProfile(v) {
     stockMarginBudget: Math.round(num(v.stockMarginBudget, 0, 1e10, 0)),
     stockShort: !!v.stockShort,
     fxSides: ['both', 'long', 'short'].includes(v.fxSides) ? v.fxSides : 'both',
+    // 自動で選んだ一番いいやり方と、見ているやり方（パソコンとスマホで共有）
+    bestWay: wayMap(v.bestWay),
+    wayView: wayMap(v.wayView),
   };
 }
 
 const str = (x, n) => String(x ?? '').slice(0, n);
+const wayMap = (o) => Object.fromEntries(['fx', 'stock', 'us'].filter((k) => /^[a-zA-Z]{1,12}$/.test(o?.[k] || '')).map((k) => [k, o[k]]));
 const numOrNull = (x) => (x == null || x === '' || !Number.isFinite(Number(x)) ? null : Number(x));
 
 function cleanValue(key, value) {

@@ -6,10 +6,10 @@ import { runStrategy, regimeLookup, STRATEGIES, pickAndTrade } from './strategie
 import { baseUniverse } from './universe.js';
 import { pagedList } from './stockscreener.js';
 import { futureTimes } from './forecast.js';
-import { getFavs } from './favorites.js';
+import { getFavs, getProfile } from './favorites.js';
 import { SIDES_TEXT, wayOf } from './plan.js';
 // 向きは「あなた専用」で一番良かったやり方に合わせる（まだ計算していなければ、株は買いだけ・為替は両方）
-const bestWay = (mode) => wayOf(mode, store.get(`bestway_${mode}`, null));
+const bestWay = (mode) => wayOf(mode, getProfile().bestWay?.[mode]);
 
 const LC = window.LightweightCharts;
 const HORIZONS = [[1, '翌日'], [5, '1週間後'], [20, '1か月後']];
@@ -94,6 +94,15 @@ function renderForecast() {
 }
 
 // ---------------- 自動売買 ----------------
+// この銘柄だけで、向き（買いだけ・売り（空売り）だけ・両方）を変えたらどうだったか
+function sidesLine(kind) {
+  if (ctx.mode === 'us') return '';
+  const opt = { kind, pair: ctx.symbol.replace(/=X$/, ''), regime: ctx.regime, fundamentalRatio: ctx.fundRatio };
+  const sell = kind === 'fx' ? '売り' : '空売り';
+  const rows = [['long', '買いだけ'], ['short', `${sell}だけ`], ['both', `買い＋${sell}`]].map(([sd, t]) => [t, runStrategy(ctx.candles, strategy, { ...opt, sides: sd }).stats.total]);
+  const best = rows.slice().sort((a, b) => b[1] - a[1])[0];
+  return `<p class="small" style="margin:6px 0 0"><b>この銘柄だけで向きを変えると</b>（100万円）：${rows.map(([t, v]) => `${t} <span class="${v >= 0 ? 'plus' : 'minus'}">${fmtYen(v)}</span>`).join('／')}　→ この銘柄では「${best[0]}」が一番でした${kind !== 'fx' ? '（信用の金利は入っていません）' : ''}</p>`;
+}
 function renderTrades() {
   const kind = kindOf(ctx.mode);
   const r = runStrategy(ctx.candles, strategy, { kind, pair: ctx.symbol.replace(/=X$/, ''), regime: ctx.regime, fundamentalRatio: ctx.fundRatio, sides: bestWay(ctx.mode).sides });
@@ -110,6 +119,7 @@ function renderTrades() {
       <div class="stat"><div class="label">比較：買ってずっと持っていた場合</div><div class="value ${s.buyHold >= 0 ? 'plus' : 'minus'}">${fmtYen(s.buyHold)}</div></div>
     </div>
     <p class="small" style="margin:8px 0 0"><b>今の状態：</b>${r.open ? `${r.open.side > 0 ? '買い' : '売り'}で持っています（${esc(r.open.entryDate)}に${fmtPrice(r.open.entryPrice, d)}で入った・今の含み損益 <span class="${r.open.unreal >= 0 ? 'plus' : 'minus'}">${fmtYen(r.open.unreal)}</span>）` : '持っていません'}${nextTxt ? `<br><b>次の予定：</b>${nextTxt}` : ''}</p>
+    ${sidesLine(kind)}
     <p class="small muted" style="margin:4px 0 0">${esc(s.from)}〜${esc(s.to)}（${r.daily.length}取引日）</p>`;
 
   // チャート：値段と、入った・出た場所の印

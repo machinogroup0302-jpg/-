@@ -26,7 +26,7 @@ function sizeNote(r) {
   const side = r.total > 0 ? 1 : -1;
   if (side < 0 && listMode === 'us') return '<div class="small">あなたの設定なら：持っていたら売る候補（米国株は空売りしない計算）</div>';
   // やり方は「あなた専用」で一番良かったもの（自動）
-  const way = wayOf(listMode, store.get(`bestway_${listMode}`, null));
+  const way = wayOf(listMode, pf.bestWay?.[listMode]);
   if ((side < 0 && way.sides === 'long') || (side > 0 && way.sides === 'short')) return `<div class="small muted">おすすめのやり方（${esc(way.label)}）では入りません</div>`;
   const prices = Object.fromEntries(results.filter((x) => x.price).map((x) => [x.symbol, x.price]));
   if (usdjpy) prices['USDJPY=X'] ??= usdjpy;

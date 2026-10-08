@@ -829,24 +829,25 @@ test('為替：ロット数で決める', () => {
 import { sizeFor, sidesFor, splitBudget, orderText, lotNote } from '../public/js/plan.js';
 import { runStrategy as runS2 } from '../public/js/strategies.js';
 test('取引のしかた：現物・信用・空売り・為替の向き', () => {
-  const both = { budget: 1000000, stockAcct: 'both', stockMarginBudget: 400000, stockShort: true, maxPos: 2 };
-  assert.deepEqual(splitBudget(both, 'stock', 1000000), { cash: 600000, margin: 400000 });
-  assert.equal(sidesFor(both, 'stock'), 'both');
-  assert.equal(sidesFor({ stockAcct: 'cash', stockShort: true }, 'stock'), 'long');
+  const mix = { budget: 1000000, maxPos: 2, ...wayPf({}, 'stock', 'mixShort') };
+  assert.equal(sidesFor(mix, 'stock'), 'both');
+  assert.equal(sidesFor(wayPf({}, 'stock', 'shortOnly'), 'stock'), 'short');
+  assert.equal(sidesFor(wayPf({}, 'stock', 'cash'), 'stock'), 'long');
   assert.equal(sidesFor({ fxSides: 'short' }, 'fx'), 'short');
   assert.equal(sidesFor({ levUs: 2 }, 'us'), 'long');
   const args = { symbol: '7203.T', price: 1000, stop: 950, budget: 1000000, riskPct: 2, maxPos: 2 };
-  const buy = sizeFor(both, 'stock', 1, args);
+  const buy = sizeFor({ ...wayPf({}, 'stock', 'cash') }, 'stock', 1, args);
   assert.equal(buy.acct, 'cash');
-  assert.equal(orderText(1, buy), '現物で買う：300株');
-  const sell = sizeFor(both, 'stock', -1, { ...args, stop: 1050 });
+  assert.equal(orderText(1, buy), '現物で買う：400株');
+  const sell = sizeFor(mix, 'stock', -1, { ...args, stop: 1050 });
   assert.equal(sell.acct, 'margin');
   assert.match(orderText(-1, sell), /^信用で空売り/);
-  assert.equal(sizeFor({ stockAcct: 'cash' }, 'stock', -1, args).qty, 0);
-  // 高い株：現物では買えないが信用なら買える
-  const big = sizeFor(both, 'stock', 1, { ...args, price: 4000, stop: 3990 });
-  assert.equal(big.acct, 'margin');
-  assert.match(lotNote({ ...both }, 1, 6000), /信用なら買える/);
+  assert.equal(sizeFor(wayPf({}, 'stock', 'cash'), 'stock', -1, args).qty, 0);
+  // 現物で足りない分を信用で買い足す
+  const big = sizeFor(mix, 'stock', 1, { ...args, price: 4000, stop: 3990 });
+  assert.equal(big.acct, 'mix');
+  assert.match(orderText(1, big), /現物で買う：100株＋信用で買う/);
+  assert.match(lotNote({ budget: 1000000, maxPos: 2 }, 1, 6000), /信用なら買える/);
   // 向きを決めると、その向きの取引しか出ない
   const cs = [...Array(400)].map((_, i) => { const p = 100 + 10 * Math.sin(i / 12) + i * 0.02; return { time: 1.7e9 + i * 86400, open: p, high: p * 1.01, low: p * 0.99, close: p, volume: 1000 }; });
   const l = runS2(cs, 'combo', { kind: 'fx', sides: 'long' }).trades;
@@ -861,9 +862,9 @@ test('やり方を自動で選ぶ', () => {
   const long = mk(1, 0.02, 30);
   const shortLoss = mk(-1, -0.02, 30, 1);
   const cmp = cmpWays({ long, both: [...long, ...shortLoss] }, 'stock', { riskPct: 2, maxPos: 3 }, 1000000, {});
-  assert.equal(cmp.rows.length, 3);
-  assert.notEqual(cmp.best.key, 'short'); // 空売りが負けているなら選ばない
-  assert.ok(wNotes(cmp, 'stock', 1000000).some((x) => x.includes('空売りはおすすめしません')));
+  assert.equal(cmp.rows.length, 6); // 空売りだけ（short の取引）は渡していないので6つ
+  assert.ok(!cmp.best.short); // 空売りが負けているなら選ばない
+  assert.ok(wNotes(cmp, 'stock', 1000000).some((x) => x.includes('空売りはやめた方がいい')));
   assert.equal(wayPf({}, 'stock', 'short').stockShort, true);
   assert.equal(wayPf({}, 'fx', 'long').fxSides, 'long');
 });

@@ -4,7 +4,7 @@ import { api, $, esc, store, fmtPrice, fmtYen } from './util.js';
 import { runStrategy, signalOdds, oddsLabel, oddsText } from './strategies.js';
 import { pagedList } from './stockscreener.js';
 import { getProfile, setProfile, getHoldings, setHoldings } from './favorites.js';
-import { replayWithBudget, levFor, kindText, sizeFor, orderText, acctOf, CARRY, WAYS, wayOf, waySides, wayProfile, compareWays, wayNotes } from './plan.js';
+import { replayWithBudget, kindText, sizeFor, orderText, WAYS, wayOf, waySides, wayProfile, compareWays, wayNotes, replayOpts } from './plan.js';
 import { loadRegime, loadCandles, universe, kindOf } from './labview.js';
 import { adviseHolding, exitTiming, longTermView } from './holdingadvice.js';
 import { searchFx } from './fxpairs.js';
@@ -38,19 +38,20 @@ async function ensureScan(out) {
   return false;
 }
 
-async function logUniverse(mode, out) {
+async function logUniverse(mode, out, st = style) {
   const syms = universe(mode);
   const seen = new Set(syms.map(([c]) => c.toUpperCase()));
   const add = (code, name) => { const k = String(code).toUpperCase(); if (!seen.has(k)) { seen.add(k); syms.push([code, name]); } };
   for (const h of getHoldings(mode)) add(h.code, h.name);
-  if (mode === 'us' && style === 'swing') {
+  if (mode === 'us' && st === 'swing') {
     try { (await api('/api/us/list')).items.forEach((x) => add(x.symbol, x.name)); } catch { /* 一覧が取れなければ代表銘柄だけ */ }
   }
   if (mode === 'stock') {
     const scanned = await ensureScan(out);
     scanInfo = '';
     if (scanned) {
-      const views = style === 'day' ? [['up', 15], ['buy', 15]] : [['buy', 40], ['sell', 10]];
+      // 空売りも比べるので、下がりそうな会社も多めに入れる
+      const views = st === 'day' ? [['up', 15], ['buy', 15], ['down', 10]] : [['buy', 40], ['sell', 25]];
       for (const [view, n] of views) {
         try {
           const r = await api(`/api/stocks/scan?view=${view}&limit=${n}`);
@@ -86,16 +87,16 @@ const logCache = {};
 let logRunning = null;
 
 // 全銘柄を「総合判断」で計算する（「今のサイン」と「売買の一覧」で共通）
-async function computeLog(mode, out, force = false) {
+async function computeLog(mode, out, force = false, st = style) {
   const swingDays = getProfile().swingDays || 30;
-  const ck = `${mode}|${style}|${style === 'swing' ? swingDays : ''}`;
+  const ck = `${mode}|${st}|${st === 'swing' ? swingDays : ''}`;
   const hit = logCache[ck];
   if (hit && !force && Date.now() - hit.at < 30 * 60 * 1000) return hit.data;
   if (logRunning?.ck === ck) return logRunning.p;
   const p = (async () => {
     const regime = await loadRegime();
-    const day = style === 'day';
-    const list = await loadCandles(await logUniverse(mode, out), out, day ? '15m' : '1d', day ? 150 : 200);
+    const day = st === 'day';
+    const list = await loadCandles(await logUniverse(mode, out, st), out, day ? '15m' : '1d', day ? 150 : 200);
     out.innerHTML = '<p class="small muted"><span class="spinner"></span> 計算しています…</p>';
     await new Promise((r) => setTimeout(r, 30));
     const kind = kindOf(mode);
@@ -117,7 +118,7 @@ async function computeLog(mode, out, force = false) {
     }
     let usdjpy = prices['USDJPY=X'] || null;
     if (!usdjpy) { try { const u = await api('/api/chart?symbol=USDJPY&tf=1d'); usdjpy = u.candles[u.candles.length - 1].close; } catch { /* 取れなければ米国株の量は出さない */ } }
-    const data = { by, prices, usdjpy, count: list.length, at: Date.now(), style, scanInfo };
+    const data = { by, prices, usdjpy, count: list.length, at: Date.now(), style: st, scanInfo };
     logCache[ck] = { at: Date.now(), data };
     return data;
   })();
@@ -138,7 +139,13 @@ function ensureOdds(g) {
 }
 
 // どのやり方で見せるか：ふだんは「おすすめ（自動）」＝過去1年で一番良かったやり方
-export const bestWayKey = (mode) => store.get(`bestway_${mode}`, null);
+// （どちらも「あなたの設定」に入れて、パソコンとスマホで共有する）
+const wayViewOf = (mode) => getProfile().wayView?.[mode] || 'auto';
+function setWayPref(field, mode, key) {
+  const pf = getProfile();
+  if ((pf[field] || {})[mode] === key) return;
+  setProfile({ ...pf, [field]: { ...(pf[field] || {}), [mode]: key } });
+}
 function viewOf(r, mode) {
   const pf = getProfile();
   const budget = pf.budget || 1_000_000;
@@ -148,8 +155,8 @@ function viewOf(r, mode) {
     r.cmpKey = ck;
   }
   const best = r.cmp.best || wayOf(mode);
-  if (r.style === 'swing') store.set(`bestway_${mode}`, best.key);
-  const sel = store.get(`way_view_${mode}`, 'auto');
+  if (r.style === 'swing') setWayPref('bestWay', mode, best.key);
+  const sel = wayViewOf(mode);
   const way = sel === 'auto' || !WAYS[mode].some((w) => w.key === sel) ? best : wayOf(mode, sel);
   const g = ensureOdds(r.by[way.sides]);
   return { trades: g.trades, holding: g.holding, next: g.next, prices: r.prices, usdjpy: r.usdjpy, way, best, cmp: r.cmp, auto: way === best && sel === 'auto', pf: wayProfile(pf, mode, way.key), budget };
@@ -157,7 +164,7 @@ function viewOf(r, mode) {
 
 // やり方を選ぶボタン（おすすめ＝自動・ほかのやり方も見られる）
 function wayBar(v, mode) {
-  const sel = store.get(`way_view_${mode}`, 'auto');
+  const sel = wayViewOf(mode);
   const btn = (k, t) => `<button type="button" class="chip" data-way="${k}" aria-pressed="${k === sel}">${t}</button>`;
   return `<div class="way-bar">
     <div class="small" style="margin-bottom:4px">${v.auto || sel === 'auto' ? `🏆 <b>一番いいのは「${esc(v.best.label)}」だと思います</b>（過去1年で比べて自動で選んでいます）` : `「${esc(v.way.label)}」でやった場合を表示中（おすすめは「${esc(v.best.label)}」）`}</div>
@@ -199,8 +206,8 @@ function renderPlan(r0, mode) {
   const pf = r.pf;
   const budget = r.budget;
   const d = digitsOf(mode);
-  const lev = levFor(pf, mode);
-  const rule = { budget, riskPct: pf.riskPct, maxPos: pf.maxPos, capLev: lev, carry: mode !== 'fx' && acctOf(pf, mode) !== 'cash' ? CARRY : null };
+  // 表示中のやり方（現物・信用・空売り、為替の向き）で過去をやり直す
+  const rule = replayOpts(mode, r.way, { ...pf, budget }, r.prices);
   // 過去1年をあなたのルールでやり直す：全部やった場合と、確率の目安が高いものだけやった場合
   const all = replayWithBudget(r.trades, rule);
   const picky = replayWithBudget(r.trades, { ...rule, minOdds: 0.55 });
@@ -634,12 +641,26 @@ export function updateMine(mode, { force = false } = {}) {
   if (mineSub === 'list') return showList(mode, force);
 }
 
+// 「成績」タブ用：サイトがやるとしたら、どのやり方が一番いいか（全銘柄・過去1年・あなたの予算）
+export async function showWaysCard(el, mode) {
+  try {
+    const r = await computeLog(mode, el, false, 'swing');
+    if (getModeFn() !== mode) return;
+    const v = viewOf(r, mode);
+    const b = v.cmp.best;
+    el.innerHTML = `<p class="small" style="margin:0 0 6px">${r.count}銘柄を、全部のやり方（${WAYS[mode].map((w) => w.label).join('・')}）で過去1年やり直して比べました。</p>
+      ${waysHtml(v, mode)}
+      <p class="small" style="margin:6px 0 0">今は「<b>${esc(b.label)}</b>」でやるのが一番いいと判断して、「あなた専用」のプラン・サイン・メールもこのやり方で出しています。</p>
+      ${updatedNote(r)}`;
+  } catch (e) { el.innerHTML = `<p class="error">${esc(e.message)}</p>`; }
+}
+
 export function initMine(getMode, openChart = () => {}) {
   getModeFn = getMode;
   $('view-mine').addEventListener('click', (e) => {
     // やり方を切り替える（計算し直さずに、表示だけ変える）
     const w = e.target.closest('[data-way]');
-    if (w) { store.set(`way_view_${getMode()}`, w.dataset.way); updateMine(getMode()); return; }
+    if (w) { setWayPref('wayView', getMode(), w.dataset.way); updateMine(getMode()); return; }
     const a = e.target.closest('.sym-link');
     if (!a) return;
     e.preventDefault();

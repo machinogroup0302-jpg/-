@@ -56,7 +56,7 @@ function itemHtml(r) {
     <div class="li-head"><span class="name">${esc(r.name)} <span class="small muted">${esc(r.code)}</span></span>
       ${stopBadge(r.stop)}<span class="badge ${r.score > 15 ? 'buy' : r.score < -15 ? 'sell' : 'neutral'}">${esc(r.label)}</span></div>
     <div class="small num">${yen(r.price)}　今日 ${chg(r.changePct)}　<span class="muted">${esc(r.market)}・${esc(r.sector)}</span></div>
-    ${(view === 'buy' || view === 'sell') && lotNote(getProfile(), view === 'sell' ? -1 : 1, r.price, store.get('bestway_stock', null)) ? `<div class="small">あなたの設定なら：${esc(lotNote(getProfile(), view === 'sell' ? -1 : 1, r.price, store.get('bestway_stock', null)))}</div>` : ''}
+    ${(view === 'buy' || view === 'sell') && lotNote(getProfile(), view === 'sell' ? -1 : 1, r.price, getProfile().bestWay?.stock) ? `<div class="small">あなたの設定なら：${esc(lotNote(getProfile(), view === 'sell' ? -1 : 1, r.price, getProfile().bestWay?.stock))}</div>` : ''}
   </li>`;
 }
 
