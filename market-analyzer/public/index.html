@@ -429,11 +429,12 @@
         <label class="small" style="margin-top:10px;display:block"><b>取引のしかた</b></label>
         <div class="small muted" style="margin:2px 0 4px">日本株（楽天証券など）</div><div class="seg" id="pf-lev-stock"></div>
         <div class="small muted" style="margin:6px 0 4px">米国株</div><div class="seg" id="pf-lev-us"></div>
-        <p class="small muted" style="margin:4px 0 0">信用にすると、使えるお金の約3.3倍（米国株は約2倍）まで買えるようになります。実際に買う量は「1回で減ってもいい額」から計算するので、いつも目いっぱい買うわけではありません。</p>
-        <div class="small muted" style="margin:10px 0 4px">為替（LION FXなど）：1回に取引するロット数</div>
+        <p class="small muted" style="margin:4px 0 0">楽天証券の口座で、現物で買うか信用で買うかを選んでください。信用にすると、使えるお金より多く買えるようになります（楽天証券の決まりの範囲まで）。実際に買う量は「1回で減ってもいい額」から計算するので、いつも目いっぱい買うわけではありません。</p>
+        <div class="small muted" style="margin:10px 0 4px">為替（LION FX）：1回に取引するロット数</div>
         <div class="row"><input class="input grow" id="pf-fx-lots" type="number" inputmode="decimal" min="0" step="0.1" placeholder="空欄＝おまかせ（損切りの幅から計算）"><span class="small">ロット</span></div>
+        <div class="chips" id="pf-fx-lots-quick" style="margin:6px 0 0"></div>
         <div class="small muted" style="margin:6px 0 4px">1ロットの大きさ</div><div class="seg" id="pf-fx-lotsize"></div>
-        <p class="small muted" style="margin:4px 0 0">LION FXは、ほとんどの通貨ペアで1ロット＝1万通貨です（ランド円などは会社や通貨ペアで違うことがあるので、取引画面で確かめてください）。必要な証拠金は国内の決まりの25倍で計算し、「実際に何倍で取引しているか」も表示します。ロット数を増やすほど、もうけも損も大きくなり、強制決済（ロスカット）されやすくなります。</p>
+        <p class="small muted" style="margin:4px 0 0">最初は1ロット＝1万通貨にしています（通貨ペアによって違うことがあるので、LION FXの取引画面で確かめてください）。「おまかせ」にすると、損切りの幅から毎回の量を計算します。必要な証拠金も一緒に表示します。ロット数を増やすほど、もうけも損も大きくなり、強制決済（ロスカット）されやすくなります。</p>
       </div>
       <div class="field">
         <label>お気に入り（チャート画面の上に並ぶボタン・<span id="fav-mode">為替</span>）</label>

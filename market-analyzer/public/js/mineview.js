@@ -168,7 +168,7 @@ function renderPlan(r, mode) {
     const L = LEV_LIMIT[mode];
     levRows = [
       { label: `現物${lev === 1 ? '（あなたの設定）' : ''}`, r: replayWithBudget(r.trades, { ...base, leverage: 1, maint: MAINT[mode] }) },
-      { label: `信用で約${L}倍まで使う${lev > 1 ? '（あなたの設定）' : '（参考）'}`, r: replayWithBudget(r.trades, { ...base, leverage: L, maint: MAINT[mode] }) },
+      { label: `信用で目いっぱい買う${lev > 1 ? '（あなたの設定）' : '（参考）'}`, r: replayWithBudget(r.trades, { ...base, leverage: L, maint: MAINT[mode] }) },
     ];
   }
   const opens = r.next.filter((x) => x.type === 'open').map((x) => ({ ...x, size: sz(x, x.stopEst) }))
@@ -190,7 +190,7 @@ function renderPlan(r, mode) {
       return `<li class="plan-pick">
         <div class="li-head"><span class="name">${symLink(x.symbol, x.name)}</span>${sideBadge(x.side)}</div>
         ${timeLine(mode, x.t)}
-        <div class="plan-order"><b>${x.side > 0 ? '買う' : '売る'}：${s.lots ? `${s.lots}ロット（${s.qty.toLocaleString()}${s.unitLabel}）` : `${s.qty.toLocaleString()}${s.unitLabel}`}</b>（今 ${fmtPrice(x.last, d)}・${s.kindLabel} 約${yen0(s.cost)}${s.effLev ? `・実際は予算の約${s.effLev.toFixed(1)}倍の取引` : ''}）</div>
+        <div class="plan-order"><b>${x.side > 0 ? '買う' : '売る'}：${s.lots ? `${s.lots}ロット（${s.qty.toLocaleString()}${s.unitLabel}）` : `${s.qty.toLocaleString()}${s.unitLabel}`}</b>（今 ${fmtPrice(x.last, d)}・${s.kindLabel} 約${yen0(s.cost)}）</div>
         ${s.over ? `<p class="small" style="color:var(--warn);margin:2px 0">⚠ ${s.lots}ロットだと、損切りまでいくと約${yen0(s.maxLoss)}減ります（1回で減ってもいい${yen0(s.riskYen)}を超えています）。ロット数を減らすか、設定でおまかせにするのがおすすめです。</p>` : ''}
         <div class="grid2 plan-grid">
           <div class="stat"><div class="label">損切りの値段</div><div class="value minus" style="font-size:16px">${fmtPrice(x.stopEst, d)}</div><div class="small muted">ここまで来たら決済：約−${yen0(s.maxLoss)}</div></div>
@@ -213,7 +213,7 @@ function renderPlan(r, mode) {
     <div class="grid2">${levRows.map((x) => replayCard(esc(x.label), x.r)).join('')}</div>
     <p class="small muted" style="margin:4px 0 0">${mode === 'fx'
     ? '「おまかせ」は損切りの幅から毎回の量を決めた場合、「毎回○ロット」はいつも同じ量で取引した場合です。'
-    : `「信用で約${LEV_LIMIT[mode]}倍まで使う」は、損切りの幅で量を減らさずに「予算÷同時に持つ数×${LEV_LIMIT[mode]}」の金額でいつも入った場合です（いちばん攻めた場合の目安）。`}持っている間に一番不利になったところで、${mode === 'fx' ? '証拠金維持率が100%' : mode === 'us' ? '保証金が取引金額の25%' : '保証金維持率が20%'}を割ったら「ロスカット（強制決済）」としています。設定（⚙）の「取引のしかた」で変えられます。</p>
+    : '「信用で目いっぱい買う」は、損切りの幅で量を減らさずに、信用で買える上限までいつも買った場合です（いちばん攻めた場合の目安）。'}持っている間に一番不利になったところで、${mode === 'fx' ? '証拠金維持率が100%' : mode === 'us' ? '保証金が取引金額の25%' : '保証金維持率が20%'}を割ったら「ロスカット（強制決済）」としています。設定（⚙）の「取引のしかた」で変えられます。</p>
     <p class="small" style="margin:6px 0 0"><b>おすすめ：</b>${usePicky ? '確率の目安が55%以上のサインだけに絞る方が成績が良かったので、上の「今やるといいこと」も55%以上に絞っています。' : '絞らずにサインどおりにやる方が成績が良かったので、50%以上のサインを出しています。'}</p>
     <p class="notice" style="margin-top:8px">過去の値動きでの計算です。日本株は100株単位、為替は1,000通貨単位で、取引のしかたは「${esc(kindText(pf, mode))}」で計算しています（為替の証拠金は国内の決まりの25倍で計算）。手数料などは差し引いていますが、実際の値段（次の日の始まりの値段）は少しずれます。最終的な判断はご自身で行ってください。</p>
     ${updatedNote(r)}`;

@@ -23,7 +23,7 @@ export function sizeOpts(profile, mode) {
   if (mode === 'fx' && Number(profile?.fxLots) > 0) { o.fxLots = Number(profile.fxLots); o.fxLotSize = Number(profile.fxLotSize) || 10000; }
   return o;
 }
-export const kindText = (profile, mode) => (mode === 'fx' ? (Number(profile?.fxLots) > 0 ? `毎回${profile.fxLots}ロット（1ロット＝${(Number(profile.fxLotSize) || 10000).toLocaleString()}通貨）` : 'ロット数はおまかせ') : levFor(profile, mode) > 1 ? `信用（最大約${LEV_LIMIT[mode]}倍）` : '現物');
+export const kindText = (profile, mode) => (mode === 'fx' ? (Number(profile?.fxLots) > 0 ? `毎回${profile.fxLots}ロット（1ロット＝${(Number(profile.fxLotSize) || 10000).toLocaleString()}通貨）` : 'ロット数はおまかせ') : levFor(profile, mode) > 1 ? '信用' : '現物');
 const CCY = ['USD', 'EUR', 'GBP', 'AUD', 'NZD', 'CAD', 'CHF', 'ZAR', 'MXN', 'TRY', 'CNH', 'HKD', 'SGD', 'NOK', 'SEK'];
 
 // 為替：値段の単位（決済通貨）が1動いたら何円か。例：EURUSD → USDJPY の値段

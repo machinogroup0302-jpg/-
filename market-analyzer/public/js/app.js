@@ -96,9 +96,15 @@ async function openSettings() {
   seg($('pf-risk'), [['1', '1%（慎重）'], ['2', '2%（ふつう）'], ['3', '3%（積極的）']], String(pf.riskPct));
   seg($('pf-maxpos'), [['1', '1つ'], ['2', '2つ'], ['3', '3つ'], ['5', '5つ']], String(pf.maxPos));
   $('pf-day').checked = pf.notifyDay !== false;
-  seg($('pf-lev-stock'), [['1', '現物'], ['3.3', '信用（最大約3.3倍）']], pf.levStock > 1 ? '3.3' : '1');
-  seg($('pf-lev-us'), [['1', '現物'], ['2', '信用（最大約2倍）']], pf.levUs > 1 ? '2' : '1');
+  seg($('pf-lev-stock'), [['1', '現物'], ['3.3', '信用']], pf.levStock > 1 ? '3.3' : '1');
+  seg($('pf-lev-us'), [['1', '現物'], ['2', '信用']], pf.levUs > 1 ? '2' : '1');
   $('pf-fx-lots').value = pf.fxLots > 0 ? String(pf.fxLots) : '';
+  const quick = $('pf-fx-lots-quick');
+  const markLots = () => quick.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.v === (Number($('pf-fx-lots').value) > 0 ? String(Number($('pf-fx-lots').value)) : ''))));
+  quick.innerHTML = [['', 'おまかせ'], ['0.1', '0.1'], ['0.5', '0.5'], ['1', '1'], ['2', '2'], ['3', '3'], ['5', '5']].map(([v, t]) => `<button type="button" class="chip" data-v="${v}">${t}${v ? 'ロット' : ''}</button>`).join('');
+  quick.onclick = (e) => { const b = e.target.closest('button'); if (b) { $('pf-fx-lots').value = b.dataset.v; markLots(); } };
+  $('pf-fx-lots').oninput = markLots;
+  markLots();
   seg($('pf-fx-lotsize'), [['1000', '1,000通貨'], ['10000', '1万通貨'], ['100000', '10万通貨']], String(pf.fxLotSize || 10000));
   $('pf-notify').innerHTML = [['fx', '為替'], ['stock', '日本株'], ['us', '米国株']].map(([k, v]) => `<button type="button" class="chip" data-k="${k}" aria-pressed="${!!pf.notify?.[k]}">${v}のサインを通知</button>`).join('');
   renderSyncStatus();
