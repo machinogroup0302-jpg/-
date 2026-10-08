@@ -915,3 +915,12 @@ test('買い増し・ナンピンのアドバイス', () => {
   const a2 = addOnAdvice(h2, down, advH(h2, down, { mode: 'stock' }), { mode: 'stock' });
   assert.equal(a2.kind, 'no'); // 下がり続けているならナンピンしない
 });
+
+test('取引分析：為替のロット数のアドバイス', () => {
+  const t = (qty, pnl, i) => ({ side: '買', qty, pnl, date: new Date(Date.UTC(2026, 0, 1, i)).toISOString(), symbol: 'ドル円' });
+  const list = [t(1, -3000, 1), t(3, -9000, 2), t(1, 2000, 3), t(1, -3000, 4), t(4, -12000, 5), t(1, 2500, 6), t(1, 3000, 7)];
+  const c = coach2(list, 'fx', { budget: 300000, riskPct: 2 });
+  const f = c.findings.find((x) => x.cat === '量' && /ロット/.test(x.title));
+  assert.match(f.title, /上げすぎない/);
+  assert.match(f.body, /最大2\.0ロットまで/);
+});

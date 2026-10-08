@@ -168,7 +168,8 @@ function render() {
   }
   const pct = (v) => `${Math.round(v * 100)}%`;
   const bw = getProfile().bestWay?.[tradeMode];
-  const c = coach(trades, tradeMode, { siteBest: bw ? wayOf(tradeMode, bw).label : '' });
+  const pf = getProfile();
+  const c = coach(trades, tradeMode, { siteBest: bw ? wayOf(tradeMode, bw).label : '', budget: pf.budget || 0, riskPct: pf.riskPct || 2 });
   const period = s.from ? `${new Date(s.from).toLocaleDateString('ja-JP')} 〜 ${new Date(s.to).toLocaleDateString('ja-JP')}` : '';
   out.innerHTML = `
     <div class="card">

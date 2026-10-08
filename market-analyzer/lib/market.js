@@ -35,7 +35,8 @@ async function fetchJson(path) {
   let lastErr;
   for (const host of HOSTS) {
     try {
-      const res = await fetch(host + path, { headers: { 'User-Agent': UA, Accept: 'application/json' } });
+      // 返事が来ないときに、ずっと待ち続けないように（12秒であきらめて次の場所を試す）
+      const res = await fetch(host + path, { headers: { 'User-Agent': UA, Accept: 'application/json' }, signal: AbortSignal.timeout(12000) });
       if (!res.ok) throw new Error(`データ取得に失敗しました (HTTP ${res.status})`);
       return await res.json();
     } catch (e) {

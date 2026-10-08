@@ -82,7 +82,7 @@ const hasTime = (list, key = 'date') => list.filter((t) => t[key]).some((t) => {
  * @param {Array} allTrades 取引（date, symbol, side, qty, pnl, openDate?）
  * @param {'fx'|'stock'|'us'} mode
  */
-export function coach(allTrades, mode = 'fx', { siteBest = '' } = {}) {
+export function coach(allTrades, mode = 'fx', { siteBest = '', budget = 0, riskPct = 2 } = {}) {
   const trades = allTrades.filter((t) => t.pnl != null && t.pnl !== 0 && t.date)
     .sort((a, b) => new Date(a.date) - new Date(b.date));
   if (trades.length < 3) return null;
@@ -275,6 +275,36 @@ export function coach(allTrades, mode = 'fx', { siteBest = '' } = {}) {
       const b = summarize(big), n = summarize(norm);
       if (b.pnl < 0 && b.winRate < n.winRate) add({ cat: '量', level: 'warn', impact: -b.pnl, title: 'いつもより多い量で取引したときに負けています', body: `いつもの1.5倍より多い量の取引は${b.count}回で${yen(b.pnl)}（勝率${pct(b.winRate)}）。いつもの量では${yen(n.pnl)}（勝率${pct(n.winRate)}）です。`, rule: '自信があるときほど量を増やしがちですが、結果は逆になっています。量は毎回同じにしましょう。' });
     }
+  }
+
+  // ---------- 8b. 為替：ロット数を上げすぎていないか ----------
+  if (mode === 'fx' && sized.length >= 5) {
+    // CSVの数量が「通貨の数」ならロットに直す（1ロット＝1万通貨）
+    const unitIsCcy = median(sized.map((t) => t.qty)) >= 1000;
+    const lotsOf = (t) => (unitIsCcy ? t.qty / 10000 : t.qty);
+    const ls = sized.map(lotsOf);
+    const medL = median(ls), maxL = Math.max(...ls);
+    const lossPer = sized.filter((t) => t.pnl < 0).map((t) => -t.pnl / lotsOf(t)).filter((v) => v > 0);
+    const avgLossPerLot = lossPer.length ? sum(lossPer) / lossPer.length : 0;
+    const lines = [`ふだんは${medL.toFixed(1)}ロット、一番多いときは${maxL.toFixed(1)}ロットで取引しています。`];
+    let level = 'good', impact = 0, rule = '';
+    const up = sizeUp.filter((t) => t.qty > 0);
+    if (up.length >= 2) {
+      const u = summarize(up);
+      lines.push(`負けた直後にロット数を上げた取引が${u.count}回あり、合計${yen(u.pnl)}（勝率${pct(u.winRate)}）です。`);
+      if (u.pnl < 0) { level = 'bad'; impact += -u.pnl; }
+    }
+    if (maxL > medL * 2) { lines.push(`ふだんの2倍以上のロット数で入ったことがあります。1回の負けが大きくなりやすいです。`); if (level === 'good') level = 'warn'; }
+    if (avgLossPerLot && budget > 0) {
+      const maxOk = (budget * riskPct / 100) / avgLossPerLot;
+      lines.push(`あなたの負けは1ロットあたり平均${amt(avgLossPerLot)}です。予算${amt(budget)}の${riskPct}%（${amt(budget * riskPct / 100)}）に1回の負けを収めるなら、<b>ロット数は最大${Math.max(0.1, Math.floor(maxOk * 10) / 10).toFixed(1)}ロットまで</b>がおすすめです。`);
+      const over = sized.filter((t) => lotsOf(t) > maxOk);
+      if (over.length) { lines.push(`それを超えるロット数の取引が${over.length}回あり、合計${yen(sum(over.map((t) => t.pnl)))}でした。`); if (level === 'good') level = 'warn'; impact += Math.max(0, -sum(over.map((t) => t.pnl)) * 0.5); }
+    } else if (avgLossPerLot) {
+      lines.push(`あなたの負けは1ロットあたり平均${amt(avgLossPerLot)}です。設定（⚙）に予算を入れると、何ロットまでにすべきかも出します。`);
+    }
+    rule = level === 'good' ? 'ロット数は安定しています。この量を続けましょう。' : 'ロット数は毎回同じにして、負けたあとに増やさないこと。上がりそうに見えても、決めた最大ロット数を超えないようにしましょう。';
+    add({ cat: '量', level, impact, title: level === 'good' ? 'ロット数は適切です' : 'ロット数を上げすぎないようにしましょう', body: lines.join('<br>'), rule });
   }
 
   // ---------- 9. 買い・売り ----------

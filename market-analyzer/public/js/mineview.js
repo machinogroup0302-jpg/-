@@ -266,7 +266,7 @@ function renderPlan(r0, mode) {
 
     <h3>🔴 持っていたら決済した方がいいもの</h3>
     ${closes.length ? `<ul class="list">${closes.map((x) => `<li><div class="li-head"><span class="name">${symLink(x.symbol, x.name)}</span>${x.open ? sideBadge(x.open.side) : ''}</div>
-      <div class="small"><b>${nextText()}決済</b>：${esc(x.reason)}</div>${timeLine(mode, x.t)}</li>`).join('')}</ul>` : '<p class="small muted">今はありません。</p>'}
+      <div class="small"><b>${nextText()}決済</b>：${esc(x.reason)}</div>${x.open ? moveLine(r, mode, x.open.side, x.symbol, x.open.entryPrice, x.last, Math.abs(x.open.entryPrice - (x.open.stop ?? x.open.entryPrice * 0.97)) / x.open.entryPrice, 'を決済（今の値段なら）') : ''}${timeLine(mode, x.t)}</li>`).join('')}</ul>` : '<p class="small muted">今はありません。</p>'}
 
     ${rest.length ? `<details class="why-box" style="margin-top:10px"><summary>見送ったサイン（${rest.length}件）</summary><ul class="list">${rest.map((x) => `<li class="small"><b>${esc(x.name)}</b> ${sideBadge(x.side)} 確率${x.odds ? Math.round(x.odds.p * 100) + '%' : '—'}　<span class="muted">${
       !x.odds || x.odds.p < minOdds ? `勝つ確率の目安が${Math.round(minOdds * 100)}%未満` : x.odds.expect <= 0 ? '勝っても負けても平均するとマイナス' : x.size && x.size.qty === 0 ? esc(x.size.why) : !x.size ? '量を計算できませんでした' : `同時に持つ数（${pf.maxPos}つ）を超えるため`}</span></li>`).join('')}</ul></details>` : ''}
@@ -332,7 +332,7 @@ function renderNow(r0, mode) {
       const g = x.open ? x.open.side * (x.last / x.open.entryPrice - 1) : 0;
       return `<li><div class="li-head"><span class="name">${symLink(x.symbol, x.name)}</span>${x.open ? sideBadge(x.open.side) : ''}<b class="${g >= 0 ? 'plus' : 'minus'}">${g >= 0 ? '+' : ''}${(g * 100).toFixed(1)}%</b></div>
       <div class="small"><b>${nextText()}決済</b>：${esc(x.reason)}</div>${timeLine(mode, x.t)}
-      ${x.open ? `<div class="small muted">${when(x.open.entryDate, x.open.entryTime)}に${fmtPrice(x.open.entryPrice, d)}で${x.open.side > 0 ? '買い' : '売り'} → 今 ${fmtPrice(x.last, d)}</div>` : ''}
+      ${x.open ? `<div class="small muted">${when(x.open.entryDate, x.open.entryTime)}に${fmtPrice(x.open.entryPrice, d)}で${x.open.side > 0 ? '買い' : '売り'} → 今 ${fmtPrice(x.last, d)}</div>${moveLine(r, mode, x.open.side, x.symbol, x.open.entryPrice, x.last, Math.abs(x.open.entryPrice - (x.open.stop ?? x.open.entryPrice * 0.97)) / x.open.entryPrice, 'を決済（今の値段なら）')}` : ''}
       <details class="why-box"><summary>理由を見る</summary>${whyList(x.why)}</details></li>`;
     }).join('')}</ul>` : '<p class="small muted">今は決済するサインはありません。</p>'}
     <h3>📦 計算の上で持っている銘柄<span class="sub">${r.holding.length}件</span></h3>
@@ -341,6 +341,7 @@ function renderNow(r0, mode) {
       const g = x.side * (x.last / x.entryPrice - 1);
       return `<li><div class="li-head"><span class="name">${symLink(x.symbol, x.name)}</span>${sideBadge(x.side)}<b class="${g >= 0 ? 'plus' : 'minus'}">${g >= 0 ? '+' : ''}${(g * 100).toFixed(1)}%</b></div>
       <div class="small">${when(x.entryDate, x.entryTime)}に ${fmtPrice(x.entryPrice, d)} で${x.side > 0 ? '買い' : '売り'} → 今 ${fmtPrice(x.last, d)}</div>
+      ${moveLine(r, mode, x.side, x.symbol, x.entryPrice, x.last, Math.abs(x.entryPrice - x.stop) / x.entryPrice, 'で持っている（含み損益）')}
       <div class="small muted">損切りの線 ${fmtPrice(x.stop, d)}${x.take ? `・利益確定の目標 ${fmtPrice(x.take, d)}` : ''}</div>
       ${oddsHtml(x.odds, { compact: true })}
       <details class="why-box"><summary>入った理由を見る</summary>${whyList(x.why)}</details></li>`;
@@ -350,6 +351,26 @@ function renderNow(r0, mode) {
 }
 
 // 売買の一覧：あなたの設定なら、どれだけ入って、いくらの損益だったか
+// 量の書き方：「0.2ロット（2,000通貨）」「現物1,500株＋信用1,500株」「信用300株」
+function amountText(s) {
+  if (!s || !(s.qty > 0)) return '';
+  if (s.acct === 'mix') return `現物${s.cashQty.toLocaleString()}${s.unitLabel}＋信用${s.marginQty.toLocaleString()}${s.unitLabel}`;
+  const n = s.lots ? `${s.lots}ロット（${s.qty.toLocaleString()}${s.unitLabel}）` : s.lotSize ? `${Math.round((s.qty / s.lotSize) * 10) / 10}ロット（${s.qty.toLocaleString()}${s.unitLabel}）` : `${s.qty.toLocaleString()}${s.unitLabel}`;
+  return s.acct ? `${s.acctText}${n}` : n;
+}
+// 入った値段と損切りの幅から、そのとき入っていた量（あなたの予算・やり方で）
+function posAt(r, mode, side, symbol, entryPrice, stopPct) {
+  return sizeOf(r, mode, side, symbol, entryPrice, entryPrice * (1 - side * (stopPct || 0.03)));
+}
+// 決済・含み損益の1行：「0.2ロット（2,000通貨）を決済 → +566.5pips・+11,330円」
+function moveLine(r, mode, side, symbol, entryPrice, nowPrice, stopPct, verb) {
+  const s = posAt(r, mode, side, symbol, entryPrice, stopPct);
+  if (!s || !(s.qty > 0)) return '';
+  const y = side * (nowPrice - entryPrice) * s.perPrice;
+  const pips = mode === 'fx' ? `${pipsText(pipsOf(symbol, side, entryPrice, nowPrice))}・` : '';
+  return `<div class="small qty-line">📦 <b>${amountText(s)}</b>${verb} → ${pips}<b class="${y >= 0 ? 'plus' : 'minus'}">${fmtYen(y)}</b></div>`;
+}
+
 function logSize(r, mode, t, d) {
   const s = sizeOf(r, mode, t.side, t.symbol, t.entryPrice, t.entryPrice * (1 - t.side * (t.stopPct || 0.03)));
   if (!s || !(s.qty > 0)) return '';
@@ -362,8 +383,14 @@ let logFilter = 'all';
 function renderLog(r0, mode) {
   const r = viewOf(r0, mode);
   const d = digitsOf(mode);
+  // 1回ずつ、あなたの予算・やり方での量と損益（量が出せないときは100万円分で計算）
+  const pos = new Map(r.trades.map((t) => {
+    const s = posAt(r, mode, t.side, t.symbol, t.entryPrice, t.stopPct);
+    return [t, s?.qty > 0 ? { s, yen: t.side * (t.exitPrice - t.entryPrice) * s.perPrice } : { s: null, yen: t.pnl }];
+  }));
+  const yenOf = (t) => pos.get(t).yen;
   const wins = r.trades.filter((t) => t.pnl > 0);
-  const total = r.trades.reduce((a, t) => a + t.pnl, 0);
+  const total = r.trades.reduce((a, t) => a + yenOf(t), 0);
   const sorted = r.trades.slice().sort((a, b) => b.entryDate.localeCompare(a.entryDate));
   // 確率の目安ごとに、実際どれくらい勝てたか（目安が当てになるかの確認）
   const band = (lo, hi) => { const g = r.trades.filter((t) => t.odds && t.odds.p >= lo && t.odds.p < hi); return { n: g.length, w: g.filter((t) => t.pnl > 0).length }; };
@@ -373,7 +400,7 @@ function renderLog(r0, mode) {
     <div class="grid2">
       <div class="stat"><div class="label">取引の回数（${r0.count}銘柄）</div><div class="value">${r.trades.length}回</div></div>
       <div class="stat"><div class="label">勝率</div><div class="value">${pct(r.trades.length ? wins.length / r.trades.length : null)}</div></div>
-      <div class="stat"><div class="label">合計の損益（決済した分）</div><div class="value ${total >= 0 ? 'plus' : 'minus'}">${fmtYen(total)}</div></div>
+      <div class="stat"><div class="label">合計の損益（あなたの予算・決済した分）</div><div class="value ${total >= 0 ? 'plus' : 'minus'}">${fmtYen(total)}</div></div>
       <div class="stat"><div class="label">1回あたりの平均</div><div class="value ${total >= 0 ? 'plus' : 'minus'}">${fmtYen(r.trades.length ? total / r.trades.length : 0)}</div></div>
     </div>
     <h3>確率の目安は当たっていた？</h3>
@@ -386,12 +413,12 @@ function renderLog(r0, mode) {
   const draw = () => {
     const f = { all: () => true, win: (t) => t.pnl > 0, loss: (t) => t.pnl <= 0, buy: (t) => t.side > 0, sell: (t) => t.side < 0 }[logFilter];
     pagedList($('lab-log-list'), sorted.filter(f), (t) => `<li class="log-item">
-      <div class="li-head"><span class="name">${symLink(t.symbol, t.name)}</span>${sideBadge(t.side)}<b class="${t.pnl >= 0 ? 'plus' : 'minus'}" style="font-size:16px">${t.pnl >= 0 ? '勝ち ' : '負け '}${fmtYen(t.pnl)}</b></div>
+      <div class="li-head"><span class="name">${symLink(t.symbol, t.name)}</span>${sideBadge(t.side)}<b class="${yenOf(t) >= 0 ? 'plus' : 'minus'}" style="font-size:16px">${yenOf(t) >= 0 ? '勝ち ' : '負け '}${fmtYen(yenOf(t))}</b></div>
       <div class="timeline">
-        <div class="tl-step"><span class="tl-dot in"></span><div><b>${when(t.entryDate, t.entryTime)} ${t.side > 0 ? '買った' : '売った'}</b>　<span class="num">${fmtPrice(t.entryPrice, d)}</span><div class="small muted">${esc(t.reasonIn)}</div></div></div>
-        <div class="tl-step"><span class="tl-dot out"></span><div><b>${when(t.exitDate, t.exitTime)} 決済</b>　<span class="num">${fmtPrice(t.exitPrice, d)}</span>（${heldText(t)}・<span class="${t.ret >= 0 ? 'plus' : 'minus'}">${t.ret >= 0 ? '+' : ''}${(t.ret * 100).toFixed(1)}%</span>）<div class="small muted">${esc(t.reasonOut)}</div></div></div>
+        <div class="tl-step"><span class="tl-dot in"></span><div><b>${when(t.entryDate, t.entryTime)} ${t.side > 0 ? '買った' : '売った'}</b>　<span class="num">${fmtPrice(t.entryPrice, d)}</span>${pos.get(t).s ? `　<b>${amountText(pos.get(t).s)}</b>` : ''}<div class="small muted">${esc(t.reasonIn)}</div></div></div>
+        <div class="tl-step"><span class="tl-dot out"></span><div><b>${when(t.exitDate, t.exitTime)} 決済</b>　<span class="num">${fmtPrice(t.exitPrice, d)}</span>${pos.get(t).s ? `　<b>${amountText(pos.get(t).s)}を${t.side > 0 ? '売って' : '買い戻して'}決済</b>` : ''}（${heldText(t)}・${mode === 'fx' ? `${pipsText(pipsOf(t.symbol, t.side, t.entryPrice, t.exitPrice))}・` : ''}<span class="${t.ret >= 0 ? 'plus' : 'minus'}">${t.ret >= 0 ? '+' : ''}${(t.ret * 100).toFixed(1)}%</span>）<div class="small muted">${esc(t.reasonOut)}</div></div></div>
       </div>
-      ${logSize(r, mode, t, d)}
+      ${pos.get(t).s ? '' : '<div class="small muted">あなたの予算では入れない量だったので、損益は100万円分で計算しています</div>'}
       ${oddsHtml(t.odds, { compact: true })}
       <details class="why-box"><summary>くわしい理由を見る</summary><div class="small"><b>入った理由</b></div>${whyList(t.whyIn)}<div class="small" style="margin-top:4px"><b>決済した理由</b></div>${whyList(t.whyOut)}</details></li>`,
     { empty: '該当する取引はありません', tag: 'div', wrap: (b) => `<ul class="list">${b}</ul>` });
@@ -433,7 +460,9 @@ async function adviceFor(mode, list) {
   await Promise.all([...need].map(async (s) => {
     try {
       const hit = holdCache[s];
-      const d = hit && Date.now() - hit.at < 5 * 60 * 1000 ? hit.d : await api(`/api/chart?symbol=${encodeURIComponent(s)}&tf=1d`);
+      // 15秒で返ってこなければあきらめる（前に取れた値動きがあれば、それを使う）
+      const d = hit && Date.now() - hit.at < 5 * 60 * 1000 ? hit.d
+        : await Promise.race([api(`/api/chart?symbol=${encodeURIComponent(s)}&tf=1d`), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 15000))]).catch((e) => { if (hit) return hit.d; throw e; });
       holdCache[s] = { at: Date.now(), d };
       candles[s] = d.candles;
       prices[s] = d.candles[d.candles.length - 1]?.close;
@@ -450,6 +479,9 @@ async function adviceFor(mode, list) {
   }
   const profile = getProfile();
   return list.map((h) => {
+    try { return adviceOne(h); } catch (e) { console.error(e); return { h, adv: null }; }
+  });
+  function adviceOne(h) {
     const sym = symbolOf(mode, h.code);
     const hh = { ...h, symbol: sym };
     const adv = adviseHolding(hh, candles[sym], { mode, prices, usdjpy: prices['USDJPY=X'], profile, earningsDate: earnings[h.code], today });
@@ -457,7 +489,7 @@ async function adviceFor(mode, list) {
     const longView = adv ? longTermView(hh, candles[sym], adv, { mode, prices, usdjpy: prices['USDJPY=X'] }) : null;
     const addOn = adv ? addOnAdvice(hh, candles[sym], adv, { mode }) : null;
     return { h, adv, timing, longView, addOn };
-  });
+  }
 }
 
 // いつ決済するのが一番いいか（日数ごとの見込み）
@@ -511,6 +543,13 @@ export function mergeBuy(h, buy) {
 
 let addFormTouched = false;
 async function showHoldings(mode) {
+  try { await showHoldingsInner(mode); } catch (e) {
+    console.error(e);
+    $('hold-list').innerHTML = `<div class="card"><p class="small error">表示できませんでした（${esc(e.message)}）。</p><button class="btn block" id="hold-retry">もう一度読み込む</button></div>`;
+    $('hold-retry').onclick = () => showHoldings(mode);
+  }
+}
+async function showHoldingsInner(mode) {
   const box = $('hold-list');
   const list = getHoldings(mode);
   // 銘柄が入っていれば、追加の入力欄はたたんでおく（押せば開く）
@@ -528,7 +567,7 @@ async function showHoldings(mode) {
   box.innerHTML = `
     <div class="card"><div class="li-head"><span class="name">${list.length}銘柄の合計の損益（今の値段で）</span><b class="${totalYen >= 0 ? 'plus' : 'minus'}" style="font-size:18px">${fmtYen(totalYen)}</b></div></div>
     ${rows.map(({ h, adv, timing, longView, addOn }) => {
-      if (!adv) return `<div class="card hold-item"><div class="li-head"><span class="name">${symLink(symbolOf(mode, h.code), h.name)}</span><button class="icon-btn hold-del" data-id="${esc(h.id)}" aria-label="消す">✕</button></div><p class="small error">値段を取得できませんでした。</p></div>`;
+      if (!adv) return `<div class="card hold-item"><div class="li-head"><span class="name">${symLink(symbolOf(mode, h.code), h.name)}</span><button class="icon-btn hold-del" data-id="${esc(h.id)}" aria-label="消す">✕</button></div><p class="small error">値段を取得できませんでした（データの取得先が混んでいるようです。数分おきに自動で読み直します）。</p></div>`;
       const v = adv.verdict;
       return `<div class="card hold-item">
         <div class="li-head"><span class="name">${symLink(symbolOf(mode, h.code), h.name)}<span class="small muted">（押すとチャート）</span></span><span class="badge ${h.side > 0 ? 'buy' : 'sell'}">${mode === 'fx' ? (h.side > 0 ? '買い' : '売り') : h.side < 0 ? '信用・空売り' : h.acct === 'margin' ? '信用買い' : '現物'}</span><button class="icon-btn hold-del" data-id="${esc(h.id)}" aria-label="消す">✕</button></div>
