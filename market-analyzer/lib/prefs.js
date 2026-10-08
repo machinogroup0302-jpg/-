@@ -45,7 +45,7 @@ export function decrypt(b64) {
 
 const storeKey = (uid, key) => (uid === ADMIN ? key : `${uid}|${key}`);
 const splitKey = (k) => (k.includes('|') ? k.split('|') : [ADMIN, k]);
-const validKey = (k) => k === USERS || SYNC_KEY.test(splitKey(k)[1]);
+const validKey = (k) => k === USERS || SYNC_KEY.test(splitKey(k)[1].replace(/~prev$/, ''));
 
 function merge(other) {
   for (const [k, v] of Object.entries(other || {})) {
@@ -57,28 +57,51 @@ const maxTs = () => Math.max(0, ...Object.values(data).map((v) => v.ts || 0));
 const saveLocal = () => (process.env.NODE_ENV === 'test' && !process.env.PREFS_LOCAL ? Promise.resolve() : fs.writeFile(LOCAL, JSON.stringify(data)).catch(() => {}));
 
 // GitHub に保存されている暗号化コピーを読む（認証なしで読める公開の場所）
+// ・まず raw.githubusercontent.com（回数の制限がない）、だめなら GitHub API（1時間60回まで）
 async function readBackup() {
-  const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${BACKUP_PATH}?ref=${encodeURIComponent(BRANCH)}`, {
-    headers: { Accept: 'application/vnd.github.raw+json', 'User-Agent': 'market-analyzer' },
-    signal: AbortSignal.timeout(15000),
-  });
-  if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const j = await res.json();
-  return j.blob ? decrypt(j.blob) : null;
+  const urls = [
+    [`https://raw.githubusercontent.com/${REPO}/${encodeURIComponent(BRANCH)}/${BACKUP_PATH}?t=${Date.now()}`, {}],
+    [`https://api.github.com/repos/${REPO}/contents/${BACKUP_PATH}?ref=${encodeURIComponent(BRANCH)}`, { Accept: 'application/vnd.github.raw+json' }],
+  ];
+  let lastErr;
+  for (const [url, headers] of urls) {
+    try {
+      const res = await fetch(url, { headers: { 'User-Agent': 'market-analyzer', ...headers }, signal: AbortSignal.timeout(15000) });
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const j = await res.json();
+      return j.blob ? decrypt(j.blob) : null;
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr;
 }
+
+// バックアップを読めたか：読めるまでは、サーバーの中身でバックアップを上書きしない（空っぽで上書きして消えるのを防ぐ）
+let restoreOk = false;
+let retryTimer = null;
+async function tryRestore() {
+  try {
+    const b = await readBackup();
+    if (b) { merge(b); restoredFrom = 'backup'; }
+    restoreOk = true;
+    if (retryTimer) { clearInterval(retryTimer); retryTimer = null; }
+    saveLocal();
+    return true;
+  } catch (e) {
+    console.error('お気に入りのコピーを読めませんでした（あとでもう一度読みます）:', e.message);
+    // 1分ごとに読み直す（読めたら、そのときの内容と合わせる。新しい方が残る）
+    retryTimer ||= setInterval(tryRestore, 60 * 1000);
+    return false;
+  }
+}
+export const restoreState = () => ({ ok: restoreOk, from: restoredFrom });
 
 export function loadPrefs() {
   ready ||= (async () => {
-    if (process.env.NODE_ENV === 'test' && !process.env.PREFS_LOCAL) return; // テストでは前の保存を読まない
+    if (process.env.NODE_ENV === 'test' && !process.env.PREFS_LOCAL) { restoreOk = true; return; } // テストでは前の保存を読まない
     try { merge(JSON.parse(await fs.readFile(LOCAL, 'utf8'))); restoredFrom = 'local'; } catch { /* まだない */ }
-    if (process.env.NODE_ENV === 'test') return;
-    try {
-      const b = await readBackup();
-      if (b) { merge(b); restoredFrom = 'backup'; }
-    } catch (e) {
-      console.error('お気に入りのコピーを読めませんでした:', e.message);
-    }
+    if (process.env.NODE_ENV === 'test') { restoreOk = true; return; }
+    await tryRestore();
   })();
   return ready;
 }
@@ -160,6 +183,10 @@ export async function putPref(uid, key, value) {
   const clean = cleanValue(key, value);
   await loadPrefs();
   const k = storeKey(uid, key);
+  // 持っている株・取引履歴・お気に入りを、空っぽで上書きするときは、前の中身を1つとっておく（消えたときに戻せるように）
+  if (Array.isArray(clean) && !clean.length && Array.isArray(data[k]?.value) && data[k].value.length) {
+    data[`${k}~prev`] = { value: data[k].value, ts: data[k].ts };
+  }
   const ts = Math.max(Date.now(), (data[k]?.ts || 0) + 1);
   data[k] = { value: clean, ts };
   saveLocal();
@@ -231,6 +258,7 @@ export async function userName(id) {
 // 暗号化したコピー
 export async function backupBlob() {
   await loadPrefs();
+  if (!restoreOk && !(await tryRestore())) throw Object.assign(new Error('バックアップをまだ読み込めていないので、上書きしません'), { status: 503, expose: true });
   lastBackupAt = Date.now();
   return { maxTs: maxTs(), blob: encrypt(data) };
 }

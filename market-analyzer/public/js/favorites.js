@@ -123,6 +123,8 @@ export function syncFavs() {
       syncState.lastBackupAt = lastBackupAt || 0;
       syncState.lastAlertAt = lastAlertAt || 0;
       syncState.error = '';
+      // 空っぽで上書きされる前の中身（「前のデータに戻す」で使う）
+      syncState.prev = Object.fromEntries(Object.entries(items).filter(([k]) => k.endsWith('~prev')).map(([k, v]) => [k.replace(/~prev$/, ''), v]));
       let changed = false;
       for (const key of KEYS) {
         const remote = items[key];
@@ -136,6 +138,11 @@ export function syncFavs() {
           store.set(`sync_${key}`, { ts: remote?.ts || 0, dirty: !!own && (key.startsWith('favs_') || key.startsWith('trades_') || !remote) });
         } else if (meta.dirty) {
           // この端末で変えたものがまだ送れていない → こちらを送る
+        } else if (Array.isArray(own) && !own.length && Array.isArray(remote?.value) && remote.value.length) {
+          // この端末が空っぽで、サーバーには中身がある → 空っぽで上書きせず、サーバーの中身を使う
+          store.set(key, remote.value);
+          store.set(`sync_${key}`, { ts: remote.ts, dirty: false });
+          changed = true;
         } else if (own && (!remote || remote.ts < (meta.ts || 0))) {
           // サーバーが再起動して忘れていた（または古い内容に戻った）→ この端末の内容を送り直す
           store.set(`sync_${key}`, { ...meta, dirty: true, rev: (meta.rev || 0) + 1 });

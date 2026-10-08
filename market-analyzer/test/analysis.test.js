@@ -924,3 +924,13 @@ test('取引分析：為替のロット数のアドバイス', () => {
   assert.match(f.title, /上げすぎない/);
   assert.match(f.body, /最大2\.0ロットまで/);
 });
+
+import { putPref as putP, getPrefs as getP, _reset as resetP } from '../lib/prefs.js';
+test('持っている株：空っぽで上書きしても、前の中身をとっておく', async () => {
+  resetP();
+  await putP('admin', 'holdings_stock', [{ code: '5803', name: 'フジクラ', price: 7582, qty: 200, side: 1 }]);
+  await putP('admin', 'holdings_stock', []);
+  const { items } = await getP('admin');
+  assert.equal(items.holdings_stock.value.length, 0);
+  assert.equal(items['holdings_stock~prev'].value[0].name, 'フジクラ');
+});

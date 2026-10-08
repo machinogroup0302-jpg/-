@@ -3,7 +3,7 @@
 import { api, $, esc, store, fmtPrice, fmtYen } from './util.js';
 import { runStrategy, signalOdds, oddsLabel, oddsText } from './strategies.js';
 import { pagedList } from './stockscreener.js';
-import { getProfile, setProfile, getHoldings, setHoldings } from './favorites.js';
+import { getProfile, setProfile, getHoldings, setHoldings, syncState } from './favorites.js';
 import { replayWithBudget, kindText, sizeFor, orderText, WAYS, wayOf, waySides, wayProfile, compareWays, wayNotes, replayOpts, budgets, pipsOf, pipsText } from './plan.js';
 import { loadRegime, loadCandles, universe, kindOf } from './labview.js';
 import { adviseHolding, exitTiming, longTermView, addOnAdvice } from './holdingadvice.js';
@@ -555,7 +555,11 @@ async function showHoldingsInner(mode) {
   // 銘柄が入っていれば、追加の入力欄はたたんでおく（押せば開く）
   if (!addFormTouched) $('hold-add').open = !list.length;
   if (!list.length) {
-    box.innerHTML = '<div class="card"><p class="small muted">まだ入力されていません。上の欄に、持っている銘柄・買った値段・数量を入れて「追加する」を押してください。</p></div>';
+    // 前に入れていたものが残っていれば、戻せるようにする
+    const prev = syncState.prev?.[`holdings_${mode}`];
+    box.innerHTML = `<div class="card"><p class="small muted">まだ入力されていません。上の欄に、持っている銘柄・買った値段・数量を入れて「追加する」を押してください。</p>
+      ${prev?.value?.length ? `<p class="small" style="margin:8px 0 4px">前に入れていた${prev.value.length}銘柄（${esc(prev.value.map((h) => h.name).slice(0, 5).join('・'))}）が残っています。</p><button class="btn primary block" id="hold-restore">前に入れていた持っている株に戻す</button>` : ''}</div>`;
+    if (prev?.value?.length) $('hold-restore').onclick = () => { setHoldings(mode, prev.value); showHoldings(mode); };
     return;
   }
   // 値段が届く前でも、入力した内容はすぐ見せる（値段は届いたら書き足す）
