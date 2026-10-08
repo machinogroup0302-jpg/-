@@ -8,7 +8,7 @@ import fs from 'node:fs/promises';
 import { getChart } from '../lib/market.js';
 import { runStrategy, regimeLookup, signalOdds, oddsLabel } from '../public/js/strategies.js';
 import { baseUniverse } from '../public/js/universe.js';
-import { sizePosition, sizeOpts } from '../public/js/plan.js';
+import { sizeFor, orderText, sidesFor } from '../public/js/plan.js';
 import { adviseHolding, exitTiming, longTermView } from '../public/js/holdingadvice.js';
 import { US_LIST } from '../lib/usstocks.js';
 import { startScan, scanStatus } from '../lib/scanner.js';
@@ -90,12 +90,12 @@ async function loadMode(mode, users, { holdingsOnly = false } = {}) {
 
 // サインを計算する（持つ日数の上限ごとに結果が変わるので、日数ごとに計算する）
 const signalCache = new Map();
-function signalsFor(mode, list, regime, swingDays) {
-  const ck = `${mode}|${swingDays}`;
+function signalsFor(mode, list, regime, swingDays, sides = null) {
+  const ck = `${mode}|${swingDays}|${sides}`;
   if (signalCache.has(ck)) return signalCache.get(ck);
   const trades = [], signals = [], results = new Map();
   for (const x of list) {
-    const r = runStrategy(x.candles, 'combo', { kind: mode, pair: x.code, regime, maxHold: swingDays });
+    const r = runStrategy(x.candles, 'combo', { kind: mode, pair: x.code, regime, maxHold: swingDays, sides });
     for (const t of r.trades) trades.push({ ...t, symbol: x.symbol });
     const last = x.candles[x.candles.length - 1];
     results.set(x.symbol, { r, x, last });
@@ -138,19 +138,26 @@ async function daySignals(mode, users, regime) {
       if (cs && cs.length >= 150) list.push({ code, name, symbol: mode === 'fx' ? `${code}=X` : mode === 'stock' ? `${code}.T` : code, candles: cs });
     }
   }));
+  // 人によって向き（買いだけ・売りも）が違うので、必要な向きごとに計算する
+  const bySides = {};
+  for (const sides of new Set(users.map((u) => sidesFor(u.profile, mode)))) bySides[sides] = dayCompute(mode, list, regime, sides);
+  return bySides;
+}
+
+function dayCompute(mode, list, regime, sides) {
   const trades = [], signals = [], results = new Map();
   const nowSec = Date.now() / 1000;
   for (const x of list) {
     const last = x.candles[x.candles.length - 1];
     prices[x.symbol] = last.close;
-    const r = runStrategy(x.candles, 'combo', { kind: mode, pair: x.code, regime, intraday: true, days: mode === 'fx' ? 1000 : 600 });
+    const r = runStrategy(x.candles, 'combo', { kind: mode, pair: x.code, regime, intraday: true, days: mode === 'fx' ? 1000 : 600, sides });
     for (const t of r.trades) trades.push({ ...t, symbol: x.symbol });
     results.set(x.symbol, { r, x, last });
     // 最新の足が古い（取引が止まっている）ときは知らせない
     if (r.next && nowSec - last.time < 45 * 60) signals.push({ ...r.next, mode, day: true, name: x.name, symbol: x.symbol, open: r.open, last: last.close, date: dayKey(last.time), bar: last.time, t: last.time });
   }
   for (const s of signals) if (s.type === 'open') s.odds = signalOdds(trades, { symbol: s.symbol, side: s.side, strength: s.strength });
-  console.log(`${NAMES[mode]}（デイトレ）: ${list.length}/${syms.length}銘柄を計算、サイン${signals.length}件`);
+  console.log(`${NAMES[mode]}（デイトレ・${sides}）: ${list.length}銘柄を計算、サイン${signals.length}件`);
   return { list, signals, results };
 }
 
@@ -173,8 +180,8 @@ function describe(s, pf) {
     const p = s.odds ? `${Math.round(s.odds.p * 100)}%（${oddsLabel(s.odds)}）` : 'まだ出せません';
     let plan = [];
     if (pf?.budget) {
-      const z = sizePosition({ mode: s.mode, symbol: s.symbol, price: s.last, stop: s.stopEst, budget: pf.budget, riskPct: pf.riskPct || 2, maxPos: pf.maxPos || 3, prices, usdjpy: prices['USDJPY=X'], ...sizeOpts(pf, s.mode) });
-      if (z?.qty > 0) plan = [`あなたの予算なら：${z.lots ? `${z.lots}ロット（${z.qty.toLocaleString()}${z.unitLabel}）` : `${z.qty.toLocaleString()}${z.unitLabel}`}（${z.kindLabel} 約${Math.round(z.cost).toLocaleString()}円）`, `損切りの値段：${price(s.stopEst, s.mode)}（約−${Math.round(z.maxLoss).toLocaleString()}円）${s.takeEst ? `／目標：${price(s.takeEst, s.mode)}` : ''}`];
+      const z = sizeFor(pf, s.mode, s.side, { symbol: s.symbol, price: s.last, stop: s.stopEst, budget: pf.budget, riskPct: pf.riskPct || 2, maxPos: pf.maxPos || 3, prices, usdjpy: prices['USDJPY=X'] });
+      if (z?.qty > 0) plan = [`あなたの予算なら：${orderText(s.side, z)}（${z.kindLabel} 約${Math.round(z.cost).toLocaleString()}円）`, `損切りの値段：${price(s.stopEst, s.mode)}（約−${Math.round(z.maxLoss).toLocaleString()}円）${s.takeEst ? `／目標：${price(s.takeEst, s.mode)}` : ''}`];
       else if (z) plan = [`あなたの予算では見送り：${z.why}`];
     }
     return {
@@ -250,7 +257,7 @@ function planForUser(u, kind, groups, book, nowSec) {
   const tracked = new Set(Object.values(mine.open).map((x) => x.symbol));
   const cands = Object.values(groups).flatMap((g) => g.signals)
     .filter((x) => x.type === 'open' && u.modes.includes(x.mode) && !tracked.has(x.symbol) && x.odds && x.odds.p >= 0.5 && x.odds.expect > 0)
-    .map((x) => ({ ...x, size: pf.budget ? sizePosition({ mode: x.mode, symbol: x.symbol, price: x.last, stop: x.stopEst, budget: pf.budget, riskPct: pf.riskPct || 2, maxPos, prices, usdjpy: prices['USDJPY=X'], ...sizeOpts(pf, x.mode) }) : null }))
+    .map((x) => ({ ...x, size: pf.budget ? sizeFor(pf, x.mode, x.side, { symbol: x.symbol, price: x.last, stop: x.stopEst, budget: pf.budget, riskPct: pf.riskPct || 2, maxPos, prices, usdjpy: prices['USDJPY=X'] }) : null }))
     .filter((x) => !pf.budget || x.size?.qty > 0)
     .sort((a, b) => b.odds.p - a.odds.p);
   for (const x of cands) {
@@ -405,7 +412,7 @@ async function main() {
   for (const u of users) {
     const days = u.profile?.swingDays || 30;
     const groups = {};
-    for (const m of u.modes) groups[m] = DAY ? dayLists[m] : signalsFor(m, lists[m], regime, days);
+    for (const m of u.modes) groups[m] = DAY ? dayLists[m][sidesFor(u.profile, m)] : signalsFor(m, lists[m], regime, days, sidesFor(u.profile, m));
     const planned = planForUser(u, DAY ? 'day' : 'swing', groups, book, nowSec);
     const holds = u.modes.flatMap((m) => holdingSignals(m, lists[m], u));
     const keyU = (s) => `${u.uid}|${keyOf(s)}`;

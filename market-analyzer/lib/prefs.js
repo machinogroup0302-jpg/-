@@ -117,6 +117,10 @@ function cleanProfile(v) {
     levUs: num(v.levUs, 1, 2, 1),
     fxLots: Math.round(num(v.fxLots, 0, 1000, 0) * 10) / 10,
     fxLotSize: [1000, 10000, 100000].includes(Number(v.fxLotSize)) ? Number(v.fxLotSize) : 10000,
+    stockAcct: ['cash', 'margin', 'both'].includes(v.stockAcct) ? v.stockAcct : (Number(v.levStock) > 1 ? 'margin' : 'cash'),
+    stockMarginBudget: Math.round(num(v.stockMarginBudget, 0, 1e10, 0)),
+    stockShort: !!v.stockShort,
+    fxSides: ['both', 'long', 'short'].includes(v.fxSides) ? v.fxSides : 'both',
   };
 }
 
@@ -138,7 +142,7 @@ function cleanValue(key, value) {
   if (key.startsWith('holdings_')) {
     return value.slice(0, 100).map((x) => ({
       code: str(x?.code, 20), name: str(x?.name, 60), side: Number(x?.side) < 0 ? -1 : 1,
-      price: Number(x?.price) || 0, qty: Number(x?.qty) || 0, date: /^\d{4}-\d{2}-\d{2}$/.test(x?.date || '') ? x.date : '', id: str(x?.id, 20),
+      price: Number(x?.price) || 0, qty: Number(x?.qty) || 0, date: /^\d{4}-\d{2}-\d{2}$/.test(x?.date || '') ? x.date : '', id: str(x?.id, 20), acct: x?.acct === 'margin' ? 'margin' : 'cash',
     })).filter((x) => x.code && x.price > 0);
   }
   return value.slice(0, 500).map((x) => ({ code: str(x?.code, 20), name: str(x?.name, 60) })).filter((x) => x.code);

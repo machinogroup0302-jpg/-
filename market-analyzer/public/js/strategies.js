@@ -73,7 +73,7 @@ function cost(kind) {
   return kind === 'fx' ? 0.0003 : 0.001; // 往復の費用（スプレッド・手数料の目安）
 }
 
-export function runStrategy(candles, id, { kind = 'stock', pair = '', regime = null, fundamentalRatio = null, days = 250, intraday = false, maxHold = null } = {}) {
+export function runStrategy(candles, id, { kind = 'stock', pair = '', regime = null, fundamentalRatio = null, days = 250, intraday = false, maxHold = null, sides = null } = {}) {
   // デイトレ（intraday）：15分足などで売買し、その日のうちに必ず決済する（持ち越さない）
   const NEXT = intraday ? '次の足の始まりの値段' : '次の日の始まりの値段';
   const BAR = intraday ? 'この足の終わりの値段' : 'この日の終わりの値段';
@@ -84,7 +84,10 @@ export function runStrategy(candles, id, { kind = 'stock', pair = '', regime = n
   const ma25 = sma(closes, 25), ma75 = sma(closes, 75);
   const r14 = rsi(closes, 14);
   const a14 = atr(candles, 14);
-  const canShort = kind === 'fx';
+  // sides：'both'（買いも売りも）・'long'（買いだけ）・'short'（売りだけ）。決めていなければ為替は両方、株は買いだけ
+  const mode = sides || (kind === 'fx' ? 'both' : 'long');
+  const canShort = mode !== 'long';
+  const canLong = mode !== 'short';
   const start = Math.max(80, candles.length - days);
   const trades = [];
   const daily = [];
@@ -171,10 +174,10 @@ export function runStrategy(candles, id, { kind = 'stock', pair = '', regime = n
       if (id === 'trend' && ma25[i] && ma75[i]) {
         const hi20 = Math.max(...candles.slice(i - 20, i).map((x) => x.high));
         const lo20 = Math.min(...candles.slice(i - 20, i).map((x) => x.low));
-        if (ma25[i] > ma75[i] && price > hi20) { side = 1; reason = '上向きの流れで最近20日の高値を超えた'; why = ['25日の平均が75日の平均より上（上向きの流れ）', `この日の終わりの値段 ${num(price)} が、最近20日の一番高い値段 ${num(hi20)} を超えた`, 'さらに上がる勢いに乗る']; }
+        if (canLong && ma25[i] > ma75[i] && price > hi20) { side = 1; reason = '上向きの流れで最近20日の高値を超えた'; why = ['25日の平均が75日の平均より上（上向きの流れ）', `この日の終わりの値段 ${num(price)} が、最近20日の一番高い値段 ${num(hi20)} を超えた`, 'さらに上がる勢いに乗る']; }
         else if (canShort && ma25[i] < ma75[i] && price < lo20) { side = -1; reason = '下向きの流れで最近20日の安値を下回った'; why = ['25日の平均が75日の平均より下（下向きの流れ）', `この日の終わりの値段 ${num(price)} が、最近20日の一番安い値段 ${num(lo20)} を下回った`, 'さらに下がる勢いに乗る']; }
       } else if (id === 'rebound' && r14[i] != null) {
-        if (r14[i] < 30) { side = 1; reason = `売られすぎ（RSI ${r14[i].toFixed(0)}）`; why = [`買われすぎ・売られすぎ度（RSI）が${r14[i].toFixed(0)}（30以下は売られすぎ）`, '下がりすぎた反動で、上がり返すのをねらう']; }
+        if (canLong && r14[i] < 30) { side = 1; reason = `売られすぎ（RSI ${r14[i].toFixed(0)}）`; why = [`買われすぎ・売られすぎ度（RSI）が${r14[i].toFixed(0)}（30以下は売られすぎ）`, '下がりすぎた反動で、上がり返すのをねらう']; }
         else if (canShort && r14[i] > 70) { side = -1; reason = `買われすぎ（RSI ${r14[i].toFixed(0)}）`; why = [`買われすぎ・売られすぎ度（RSI）が${r14[i].toFixed(0)}（70以上は買われすぎ）`, '上がりすぎた反動で、下がり返すのをねらう']; }
       } else if (id === 'combo') {
         const ts = techAt(i);
@@ -190,7 +193,7 @@ export function runStrategy(candles, id, { kind = 'stock', pair = '', regime = n
             ...(fundamentalRatio != null && sig === '買い' ? ['会社の業績など（ファンダメンタルズ）も悪くない'] : []),
           ];
         };
-        if (/買い/.test(t) && rg.score >= 0 && fundOk) { side = 1; why = explain('買い'); strength = ts.rows.filter((r) => r.signal === '買い').length / ts.rows.length; reason = `テクニカル判定が「${t}」で、世界の情勢も逆風ではない`; }
+        if (canLong && /買い/.test(t) && rg.score >= 0 && fundOk) { side = 1; why = explain('買い'); strength = ts.rows.filter((r) => r.signal === '買い').length / ts.rows.length; reason = `テクニカル判定が「${t}」で、世界の情勢も逆風ではない`; }
         else if (canShort && /売り/.test(t) && rg.score <= 0) { side = -1; why = explain('売り'); strength = ts.rows.filter((r) => r.signal === '売り').length / ts.rows.length; reason = `テクニカル判定が「${t}」で、世界の情勢も追い風ではない`; }
       }
       if (side) {
@@ -230,10 +233,10 @@ export function runStrategy(candles, id, { kind = 'stock', pair = '', regime = n
 // ---------------- 勝率の高い銘柄だけを選んで売買する ----------------
 // 20取引日ごとに「その時点までの過去約半年で、総合判断のやり方の勝率が高かった銘柄」を最大3つ選び、
 // 次の20日間はその銘柄だけで売買する。選ぶときに未来の成績は使わない。
-export function pickAndTrade(list, { kind = 'stock', regime = null, days = 250, block = 20, lookbackDays = 180, topK = 3, minWin = 0.5 } = {}) {
+export function pickAndTrade(list, { kind = 'stock', regime = null, days = 250, block = 20, lookbackDays = 180, topK = 3, minWin = 0.5, sides = null } = {}) {
   const runs = list.map((s) => ({
     ...s,
-    run: runStrategy(s.candles, 'combo', { kind, pair: s.symbol.replace(/=X$/, ''), regime, fundamentalRatio: s.fundRatio, days: s.candles.length }),
+    run: runStrategy(s.candles, 'combo', { kind, pair: s.symbol.replace(/=X$/, ''), regime, fundamentalRatio: s.fundRatio, days: s.candles.length, sides }),
   }));
   const calendar = [...new Set(runs.flatMap((r) => r.candles.map((c) => dayKey(c.time))))].sort().slice(-days);
   const shift = (d, n) => new Date(new Date(d + 'T00:00:00Z').getTime() + n * 86400000).toISOString().slice(0, 10);

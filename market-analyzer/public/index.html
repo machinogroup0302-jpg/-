@@ -256,6 +256,7 @@
                 <ul class="suggest" id="hold-suggest" hidden></ul>
               </div>
               <div class="seg" id="hold-side"><button type="button" data-v="1" aria-pressed="true">買いで持っている</button><button type="button" data-v="-1" aria-pressed="false">売りで持っている</button></div>
+              <div class="seg only-equity" id="hold-acct"><button type="button" data-v="cash" aria-pressed="true">現物</button><button type="button" data-v="margin" aria-pressed="false">信用</button></div>
               <div class="row"><input class="input grow" id="hold-price" inputmode="decimal" placeholder="買った値段（1株・1通貨あたり）"></div>
               <div class="row"><input class="input grow" id="hold-qty" inputmode="numeric" placeholder="数量（株数・通貨の数）"><span class="small muted">または</span><input class="input grow" id="hold-amount" inputmode="numeric" placeholder="金額（円）"></div>
               <div class="row"><label class="small muted" for="hold-date" style="white-space:nowrap">買った日（なくてもOK）</label><input class="input grow" id="hold-date" type="date"></div>
@@ -427,9 +428,15 @@
         <label class="small">同時に持つ銘柄の数（いくつに分けるか）</label>
         <div class="seg" id="pf-maxpos"></div>
         <label class="small" style="margin-top:10px;display:block"><b>取引のしかた</b></label>
-        <div class="small muted" style="margin:2px 0 4px">日本株（楽天証券など）</div><div class="seg" id="pf-lev-stock"></div>
-        <div class="small muted" style="margin:6px 0 4px">米国株</div><div class="seg" id="pf-lev-us"></div>
-        <p class="small muted" style="margin:4px 0 0">楽天証券の口座で、現物で買うか信用で買うかを選んでください。信用にすると、使えるお金より多く買えるようになります（楽天証券の決まりの範囲まで）。実際に買う量は「1回で減ってもいい額」から計算するので、いつも目いっぱい買うわけではありません。</p>
+        <div class="small muted" style="margin:2px 0 4px">日本株（楽天証券）</div><div class="seg" id="pf-stock-acct"></div>
+        <div id="pf-margin-box" hidden>
+          <div class="small muted" style="margin:6px 0 4px">予算のうち、信用に使うお金（残りは現物）</div>
+          <div class="row"><input class="input grow" id="pf-margin-budget" type="text" inputmode="numeric" placeholder="空欄＝予算の半分"><span class="small">円</span></div>
+        </div>
+        <label class="row small" id="pf-short-box" style="margin:6px 0 0" hidden><input type="checkbox" id="pf-short"> 空売り（売りから入る）もする</label>
+        <div class="small muted" style="margin:8px 0 4px">米国株</div><div class="seg" id="pf-lev-us"></div>
+        <p class="small muted" style="margin:4px 0 0">信用にすると、使えるお金より多く買えるようになります（楽天証券の決まりの範囲まで）。実際に買う量は「1回で減ってもいい額」から計算するので、いつも目いっぱい買うわけではありません。空売りは日本株の信用だけで計算します。信用の金利・貸株料（目安）も差し引いて成績を出します。</p>
+        <div class="small muted" style="margin:10px 0 4px">為替（LION FX）：どちら向きに取引するか</div><div class="seg" id="pf-fx-sides"></div>
         <div class="small muted" style="margin:10px 0 4px">為替（LION FX）：1回に取引するロット数</div>
         <div class="row"><input class="input grow" id="pf-fx-lots" type="number" inputmode="decimal" min="0" step="0.1" placeholder="空欄＝おまかせ（損切りの幅から計算）"><span class="small">ロット</span></div>
         <div class="chips" id="pf-fx-lots-quick" style="margin:6px 0 0"></div>

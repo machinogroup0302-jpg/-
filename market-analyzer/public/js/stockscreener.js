@@ -1,7 +1,8 @@
 // 株の候補リスト：東証の全上場企業のチェック・ストップ高/安の一覧・決算発表のスケジュール・新規上場
 import { api, $, esc, store, fmtPrice } from './util.js';
 import { term } from './glossary.js';
-import { getFavs } from './favorites.js';
+import { getFavs, getProfile } from './favorites.js';
+import { lotNote } from './plan.js';
 
 const MARKETS = ['プライム', 'スタンダード', 'グロース', '外国株'];
 const VIEWS = [['buy', '上がりそう'], ['sell', '下がりそう'], ['up', '今日の値上がり'], ['down', '今日の値下がり']];
@@ -55,6 +56,7 @@ function itemHtml(r) {
     <div class="li-head"><span class="name">${esc(r.name)} <span class="small muted">${esc(r.code)}</span></span>
       ${stopBadge(r.stop)}<span class="badge ${r.score > 15 ? 'buy' : r.score < -15 ? 'sell' : 'neutral'}">${esc(r.label)}</span></div>
     <div class="small num">${yen(r.price)}　今日 ${chg(r.changePct)}　<span class="muted">${esc(r.market)}・${esc(r.sector)}</span></div>
+    ${(view === 'buy' || view === 'sell') && lotNote(getProfile(), view === 'sell' ? -1 : 1, r.price) ? `<div class="small">あなたの設定なら：${esc(lotNote(getProfile(), view === 'sell' ? -1 : 1, r.price))}</div>` : ''}
   </li>`;
 }
 

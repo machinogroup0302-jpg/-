@@ -4,6 +4,8 @@ import { technicalSummary } from './indicators.js';
 import { pagedList } from './stockscreener.js';
 import { supportResistance } from './levels.js';
 import { monteCarlo } from './forecast.js';
+import { getProfile } from './favorites.js';
+import { sizeFor, orderText, sidesFor } from './plan.js';
 
 const DEFAULT_WATCH = {
   fx: ['USDJPY', 'EURJPY', 'GBPJPY', 'AUDJPY', 'NZDJPY', 'CADJPY', 'CHFJPY', 'ZARJPY', 'MXNJPY', 'EURUSD', 'GBPUSD', 'AUDUSD'].join('\n'),
@@ -15,6 +17,24 @@ let results = [];
 const oldWatch = () => (store.get('watchlist', '') || '').split('\n').filter((c) => /^[A-Z]{6}(=X)?$/i.test(c.trim())).join('\n');
 const FILTERS = [['all', 'すべて'], ['buy', '買い候補'], ['sell', '売り候補']];
 let filter = 'all';
+let usdjpy = null;
+
+// あなたの設定なら「どれだけ・いくらで」入るか
+function sizeNote(r) {
+  const pf = getProfile();
+  if (!pf.budget || Math.abs(r.total) <= 10 || !r.atr) return '';
+  const side = r.total > 0 ? 1 : -1;
+  if (side < 0 && listMode === 'us') return '<div class="small">あなたの設定なら：持っていたら売る候補（米国株は空売りしない計算）</div>';
+  const sides = sidesFor(pf, listMode);
+  if ((side < 0 && sides === 'long') || (side > 0 && sides === 'short')) return `<div class="small muted">あなたの設定（${side > 0 ? '売りだけ' : '買いだけ'}）では入りません</div>`;
+  const prices = Object.fromEntries(results.filter((x) => x.price).map((x) => [x.symbol, x.price]));
+  if (usdjpy) prices['USDJPY=X'] ??= usdjpy;
+  const stop = r.price - side * r.atr * 2;
+  const s = sizeFor(pf, listMode, side, { symbol: r.symbol, price: r.price, stop, budget: pf.budget, riskPct: pf.riskPct || 2, maxPos: pf.maxPos || 3, prices, usdjpy: usdjpy || prices['USDJPY=X'] });
+  if (!s) return '';
+  if (!(s.qty > 0)) return `<div class="small muted">あなたの設定では入れません：${esc(s.why || '')}</div>`;
+  return `<div class="small">あなたの設定なら：<b>${esc(orderText(side, s))}</b>（${esc(s.kindLabel)} 約${Math.round(s.cost).toLocaleString()}円・損切り ${fmtPrice(stop, digitsFor(r.price))}）</div>`;
+}
 
 function scoreOf(candles) {
   const t = technicalSummary(candles);
@@ -26,7 +46,11 @@ function scoreOf(candles) {
   // 上値余地（次のレジスタンスまで）と下値余地（次のサポートまで）の比
   const room = res && sup ? (res.price - price) / Math.max(price - sup.price, price * 0.0005) : null;
   const total = t.ratio * 70 + ((fc?.upProb ?? 0.5) - 0.5) * 60;
-  return { tech: t, upProb: fc?.upProb ?? null, res, sup, room, total, price };
+  // 損切りの目安：値動きの平均の幅（14日）の2倍
+  let tr = 0;
+  for (let i = Math.max(1, candles.length - 14); i < candles.length; i++) tr += Math.max(candles[i].high, candles[i - 1].close) - Math.min(candles[i].low, candles[i - 1].close);
+  const atr = tr / Math.min(14, candles.length - 1);
+  return { tech: t, upProb: fc?.upProb ?? null, res, sup, room, total, price, atr };
 }
 
 function render() {
@@ -43,7 +67,7 @@ function render() {
       <span class="badge ${signalClass(r.tech.label)}">${esc(r.tech.label)}</span></div>
       <div class="small num">現在 ${fmtPrice(r.price, d)}　上昇確率 ${r.upProb != null ? Math.round(r.upProb * 100) + '%' : '—'}　点数 ${Math.round(r.total)}</div>
       <div class="small muted">${r.res ? `上の壁 ${fmtPrice(r.res.price, d)}` : ''}${r.sup ? `　下の支え ${fmtPrice(r.sup.price, d)}` : ''}${r.room != null ? `　上値余地/下値余地 ${r.room.toFixed(1)}倍` : ''}</div>
-      <div class="small muted">${esc(reasons)}</div></li>`;
+      <div class="small muted">${esc(reasons)}</div>${sizeNote(r)}</li>`;
   }, { empty: '条件に合う候補はありません' });
 }
 
@@ -52,6 +76,7 @@ async function run(onPick) {
   const btn = $('scr-run');
   btn.disabled = true;
   results = [];
+  if (!usdjpy) { try { const u = await api('/api/chart?symbol=USDJPY&tf=1d'); usdjpy = u.candles[u.candles.length - 1].close; } catch { /* 取れなければ米国株の量は出さない */ } }
   let done = 0;
   const queue = [...codes];
   const names = Object.fromEntries((store.get(`favs_${listMode}`, listMode === 'fx' ? store.get('favs', []) : []) || []).map((f) => [f.code.toUpperCase(), f.name]));

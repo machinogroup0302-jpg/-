@@ -6,7 +6,8 @@ import { runStrategy, regimeLookup, STRATEGIES, pickAndTrade } from './strategie
 import { baseUniverse } from './universe.js';
 import { pagedList } from './stockscreener.js';
 import { futureTimes } from './forecast.js';
-import { getFavs } from './favorites.js';
+import { getFavs, getProfile } from './favorites.js';
+import { sidesFor, SIDES_TEXT } from './plan.js';
 
 const LC = window.LightweightCharts;
 const HORIZONS = [[1, '翌日'], [5, '1週間後'], [20, '1か月後']];
@@ -93,11 +94,11 @@ function renderForecast() {
 // ---------------- 自動売買 ----------------
 function renderTrades() {
   const kind = kindOf(ctx.mode);
-  const r = runStrategy(ctx.candles, strategy, { kind, pair: ctx.symbol.replace(/=X$/, ''), regime: ctx.regime, fundamentalRatio: ctx.fundRatio });
+  const r = runStrategy(ctx.candles, strategy, { kind, pair: ctx.symbol.replace(/=X$/, ''), regime: ctx.regime, fundamentalRatio: ctx.fundRatio, sides: sidesFor(getProfile(), ctx.mode) });
   const s = r.stats;
   const d = ctx.digits;
   $('lab-s-chips').innerHTML = Object.entries(STRATEGIES).map(([k, v]) => `<button class="chip" data-s="${k}" aria-pressed="${k === strategy}">${v.name}</button>`).join('');
-  $('lab-s-desc').textContent = STRATEGIES[strategy].desc + (kind === 'fx' ? '（為替は「売り」から入ることもあります）' : '（株は買いだけ）');
+  $('lab-s-desc').textContent = STRATEGIES[strategy].desc + `（向き：${SIDES_TEXT[sidesFor(getProfile(), ctx.mode)]}。設定⚙の「取引のしかた」に合わせています）`;
   const nextTxt = r.next ? (r.next.type === 'open' ? `次の取引日に<b>${r.next.side > 0 ? '買い' : '売り'}</b>で入る予定（${esc(r.next.reason)}）` : `次の取引日に<b>決済</b>する予定（${esc(r.next.reason)}）`) : '';
   $('lab-s-stats').innerHTML = `
     <div class="grid2">
@@ -215,7 +216,7 @@ async function runBatch(mode) {
       const c = await prepare({ symbol: favs[i].code, name: favs[i].name }, mode);
       const fc = evaluateForecasts(c.candles, { horizon: 1, days: 120 });
       const kind = kindOf(mode);
-      const res = Object.keys(STRATEGIES).map((id) => runStrategy(c.candles, id, { kind, pair: c.symbol.replace(/=X$/, ''), regime: c.regime, fundamentalRatio: c.fundRatio }).stats.total);
+      const res = Object.keys(STRATEGIES).map((id) => runStrategy(c.candles, id, { kind, pair: c.symbol.replace(/=X$/, ''), regime: c.regime, fundamentalRatio: c.fundRatio, sides: sidesFor(getProfile(), mode) }).stats.total);
       rows.push({ name: favs[i].name, dir: fc.stats.dirHit, tech: fc.stats.techHit, res });
     } catch (e) {
       rows.push({ name: favs[i].name, error: e.message });
@@ -267,7 +268,7 @@ async function runPicks(mode) {
     const list = await loadCandles(universe(mode), out);
     out.innerHTML = '<p class="small muted"><span class="spinner"></span> 計算しています…</p>';
     await new Promise((r) => setTimeout(r, 30));
-    renderPicks(pickAndTrade(list, { kind: kindOf(mode), regime }), mode);
+    renderPicks(pickAndTrade(list, { kind: kindOf(mode), regime, sides: sidesFor(getProfile(), mode) }), mode);
   } catch (e) {
     out.innerHTML = `<p class="error">${esc(e.message)}</p>`;
   } finally {

@@ -4,7 +4,7 @@ import { api, $, esc, store, fmtPrice, fmtYen } from './util.js';
 import { runStrategy, signalOdds, oddsLabel, oddsText } from './strategies.js';
 import { pagedList } from './stockscreener.js';
 import { getProfile, setProfile, getHoldings, setHoldings } from './favorites.js';
-import { sizePosition, replayWithBudget, levFor, sizeOpts, kindText, quoteToJpy, LEV_LIMIT, MAINT } from './plan.js';
+import { replayWithBudget, levFor, kindText, quoteToJpy, LEV_LIMIT, MAINT, sizeFor, orderText, sidesFor, acctOf, SIDES_TEXT, CARRY } from './plan.js';
 import { loadRegime, loadCandles, universe, kindOf } from './labview.js';
 import { adviseHolding, exitTiming, longTermView } from './holdingadvice.js';
 import { searchFx } from './fxpairs.js';
@@ -88,7 +88,8 @@ let logRunning = null;
 // 全銘柄を「総合判断」で計算する（「今のサイン」と「売買の一覧」で共通）
 async function computeLog(mode, out, force = false) {
   const swingDays = getProfile().swingDays || 30;
-  const ck = `${mode}|${style}|${style === 'swing' ? swingDays : ''}`;
+  const mySides = sidesFor(getProfile(), mode);
+  const ck = `${mode}|${style}|${style === 'swing' ? swingDays : ''}|${mySides}`;
   const hit = logCache[ck];
   if (hit && !force && Date.now() - hit.at < 30 * 60 * 1000) return hit.data;
   if (logRunning?.ck === ck) return logRunning.p;
@@ -101,9 +102,20 @@ async function computeLog(mode, out, force = false) {
     const kind = kindOf(mode);
     const trades = [], holding = [], next = [];
     const prices = {};
+    // 比べるために、向き（買いだけ・売りだけ・両方）を変えた計算もしておく
+    const variants = [...new Set([mySides, ...(mode === 'fx' ? ['both', 'long', 'short'] : mode === 'stock' ? ['long', 'both'] : ['long'])])];
+    const tradesBy = Object.fromEntries(variants.map((v) => [v, []]));
+    let n = 0;
     for (const x of list) {
       prices[x.symbol] = x.candles[x.candles.length - 1].close;
-      const r = runStrategy(x.candles, 'combo', { kind, pair: x.symbol.replace(/=X$/, ''), regime, intraday: day, days: day ? (kind === 'fx' ? 1000 : 600) : 250, maxHold: day ? null : swingDays });
+      const opt = { kind, pair: x.symbol.replace(/=X$/, ''), regime, intraday: day, days: day ? (kind === 'fx' ? 1000 : 600) : 250, maxHold: day ? null : swingDays };
+      let r = null;
+      for (const v of variants) {
+        const rv = runStrategy(x.candles, 'combo', { ...opt, sides: v });
+        for (const t of rv.trades) tradesBy[v].push({ ...t, name: x.name, symbol: x.symbol });
+        if (v === mySides) r = rv;
+      }
+      if (++n % 5 === 0) { out.innerHTML = `<p class="small muted"><span class="spinner"></span> 計算しています… ${n} / ${list.length}</p>`; await new Promise((res) => setTimeout(res, 0)); }
       const last = x.candles[x.candles.length - 1];
       for (const t of r.trades) trades.push({ ...t, name: x.name, symbol: x.symbol });
       if (r.open) holding.push({ ...r.open, name: x.name, symbol: x.symbol, last: last.close });
@@ -115,7 +127,7 @@ async function computeLog(mode, out, force = false) {
     for (const t of trades) t.odds = signalOdds(trades, { symbol: t.symbol, side: t.side, strength: t.strength, before: t.entryDate });
     let usdjpy = prices['USDJPY=X'] || null;
     if (!usdjpy) { try { const u = await api('/api/chart?symbol=USDJPY&tf=1d'); usdjpy = u.candles[u.candles.length - 1].close; } catch { /* 取れなければ米国株の量は出さない */ } }
-    const data = { trades, holding, next, prices, usdjpy, count: list.length, at: Date.now(), style, scanInfo };
+    const data = { trades, tradesBy, sides: mySides, holding, next, prices, usdjpy, count: list.length, at: Date.now(), style, scanInfo };
     logCache[ck] = { at: Date.now(), data };
     return data;
   })();
@@ -142,42 +154,70 @@ async function showPlan(mode, force = false) {
 
 const yen0 = (v) => `${Math.round(v).toLocaleString()}円`;
 
+const replayCard = (t, x) => `<div class="stat"><div class="label">${t}</div><div class="value ${x.total >= 0 ? 'plus' : 'minus'}">${fmtYen(x.total)}</div><div class="small muted">${x.trades}回・勝率${pct(x.winRate)}・一番減ったとき ${fmtYen(-x.maxDD)}${x.losscuts ? `・<b class="minus">ロスカット${x.losscuts}回</b>` : ''}${x.broke ? '・<b class="minus">途中で資金がなくなった</b>' : ''}</div></div>`;
+
+// やり方（現物・信用・空売り、為替の向き）を変えて、過去1年をあなたの予算でやり直して比べる
+function compareWays(r, mode, pf, budget, rule) {
+  const base = { budget: rule.budget, riskPct: rule.riskPct, maxPos: rule.maxPos, minOdds: 0, capLev: mode === 'fx' ? LEV_LIMIT.fx : 1 };
+  const by = r.tradesBy || { [r.sides || 'long']: r.trades };
+  const yen = (v) => `${v >= 0 ? '+' : '−'}${yen0(Math.abs(v))}`;
+  let rows = [], mine = '', notes = [];
+  if (mode === 'fx') {
+    const lots = pf.fxLots > 0 ? pf.fxLots : 0, size = pf.fxLotSize || 10000;
+    const notionalOf = lots ? (t) => lots * size * t.entryPrice * (quoteToJpy(t.symbol, r.prices) || 0) : null;
+    const opt = lots ? { ...base, notionalOf, maint: MAINT.fx } : base;
+    rows = ['long', 'short', 'both'].filter((v) => by[v]).map((v) => ({ key: v, label: SIDES_TEXT[v], r: replayWithBudget(by[v], opt) }));
+    mine = r.sides;
+    const b = rows.find((x) => x.key === 'both')?.r;
+    if (b) notes.push(`「買いも売りも」のうち、買いの分は${yen(b.longYen)}（${b.longN}回）、売りの分は${yen(b.shortYen)}（${b.shortN}回）でした。`);
+    notes.push(lots ? `毎回${lots}ロットで計算しています。` : 'ロット数はおまかせ（損切りの幅から量を決める）で計算しています。');
+  } else {
+    const L = LEV_LIMIT[mode], carry = CARRY;
+    const acct = acctOf(pf, mode);
+    rows.push({ key: 'cash', label: '現物・買いだけ', r: replayWithBudget(by.long || r.trades, { ...base, capLev: 1 }) });
+    rows.push({ key: 'margin', label: '信用・買いだけ', r: replayWithBudget(by.long || r.trades, { ...base, capLev: L, carry }) });
+    if (mode === 'stock' && by.both) rows.push({ key: 'short', label: '信用・買い＋空売り', r: replayWithBudget(by.both, { ...base, capLev: L, carry }) });
+    mine = acct === 'cash' ? 'cash' : r.sides === 'both' ? 'short' : 'margin';
+    const [c, m, sh] = rows.map((x) => x.r);
+    notes.push(m.total > c.total + budget * 0.01 && m.maxDD <= budget * 0.35
+      ? `信用で買うと、現物より約${yen0(m.total - c.total)}多く増えました（金利の目安も差し引き済み）。一番減ったときは${yen0(m.maxDD)}です。`
+      : `信用にしても現物とくらべて${m.total > c.total ? 'あまり増えず' : '増えず'}、${m.maxDD > c.maxDD ? '減るときの幅は大きくなる' : '金利がかかる'}ので、${mode === 'us' ? '米国株は' : ''}現物だけで十分です。`);
+    if (sh) {
+      notes.push(sh.total > m.total && sh.shortYen > 0
+        ? `空売りも入れると、さらに約${yen0(sh.total - m.total)}多く増えました（空売りの分だけで${yen(sh.shortYen)}・${sh.shortN}回）。両方やるのもありです。`
+        : `空売りを入れると、成績が約${yen0(Math.abs(m.total - sh.total))}${sh.total < m.total ? '悪く' : 'しか良く'}なりました（空売りの分だけで${yen(sh.shortYen)}・${sh.shortN}回）。空売りはおすすめしません。`);
+    }
+    if (mode === 'us') notes.push('米国株は空売りなしで計算しています。');
+  }
+  // おすすめ：途中で資金がなくならず、一番減ったときが予算の35%以内のものの中で、一番増えたもの
+  const ok = rows.filter((x) => !x.r.broke && x.r.maxDD <= budget * 0.35);
+  const best = (ok.length ? ok : rows).slice().sort((a, b) => (ok.length ? b.r.total - a.r.total : a.r.maxDD - b.r.maxDD))[0];
+  return `<h3>やり方で比べると<span class="sub">過去1年・サインどおりに全部やった場合</span></h3>
+    <div class="grid2">${rows.map((x) => replayCard(`${esc(x.label)}${x.key === mine ? '<span class="badge ok" style="margin-left:4px">今の設定</span>' : ''}${x === best ? '<span class="badge warn" style="margin-left:4px">おすすめ</span>' : ''}`, x.r)).join('')}</div>
+    <p class="small" style="margin:6px 0 0"><b>おすすめ：「${esc(best.label)}」</b>${best.key === mine ? '（今の設定のままでOK）' : '（設定⚙の「取引のしかた」で変えられます）'}</p>
+    <ul class="why" style="font-size:13px;color:var(--text)">${notes.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
+    <p class="small muted" style="margin:4px 0 0">${mode === 'fx' ? '為替はスワップポイントは入れていません。' : '信用は、楽天証券の制度信用くらいの金利（買い年2.8%・空売りの貸株料 年1.1%）を差し引いています。'}持っている間に一番不利になったところで、${mode === 'fx' ? '証拠金維持率が100%' : mode === 'us' ? '保証金が取引金額の25%' : '保証金維持率が20%'}を割ったら「ロスカット（強制決済）」としています。おすすめは「途中で資金がなくならず、一番減ったときが予算の35%以内」の中で一番増えたものです。</p>`;
+}
+
 function renderPlan(r, mode) {
   const pf = getProfile();
   const budget = pf.budget || 1_000_000;
   const d = digitsOf(mode);
   const lev = levFor(pf, mode);
-  const rule = { budget, riskPct: pf.riskPct, maxPos: pf.maxPos, capLev: lev };
+  const rule = { budget, riskPct: pf.riskPct, maxPos: pf.maxPos, capLev: lev, carry: mode !== 'fx' && acctOf(pf, mode) !== 'cash' ? CARRY : null };
   // 過去1年をあなたのルールでやり直す：全部やった場合と、確率の目安が高いものだけやった場合
   const all = replayWithBudget(r.trades, rule);
   const picky = replayWithBudget(r.trades, { ...rule, minOdds: 0.55 });
   const usePicky = picky.trades >= 5 && picky.total > all.total;
   const minOdds = usePicky ? 0.55 : 0.5;
-  const sz = (x, stop) => sizePosition({ mode, symbol: x.symbol, price: x.last, stop, budget, riskPct: pf.riskPct, maxPos: pf.maxPos, prices: r.prices, usdjpy: r.usdjpy, ...sizeOpts(pf, mode) });
-  // 取引のしかたで比べる：株は現物と信用（目いっぱい使った場合）、為替はおまかせと毎回同じロット数
-  const base = { ...rule, minOdds: usePicky ? 0.55 : 0 };
-  let levRows;
-  if (mode === 'fx') {
-    const lots = pf.fxLots > 0 ? pf.fxLots : 1, size = pf.fxLots > 0 ? (pf.fxLotSize || 10000) : 10000;
-    const notionalOf = (t) => lots * size * t.entryPrice * (quoteToJpy(t.symbol, r.prices) || 0);
-    levRows = [
-      { label: `おまかせ${pf.fxLots > 0 ? '' : '（あなたの設定）'}`, r: replayWithBudget(r.trades, base) },
-      { label: `毎回${lots}ロット${pf.fxLots > 0 ? '（あなたの設定）' : '（参考）'}`, r: replayWithBudget(r.trades, { ...base, notionalOf, maint: MAINT.fx }) },
-    ];
-  } else {
-    const L = LEV_LIMIT[mode];
-    levRows = [
-      { label: `現物${lev === 1 ? '（あなたの設定）' : ''}`, r: replayWithBudget(r.trades, { ...base, leverage: 1, maint: MAINT[mode] }) },
-      { label: `信用で目いっぱい買う${lev > 1 ? '（あなたの設定）' : '（参考）'}`, r: replayWithBudget(r.trades, { ...base, leverage: L, maint: MAINT[mode] }) },
-    ];
-  }
+  const sz = (x, stop) => sizeFor(pf, mode, x.side, { symbol: x.symbol, price: x.last, stop, budget, riskPct: pf.riskPct, maxPos: pf.maxPos, prices: r.prices, usdjpy: r.usdjpy });
+  const cmp = compareWays(r, mode, pf, budget, rule);
   const opens = r.next.filter((x) => x.type === 'open').map((x) => ({ ...x, size: sz(x, x.stopEst) }))
     .sort((a, b) => (b.odds?.p || 0) - (a.odds?.p || 0));
   const good = opens.filter((x) => x.odds && x.odds.p >= minOdds && x.odds.expect > 0);
   const picks = good.filter((x) => x.size?.qty > 0).slice(0, pf.maxPos);
   const rest = opens.filter((x) => !picks.includes(x));
   const closes = r.next.filter((x) => x.type === 'close');
-  const replayCard = (t, x) => `<div class="stat"><div class="label">${t}</div><div class="value ${x.total >= 0 ? 'plus' : 'minus'}">${fmtYen(x.total)}</div><div class="small muted">${x.trades}回・勝率${pct(x.winRate)}・一番減ったとき ${fmtYen(-x.maxDD)}${x.losscuts ? `・<b class="minus">ロスカット${x.losscuts}回</b>` : ''}${x.broke ? '・<b class="minus">途中で資金がなくなった</b>' : ''}</div></div>`;
   $('lab-plan').innerHTML = `
     ${pf.budget ? '' : '<p class="notice" style="margin:0 0 8px">予算がまだ入っていないので、100万円で計算しています。右上の⚙（設定）の「あなたの設定」で入れてください。</p>'}
     <div class="plan-rule small">予算 <b>${yen0(budget)}</b>　／　1回で減ってもいい額 <b>${yen0(budget * pf.riskPct / 100)}</b>（${pf.riskPct}%）　／　同時に <b>${pf.maxPos}銘柄</b>まで（1銘柄 ${yen0(budget / pf.maxPos)}まで）　／　取引のしかた <b>${esc(kindText(pf, mode))}</b></div>
@@ -190,7 +230,7 @@ function renderPlan(r, mode) {
       return `<li class="plan-pick">
         <div class="li-head"><span class="name">${symLink(x.symbol, x.name)}</span>${sideBadge(x.side)}</div>
         ${timeLine(mode, x.t)}
-        <div class="plan-order"><b>${x.side > 0 ? '買う' : '売る'}：${s.lots ? `${s.lots}ロット（${s.qty.toLocaleString()}${s.unitLabel}）` : `${s.qty.toLocaleString()}${s.unitLabel}`}</b>（今 ${fmtPrice(x.last, d)}・${s.kindLabel} 約${yen0(s.cost)}）</div>
+        <div class="plan-order"><b>${orderText(x.side, s)}</b>（今 ${fmtPrice(x.last, d)}・${s.kindLabel} 約${yen0(s.cost)}）</div>
         ${s.over ? `<p class="small" style="color:var(--warn);margin:2px 0">⚠ ${s.lots}ロットだと、損切りまでいくと約${yen0(s.maxLoss)}減ります（1回で減ってもいい${yen0(s.riskYen)}を超えています）。ロット数を減らすか、設定でおまかせにするのがおすすめです。</p>` : ''}
         <div class="grid2 plan-grid">
           <div class="stat"><div class="label">損切りの値段</div><div class="value minus" style="font-size:16px">${fmtPrice(x.stopEst, d)}</div><div class="small muted">ここまで来たら決済：約−${yen0(s.maxLoss)}</div></div>
@@ -209,12 +249,8 @@ function renderPlan(r, mode) {
 
     <h3>📊 あなたの予算で、このやり方を1年続けていたら</h3>
     <div class="grid2">${replayCard('サインが出たら全部やる', all)}${replayCard('確率の目安55%以上だけやる', picky)}</div>
-    <h3>取引のしかたで比べると<span class="sub">${mode === 'fx' ? 'ロット数で比べた場合' : '現物と信用で比べた場合'}</span></h3>
-    <div class="grid2">${levRows.map((x) => replayCard(esc(x.label), x.r)).join('')}</div>
-    <p class="small muted" style="margin:4px 0 0">${mode === 'fx'
-    ? '「おまかせ」は損切りの幅から毎回の量を決めた場合、「毎回○ロット」はいつも同じ量で取引した場合です。'
-    : '「信用で目いっぱい買う」は、損切りの幅で量を減らさずに、信用で買える上限までいつも買った場合です（いちばん攻めた場合の目安）。'}持っている間に一番不利になったところで、${mode === 'fx' ? '証拠金維持率が100%' : mode === 'us' ? '保証金が取引金額の25%' : '保証金維持率が20%'}を割ったら「ロスカット（強制決済）」としています。設定（⚙）の「取引のしかた」で変えられます。</p>
-    <p class="small" style="margin:6px 0 0"><b>おすすめ：</b>${usePicky ? '確率の目安が55%以上のサインだけに絞る方が成績が良かったので、上の「今やるといいこと」も55%以上に絞っています。' : '絞らずにサインどおりにやる方が成績が良かったので、50%以上のサインを出しています。'}</p>
+    ${cmp}
+    <p class="small" style="margin:6px 0 0"><b>サインの絞り方：</b>${usePicky ? '確率の目安が55%以上のサインだけに絞る方が成績が良かったので、上の「今やるといいこと」も55%以上に絞っています。' : '絞らずにサインどおりにやる方が成績が良かったので、50%以上のサインを出しています。'}</p>
     <p class="notice" style="margin-top:8px">過去の値動きでの計算です。日本株は100株単位、為替は1,000通貨単位で、取引のしかたは「${esc(kindText(pf, mode))}」で計算しています（為替の証拠金は国内の決まりの25倍で計算）。手数料などは差し引いていますが、実際の値段（次の日の始まりの値段）は少しずれます。最終的な判断はご自身で行ってください。</p>
     ${updatedNote(r)}`;
   $('plan-settings').onclick = () => $('open-settings').click();
@@ -238,6 +274,18 @@ async function showList(mode, force = false) {
   } catch (e) { out.innerHTML = `<p class="error">${esc(e.message)}</p>`; }
 }
 
+// あなたの設定なら「どの口座で・どれだけ」入るか（今のサイン・売買の一覧で使う）
+function sizeOf(r, mode, side, symbol, price, stop) {
+  const pf = getProfile();
+  return sizeFor(pf, mode, side, { symbol, price, stop, budget: pf.budget || 1_000_000, riskPct: pf.riskPct, maxPos: pf.maxPos, prices: r.prices, usdjpy: r.usdjpy });
+}
+function sizeLine(r, mode, x) {
+  const s = sizeOf(r, mode, x.side, x.symbol, x.last, x.stopEst);
+  if (!s) return '';
+  if (!(s.qty > 0)) return `<div class="small muted">あなたの設定では入れません：${esc(s.why || '')}</div>`;
+  return `<div class="small plan-order"><b>${orderText(x.side, s)}</b>（${s.kindLabel} 約${yen0(s.cost)}・損切り ${fmtPrice(x.stopEst, digitsOf(mode))} まで来たら約−${yen0(s.maxLoss)}）</div>`;
+}
+
 function renderNow(r, mode) {
   const d = digitsOf(mode);
   const opens = r.next.filter((x) => x.type === 'open').sort((a, b) => (b.odds?.p || 0) - (a.odds?.p || 0));
@@ -248,6 +296,7 @@ function renderNow(r, mode) {
     ${opens.length ? `<ul class="list">${opens.map((x) => `<li>
       <div class="li-head"><span class="name">${symLink(x.symbol, x.name)}</span>${sideBadge(x.side)}</div>
       <div class="small"><b>${nextText()}${x.side > 0 ? '買う' : '売る'}</b>（今 ${fmtPrice(x.last, d)}）</div>
+      ${sizeLine(r, mode, x)}
       ${timeLine(mode, x.t)}
       ${oddsHtml(x.odds)}
       <details class="why-box"><summary>理由を見る</summary>${whyList(x.why)}</details></li>`).join('')}</ul>` : '<p class="small muted">今は新しく入るサインはありません。</p>'}
@@ -271,6 +320,14 @@ function renderNow(r, mode) {
     }).join('')}</ul>` : '<p class="small muted">計算の上で持っている銘柄はありません。</p>'}
     <p class="notice" style="margin-top:8px">「勝つ確率の目安」は過去の成績からの見積もりで、当たる保証はありません。${r.count}銘柄を計算・${new Date(r.at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}時点。</p>
     ${updatedNote(r)}`;
+}
+
+// 売買の一覧：あなたの設定なら、どれだけ入って、いくらの損益だったか
+function logSize(r, mode, t, d) {
+  const s = sizeOf(r, mode, t.side, t.symbol, t.entryPrice, t.entryPrice * (1 - t.side * (t.stopPct || 0.03)));
+  if (!s || !(s.qty > 0)) return '';
+  const y = t.side * (t.exitPrice - t.entryPrice) * s.perPrice;
+  return `<div class="small">あなたの設定なら：<b>${orderText(t.side, s)}</b> → <b class="${y >= 0 ? 'plus' : 'minus'}">${fmtYen(y)}</b></div>`;
 }
 
 let logFilter = 'all';
@@ -304,6 +361,7 @@ function renderLog(r, mode) {
         <div class="tl-step"><span class="tl-dot in"></span><div><b>${when(t.entryDate, t.entryTime)} ${t.side > 0 ? '買った' : '売った'}</b>　<span class="num">${fmtPrice(t.entryPrice, d)}</span><div class="small muted">${esc(t.reasonIn)}</div></div></div>
         <div class="tl-step"><span class="tl-dot out"></span><div><b>${when(t.exitDate, t.exitTime)} 決済</b>　<span class="num">${fmtPrice(t.exitPrice, d)}</span>（${heldText(t)}・<span class="${t.ret >= 0 ? 'plus' : 'minus'}">${t.ret >= 0 ? '+' : ''}${(t.ret * 100).toFixed(1)}%</span>）<div class="small muted">${esc(t.reasonOut)}</div></div></div>
       </div>
+      ${logSize(r, mode, t, d)}
       ${oddsHtml(t.odds, { compact: true })}
       <details class="why-box"><summary>くわしい理由を見る</summary><div class="small"><b>入った理由</b></div>${whyList(t.whyIn)}<div class="small" style="margin-top:4px"><b>決済した理由</b></div>${whyList(t.whyOut)}</details></li>`,
     { empty: '該当する取引はありません', tag: 'div', wrap: (b) => `<ul class="list">${b}</ul>` });
@@ -398,6 +456,17 @@ function longHtml(t, d) {
   </div>`;
 }
 
+// 信用で持っているとき：金利（貸株料）と、決済の期限の目安
+function marginNote(mode, h, adv) {
+  if (mode === 'fx' || (h.acct !== 'margin' && h.side > 0)) return '';
+  const rate = h.side < 0 ? CARRY.short : CARRY.long;
+  const notional = adv.plYen != null && adv.plPct ? Math.abs(adv.plYen / adv.plPct) : null;
+  const perDay = notional ? notional * rate / 365 : null;
+  const days = h.date ? Math.floor((Date.now() - Date.parse(h.date)) / 86400000) : null;
+  const left = days != null ? 182 - days : null;
+  return `<p class="small" style="margin:4px 0 0;color:var(--warn)">信用${h.side < 0 ? 'の空売り' : 'で買っている'}ので、${perDay ? `1日あたり約${yen0(perDay)}の${h.side < 0 ? '貸株料' : '金利'}がかかっています（目安）。` : `${h.side < 0 ? '貸株料' : '金利'}がかかります。`}${left != null ? (left > 0 ? `制度信用なら、あと約${left}日で決済の期限（6か月）です。` : '制度信用なら、もう決済の期限（6か月）を過ぎています。') : '制度信用なら6か月以内に決済が必要です（一般信用は楽天証券の条件を確認してください）。'}長く持つほど${h.side < 0 ? '貸株料' : '金利'}が増えるので、待つかどうかはそれも考えて決めましょう。</p>`;
+}
+
 let addFormTouched = false;
 async function showHoldings(mode) {
   const box = $('hold-list');
@@ -420,7 +489,7 @@ async function showHoldings(mode) {
       if (!adv) return `<div class="card hold-item"><div class="li-head"><span class="name">${symLink(symbolOf(mode, h.code), h.name)}</span><button class="icon-btn hold-del" data-id="${esc(h.id)}" aria-label="消す">✕</button></div><p class="small error">値段を取得できませんでした。</p></div>`;
       const v = adv.verdict;
       return `<div class="card hold-item">
-        <div class="li-head"><span class="name">${symLink(symbolOf(mode, h.code), h.name)}<span class="small muted">（押すとチャート）</span></span><span class="badge ${h.side > 0 ? 'buy' : 'sell'}">${h.side > 0 ? '買い' : '売り'}</span><button class="icon-btn hold-del" data-id="${esc(h.id)}" aria-label="消す">✕</button></div>
+        <div class="li-head"><span class="name">${symLink(symbolOf(mode, h.code), h.name)}<span class="small muted">（押すとチャート）</span></span><span class="badge ${h.side > 0 ? 'buy' : 'sell'}">${mode === 'fx' ? (h.side > 0 ? '買い' : '売り') : h.side < 0 ? '信用・空売り' : h.acct === 'margin' ? '信用買い' : '現物'}</span><button class="icon-btn hold-del" data-id="${esc(h.id)}" aria-label="消す">✕</button></div>
         <div class="verdict ${v.cls}">${v.icon} <b>${v.label}</b></div>
         <div class="small">${fmtPrice(h.price, d)} で ${Number(h.qty).toLocaleString()}${unit}${h.date ? `（${esc(h.date.slice(5).replace('-', '/'))}）` : ''} → 今 <b>${fmtPrice(adv.now, d)}</b>　<b class="${adv.plPct >= 0 ? 'plus' : 'minus'}">${adv.plYen != null ? fmtYen(adv.plYen) : ''}（${adv.plPct >= 0 ? '+' : ''}${(adv.plPct * 100).toFixed(1)}%）</b></div>
         <div class="grid2 plan-grid" style="margin-top:6px">
@@ -428,6 +497,7 @@ async function showHoldings(mode) {
           <div class="stat"><div class="label">利益確定の目標</div><div class="value plus" style="font-size:16px">${fmtPrice(adv.target, d)}</div><div class="small muted">${adv.wall ? `${esc(adv.wall.label)}（${esc(adv.wall.strength)}）` : '値動きの大きさから'}</div></div>
         </div>
         <p class="small" style="margin:6px 0 0">${esc(adv.reasons[0] || '')}</p>
+        ${marginNote(mode, h, adv)}
         ${timing ? `<p class="small" style="margin:4px 0 0">⏱ ${timing.wait ? `最大${timing.best.d}日待つのが平均で一番${timing.losing ? '損が小さい' : 'いい'}見込み` : timing.losing ? '今すぐ決済が一番損が小さい見込み' : '今のうちに利益確定が無難'}</p>` : ''}
         <details class="more-box" data-hold="${esc(h.id)}"${openHolds.has(h.id) ? ' open' : ''}><summary>くわしく見る（理由・いつ決済するか・長い目で見ると）</summary>
           <ul class="why" style="font-size:13px;color:var(--text)">${adv.reasons.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
@@ -465,10 +535,12 @@ function initHoldForm() {
     input.value = `${li.dataset.name}（${li.dataset.code}）`;
     sug.hidden = true;
   });
-  $('hold-side').addEventListener('click', (e) => {
-    const b = e.target.closest('button');
-    if (b) $('hold-side').querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
-  });
+  for (const id of ['hold-side', 'hold-acct']) {
+    $(id).addEventListener('click', (e) => {
+      const b = e.target.closest('button');
+      if (b) $(id).querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+    });
+  }
   const n = (v) => Number(String(v).normalize('NFKC').replace(/[,，円\s]/g, ''));
   $('hold-form').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -493,7 +565,9 @@ function initHoldForm() {
     if (!(qty > 0)) { $('hold-err').textContent = '数量か金額を入れてください。'; return; }
     const side = Number($('hold-side').querySelector('[aria-pressed="true"]')?.dataset.v || 1);
     const list = getHoldings(mode);
-    list.push({ id: Date.now().toString(36), code: pick.code, name: pick.name, side, price, qty, date: $('hold-date').value || '' });
+    // 空売り（株で売りから入っている）は信用でしかできない
+    const acct = mode === 'fx' ? 'cash' : side < 0 ? 'margin' : ($('hold-acct').querySelector('[aria-pressed="true"]')?.dataset.v || 'cash');
+    list.push({ id: Date.now().toString(36), code: pick.code, name: pick.name, side, price, qty, date: $('hold-date').value || '', acct });
     setHoldings(mode, list);
     ['hold-sym', 'hold-price', 'hold-qty', 'hold-amount', 'hold-date'].forEach((id) => { $(id).value = ''; });
     holdPick = null;

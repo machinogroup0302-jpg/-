@@ -54,7 +54,7 @@ function markDirty(key) {
 }
 
 // あなたの設定（メール・予算など）
-export const DEFAULT_PROFILE = { email: '', budget: 0, riskPct: 2, maxPos: 3, swingDays: 30, notifyDay: true, levStock: 1, levUs: 1, fxLots: 0, fxLotSize: 10000, notify: { fx: true, stock: true, us: true } };
+export const DEFAULT_PROFILE = { email: '', budget: 0, riskPct: 2, maxPos: 3, swingDays: 30, notifyDay: true, levStock: 1, levUs: 1, fxLots: 0, fxLotSize: 10000, stockAcct: 'cash', stockMarginBudget: 0, stockShort: false, fxSides: 'both', notify: { fx: true, stock: true, us: true } };
 export function getProfile() {
   return { ...DEFAULT_PROFILE, ...(store.get('profile', null) || {}) };
 }
