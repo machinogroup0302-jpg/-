@@ -77,7 +77,7 @@
           <p class="small muted" style="margin:8px 0 0">言葉の意味が分からないときは、右上の <b>?</b> か、各項目の <span class="q-demo">?</span> を押してください。</p>
         </div>
 
-        <div class="card only-stock">
+        <div data-fold="stop" class="card only-stock">
           <h2><button type="button" class="term" data-term="stop">ストップ高・ストップ安<span class="q" aria-hidden="true">?</span></button></h2>
           <div id="stop-box"></div>
         </div>
@@ -87,17 +87,17 @@
           <div id="earn-box"></div>
         </div>
 
-        <div class="card only-stock">
+        <div data-fold="pts" data-closed="1" class="card only-stock">
           <h2><button type="button" class="term" data-term="pts">PTS（夜間などの取引）<span class="q" aria-hidden="true">?</span></button></h2>
           <div id="pts-box"></div>
+        </div>
 
-        <div class="card only-stock">
+        <div data-fold="yoriten" data-closed="1" class="card only-stock">
           <h2><button type="button" class="term" data-term="yoriten">寄り付きのくせ（寄り天・寄り底）<span class="q" aria-hidden="true">?</span></button></h2>
           <div id="opening-box"></div>
         </div>
-        </div>
 
-        <div class="card only-equity">
+        <div data-fold="rating" class="card only-equity">
           <h2><button type="button" class="term" data-term="rating">レーティング<span class="q" aria-hidden="true">?</span></button><span class="sub">アナリストの評価・目標株価</span></h2>
           <div id="rating-box"></div>
         </div>
@@ -117,7 +117,7 @@
           <h2><button type="button" class="term" data-term="forecast">予想チャート<span class="q" aria-hidden="true">?</span></button><span class="sub">計算による予想</span></h2>
           <div id="forecast-box"></div>
         </div>
-        <div class="card only-equity">
+        <div data-fold="flow" class="card only-equity">
           <h2>注文・約定分析<span class="sub">今日の買いと売りの割合</span></h2>
           <div id="orderflow-box"></div>
         </div>
@@ -190,7 +190,7 @@
             <input class="input" id="earn-q" placeholder="会社名・コードで探す（例: とよた）" style="margin-bottom:8px">
             <div id="earn-table"><p class="empty">読み込み中…</p></div>
           </div>
-          <div class="card">
+          <div data-fold="newlist" data-closed="1" class="card">
             <h2><button type="button" class="term" data-term="newListing">新しく上場した会社<span class="q" aria-hidden="true">?</span></button><span class="sub">自動で更新</span></h2>
             <ul class="list" id="stk-new"><li class="empty">読み込み中…</li></ul>
           </div>
@@ -239,7 +239,8 @@
         <div data-minepanel="hold" hidden>
           <div class="card">
             <h2>持っている株<span class="sub">入力すると、どうした方がいいか出します</span></h2>
-            <form class="stack" id="hold-form" autocomplete="off">
+            <details class="more-box" id="hold-add" open><summary>＋ 持っている銘柄を追加する</summary>
+            <form class="stack" id="hold-form" autocomplete="off" style="margin-top:8px">
               <div class="hold-sym">
                 <input class="input" id="hold-sym" placeholder="銘柄（例: 7203 / トヨタ / ドル円 / アップル）">
                 <ul class="suggest" id="hold-suggest" hidden></ul>
@@ -251,6 +252,7 @@
               <button class="btn primary block" type="submit">追加する</button>
               <p class="small error" id="hold-err"></p>
             </form>
+            </details>
           </div>
           <div id="hold-list"></div>
         </div>
@@ -331,8 +333,9 @@
             <div class="lab-chart short" id="lab-eq-chart"></div>
             <h3>取引の一覧</h3>
             <div class="tbl-wrap lab-table" id="lab-s-trades"></div>
-            <h3>1日ずつの損益（最近90日）</h3>
-            <div class="tbl-wrap lab-table" id="lab-s-daily"></div>
+            <details class="more-box"><summary>1日ずつの損益を見る（最近90日）</summary>
+              <div class="tbl-wrap lab-table" id="lab-s-daily"></div>
+            </details>
             <p class="notice" style="margin-top:8px">過去のデータで試した結果です。これから同じように儲かるとは限りません。ファンダメンタルズは「今の数字」しか手に入らないため、過去の判断にも今の数字を使っています。</p>
           </div>
           <div class="card" data-labsub="fc">
@@ -342,8 +345,9 @@
             <div id="lab-fc-stats"></div>
             <div class="lab-chart" id="lab-fc-chart"></div>
             <div class="legend"><span><i style="background:var(--text)"></i>実際の値段</span><span><i style="background:#f2c94c"></i>その日に出していた予想</span><span><i style="background:#a0aec0"></i>予想の幅（90%）</span></div>
-            <h3>1日ずつの答え合わせ</h3>
-            <div class="tbl-wrap lab-table" id="lab-fc-table"></div>
+            <details class="more-box"><summary>1日ずつの答え合わせを見る</summary>
+              <div class="tbl-wrap lab-table" id="lab-fc-table"></div>
+            </details>
           </div>
           </div>
         </div>

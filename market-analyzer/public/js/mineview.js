@@ -310,6 +310,7 @@ async function holdSuggest(mode, q) {
 }
 
 const holdCache = {};
+const openHolds = new Set();
 async function adviceFor(mode, list) {
   const today = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
   const need = new Set(list.map((h) => symbolOf(mode, h.code)));
@@ -373,9 +374,12 @@ function longHtml(t, d) {
   </div>`;
 }
 
+let addFormTouched = false;
 async function showHoldings(mode) {
   const box = $('hold-list');
   const list = getHoldings(mode);
+  // 銘柄が入っていれば、追加の入力欄はたたんでおく（押せば開く）
+  if (!addFormTouched) $('hold-add').open = !list.length;
   if (!list.length) {
     box.innerHTML = '<div class="card"><p class="small muted">まだ入力されていません。上の欄に、持っている銘柄・買った値段・数量を入れて「追加する」を押してください。</p></div>';
     return;
@@ -399,12 +403,18 @@ async function showHoldings(mode) {
           <div class="stat"><div class="label">${adv.protects ? '利益を守る線' : '損切りの線'}</div><div class="value minus" style="font-size:16px">${fmtPrice(adv.stop, d)}</div><div class="small muted">逆指値の注文を入れておく</div></div>
           <div class="stat"><div class="label">利益確定の目標</div><div class="value plus" style="font-size:16px">${fmtPrice(adv.target, d)}</div><div class="small muted">${adv.wall ? `${esc(adv.wall.label)}（${esc(adv.wall.strength)}）` : '値動きの大きさから'}</div></div>
         </div>
-        <ul class="why" style="font-size:13px;color:var(--text)">${adv.reasons.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
-        ${timing ? timingHtml(timing, d) : ''}
-        ${longView ? longHtml(longView, d) : ''}
+        <p class="small" style="margin:6px 0 0">${esc(adv.reasons[0] || '')}</p>
+        ${timing ? `<p class="small" style="margin:4px 0 0">⏱ ${timing.wait ? `最大${timing.best.d}日待つのが平均で一番${timing.losing ? '損が小さい' : 'いい'}見込み` : timing.losing ? '今すぐ決済が一番損が小さい見込み' : '今のうちに利益確定が無難'}</p>` : ''}
+        <details class="more-box" data-hold="${esc(h.id)}"${openHolds.has(h.id) ? ' open' : ''}><summary>くわしく見る（理由・いつ決済するか・長い目で見ると）</summary>
+          <ul class="why" style="font-size:13px;color:var(--text)">${adv.reasons.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
+          ${timing ? timingHtml(timing, d) : ''}
+          ${longView ? longHtml(longView, d) : ''}
+        </details>
       </div>`;
     }).join('')}
     <p class="small muted">日足で計算しています。この画面を開いている間は5分ごとに自動で最新にします。損切りの線は、値段が有利に動くと自動で引き上げています（利益を守るため）。</p>`;
+  // 自動で最新にしても、開いていた「くわしく見る」は開いたままにする
+  box.querySelectorAll('details[data-hold]').forEach((el) => el.addEventListener('toggle', () => { if (el.open) openHolds.add(el.dataset.hold); else openHolds.delete(el.dataset.hold); }));
   box.querySelectorAll('.hold-del').forEach((b) => { b.onclick = () => {
     if (!confirm('この銘柄を消しますか？')) return;
     setHoldings(mode, getHoldings(mode).filter((x) => x.id !== b.dataset.id));
@@ -463,8 +473,10 @@ function initHoldForm() {
     setHoldings(mode, list);
     ['hold-sym', 'hold-price', 'hold-qty', 'hold-amount', 'hold-date'].forEach((id) => { $(id).value = ''; });
     holdPick = null;
+    sug.hidden = true;
     showHoldings(mode);
   });
+  $('hold-add').addEventListener('click', (e) => { if (e.target.closest('summary')) addFormTouched = true; });
 }
 
 // ---------------- 切り替え ----------------

@@ -88,7 +88,8 @@ function coachHtml(c) {
     </div>` : ''}
     <div class="card">
       <h2>くわしい分析<span class="sub">${c.findings.length}項目</span></h2>
-      <ul class="list findings" id="coach-list">${c.findings.map(findingHtml).join('')}</ul>
+      <ul class="list findings" id="coach-list">${c.findings.slice(0, 4).map(findingHtml).join('')}</ul>
+      ${c.findings.length > 4 ? `<details class="more-box"><summary>ほかの分析も見る（あと${c.findings.length - 4}項目）</summary><ul class="list findings">${c.findings.slice(4).map(findingHtml).join('')}</ul></details>` : ''}
     </div>
     <div class="card">
       <h2>実際の値動きと照らし合わせる</h2>
@@ -190,10 +191,12 @@ function render() {
     </div>
     <div class="card">
       <h2>取引一覧<span class="sub">${trades.length}件</span></h2>
+      <details class="more-box"><summary>取引の一覧を見る（新しい順）</summary>
       <div class="tbl-wrap"><table class="tbl"><thead><tr><th>日時</th><th>銘柄</th><th>売買</th><th class="r">損益</th></tr></thead><tbody>
       ${trades.slice().reverse().slice(0, 100).map((t) => `<tr><td class="small">${t.date ? new Date(t.date).toLocaleString('ja-JP', { year: '2-digit', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}</td><td class="small">${esc(t.symbol)}</td><td class="small">${esc(t.side)}</td><td class="r ${t.pnl > 0 ? 'plus' : t.pnl < 0 ? 'minus' : ''}">${t.pnl != null ? fmtYen(t.pnl) : '—'}</td></tr>`).join('')}
       </tbody></table></div>
       ${trades.length > 100 ? '<p class="small muted">新しい100件だけ表示しています</p>' : ''}
+      </details>
       <button class="btn danger block" id="trades-clear" style="margin-top:10px">読み込んだ取引をすべて消す</button>
     </div>`;
 

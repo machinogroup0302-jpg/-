@@ -180,6 +180,26 @@ function startAutoUpdate() {
   document.addEventListener('visibilitychange', tick);
 }
 
+// 長いカードは、見出しを押すとたためるようにする（状態はこの端末に覚えておく）
+function initFolds() {
+  document.querySelectorAll('.card[data-fold]').forEach((card) => {
+    const key = `fold_${card.dataset.fold}`;
+    const h2 = card.querySelector('h2');
+    if (!h2 || h2.querySelector('.fold-btn')) return;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'fold-btn';
+    const apply = (closed) => {
+      card.classList.toggle('folded', closed);
+      btn.textContent = closed ? '開く ▼' : 'たたむ ▲';
+      btn.setAttribute('aria-expanded', String(!closed));
+    };
+    apply(store.get(key, card.dataset.closed === '1'));
+    btn.onclick = () => { const closed = !card.classList.contains('folded'); store.set(key, closed); apply(closed); };
+    h2.appendChild(btn);
+  });
+}
+
 function startApp() {
   $('app').hidden = false;
   $('tabbar').innerHTML = TABS.map(([key, label, , icon]) => `<button role="tab" data-tab="${key}" aria-selected="false">${icon}<span>${label}</span></button>`).join('');
@@ -189,6 +209,7 @@ function startApp() {
   });
 
   initGlossary();
+  initFolds();
   initChartView();
   const openChart = (code, name) => { showTab('chart'); loadChart(code, name, '1d'); };
   initScreener(openChart);
