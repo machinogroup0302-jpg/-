@@ -360,3 +360,47 @@ export function fxLotYen(pf, symbol, side, from, to, prices = {}) {
   if (!q) return null;
   return { lots, size, yen: side * (to - from) * lots * size * q, auto: !(pf?.fxLots > 0) };
 }
+
+// ---------------- AIが見つける特別ルール ----------------
+// 決まったやり方に「勝つ確率の目安が○%以上のサインだけやる」を組み合わせて、一番いいものを探す。
+// たまたま当たったルールを選ばないように、過去1年を前半と後半に分ける：
+//   前半だけで一番良かったルールを選び → 後半（選ぶときに見ていない期間）でも本当に良かったかを確かめる
+export const ODDS_STEPS = [0.55, 0.6, 0.65, 0.7, 0.75, 0.8];
+export function searchCustom(tradesBy, mode, pf, budget, prices = {}, std = null) {
+  const all = Object.values(tradesBy).flat();
+  if (all.length < 20) return null;
+  const dates = [...new Set(all.map((t) => t.entryDate))].sort();
+  const mid = dates[Math.floor(dates.length / 2)];
+  const p = pf.budget ? pf : { ...pf, budget };
+  const run = (w, minOdds, list) => replayWithBudget(list, { ...replayOpts(mode, w, p, prices), minOdds });
+  const cands = [];
+  for (const w of WAYS[mode]) {
+    const ts = tradesBy[w.sides];
+    if (!ts) continue;
+    const first = ts.filter((t) => t.entryDate < mid);
+    for (const m of ODDS_STEPS) {
+      const tr = run(w, m, first);
+      if (tr.trades < 5 || tr.total <= 0 || tr.broke) continue;
+      cands.push({ w, minOdds: m, train: tr });
+    }
+  }
+  if (!cands.length) return null;
+  // 前半で一番良かったもの（増えた額から、一番減ったときの半分を引いた点数で比べる）
+  const score = (r) => r.total - 0.5 * r.maxDD;
+  cands.sort((a, b) => score(b.train) - score(a.train));
+  const c = cands[0];
+  const ts = tradesBy[c.w.sides];
+  const second = ts.filter((t) => t.entryDate >= mid);
+  const test = run(c.w, c.minOdds, second);
+  const full = run(c.w, c.minOdds, ts);
+  // ふつうのおすすめ（条件なし）を、同じ後半だけでやった場合
+  const sb = std?.best;
+  const stdTest = sb && tradesBy[sb.sides] ? run(sb, 0, tradesBy[sb.sides].filter((t) => t.entryDate >= mid)) : null;
+  const adopted = test.trades >= 3 && test.total > 0 && full.total > 0 && !full.broke
+    && (!stdTest || test.total > stdTest.total + budget * 0.01);
+  return {
+    key: 'custom', base: c.w, sides: c.w.sides, long: c.w.long, short: c.w.short, minOdds: c.minOdds,
+    label: `${c.w.label}・勝つ確率${Math.round(c.minOdds * 100)}%以上のサインだけ`,
+    train: c.train, test, full, stdTest, adopted, mid, tried: cands.length,
+  };
+}

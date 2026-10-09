@@ -946,3 +946,22 @@ test('おすすめはマイナスのやり方を選ばない', () => {
   const all = cmpWays({ long: short.map((t) => ({ ...t, side: 1 })), short, both: short }, 'fx', { riskPct: 2, maxPos: 3 }, 100000, {});
   assert.equal(all.note, 'rest');
 });
+
+import { searchCustom as findRule } from '../public/js/plan.js';
+test('AIの特別ルール：前半で見つけて後半で確かめる', () => {
+  // 確率の目安が高いサインは勝ち、低いサインは負ける取引を、1年分（前半・後半）用意する
+  const trades = [];
+  for (let i = 0; i < 80; i++) {
+    const hi = i % 2 === 0;
+    const m = 1 + Math.floor(i / 8), d = 1 + (i % 8) * 3;
+    const ed = `2026-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    trades.push({ side: 1, ret: hi ? 0.03 : -0.03, stopPct: 0.03, mae: -0.01, odds: { p: hi ? 0.72 : 0.52 }, entryDate: ed, exitDate: ed, entryTime: 1.7e9 + i * 3e5, exitTime: 1.7e9 + i * 3e5 + 86400, entryPrice: 100, symbol: '7203.T' });
+  }
+  const pf = { riskPct: 2, maxPos: 3 };
+  const std = cmpWays({ long: trades, both: trades }, 'stock', pf, 1000000, {});
+  const c = findRule({ long: trades, both: trades }, 'stock', pf, 1000000, {}, std);
+  assert.ok(c);
+  assert.ok(c.minOdds >= 0.55 && c.minOdds <= 0.7);
+  assert.ok(c.test.total > 0);
+  assert.equal(c.adopted, true);
+});

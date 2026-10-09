@@ -8,7 +8,7 @@ import fs from 'node:fs/promises';
 import { getChart } from '../lib/market.js';
 import { runStrategy, regimeLookup, signalOdds, oddsLabel } from '../public/js/strategies.js';
 import { baseUniverse } from '../public/js/universe.js';
-import { sizeFor, orderText, waySides, wayProfile, compareWays, budgets } from '../public/js/plan.js';
+import { sizeFor, orderText, waySides, wayProfile, compareWays, budgets, searchCustom } from '../public/js/plan.js';
 import { adviseHolding, exitTiming, longTermView, addOnAdvice } from '../public/js/holdingadvice.js';
 import { US_LIST } from '../lib/usstocks.js';
 import { startScan, scanStatus } from '../lib/scanner.js';
@@ -86,6 +86,15 @@ async function loadMode(mode, users, { holdingsOnly = false } = {}) {
   for (const x of list) prices[x.symbol] = x.candles[x.candles.length - 1].close;
   console.log(`${NAMES[mode]}: ${list.length}/${syms.length}銘柄の値動きを取得`);
   return list;
+}
+
+// 過去の取引それぞれに「その時点での勝つ確率の目安」を付ける（その日より前に終わった取引だけから計算）
+const oddsDone = new WeakSet();
+function withOdds(trades) {
+  if (oddsDone.has(trades)) return trades;
+  for (const t of trades) t.odds = signalOdds(trades, { symbol: t.symbol, side: t.side, strength: t.strength, before: t.entryDate });
+  oddsDone.add(trades);
+  return trades;
 }
 
 // サインを計算する（持つ日数の上限ごとに結果が変わるので、日数ごとに計算する）
@@ -259,7 +268,7 @@ function planForUser(u, kind, groups, book, nowSec) {
   let slots = maxPos - Object.values(mine.open).filter((x) => x.kind === kind).length;
   const tracked = new Set(Object.values(mine.open).map((x) => x.symbol));
   const cands = Object.values(groups).flatMap((g) => g.signals)
-    .filter((x) => x.type === 'open' && u.modes.includes(x.mode) && !tracked.has(x.symbol) && x.odds && x.odds.p >= 0.5 && x.odds.expect > 0)
+    .filter((x) => x.type === 'open' && u.modes.includes(x.mode) && !tracked.has(x.symbol) && x.odds && x.odds.p >= Math.max(0.5, u.minOdds?.[x.mode] || 0) && x.odds.expect > 0)
     .map((x) => ({ ...x, wayPf: u.wayPf?.[x.mode] || pf, wayLabel: u.wayLabel?.[x.mode] || '', size: pf.budget ? sizeFor(u.wayPf?.[x.mode] || pf, x.mode, x.side, { symbol: x.symbol, price: x.last, stop: x.stopEst, budget: pf.budget, riskPct: pf.riskPct || 2, maxPos, prices, usdjpy: prices['USDJPY=X'] }) : null }))
     .filter((x) => !pf.budget || x.size?.qty > 0)
     .sort((a, b) => b.odds.p - a.odds.p);
@@ -417,16 +426,21 @@ async function main() {
     const days = u.profile?.swingDays || 30;
     const groups = {};
     // やり方（現物・信用・空売り、為替の向き）は、その人の予算で過去をやり直して一番良かったものを自動で使う
-    u.wayPf = {}; u.wayLabel = {};
+    u.wayPf = {}; u.wayLabel = {}; u.minOdds = {};
     for (const m of u.modes) {
       const by = Object.fromEntries(waySides(m).map((v) => [v, DAY ? dayLists[m][v] : signalsFor(m, lists[m], regime, days, v)]));
       const pf = u.profile || {};
       const bg = budgets(pf);
-      const cmp = compareWays(Object.fromEntries(Object.entries(by).map(([k, g]) => [k, g.trades])), m, pf, m === 'fx' ? bg.cash : bg.total, prices);
-      const best = cmp.best;
+      const tb = Object.fromEntries(Object.entries(by).map(([k, g]) => [k, withOdds(g.trades)]));
+      const budget = m === 'fx' ? bg.cash : bg.total;
+      const cmp = compareWays(tb, m, pf, budget, prices);
+      // AIの特別ルール（勝つ確率○%以上だけ）：前半で見つけて後半でも良かったときだけ使う
+      const custom = searchCustom(tb, m, pf, budget, prices, cmp);
+      const best = custom?.adopted && cmp.note !== 'rest' ? custom : cmp.best;
       groups[m] = by[best.sides];
-      u.wayPf[m] = wayProfile(pf, m, best.key);
-      u.wayLabel[m] = best.label + (cmp.note === 'rest' ? '（⚠ 過去1年はどのやり方もマイナス。見送りも考えてください）' : '');
+      u.wayPf[m] = wayProfile(pf, m, (best.base || best).key);
+      u.minOdds[m] = best.minOdds || 0;
+      u.wayLabel[m] = (best.key === 'custom' ? `AIの特別ルール「${best.label}」` : best.label) + (cmp.note === 'rest' ? '（⚠ 過去1年はどのやり方もマイナス。見送りも考えてください）' : '');
       console.log(`${NAMES[m]}：一番良いやり方は「${best.label}」`);
     }
     const planned = planForUser(u, DAY ? 'day' : 'swing', groups, book, nowSec);

@@ -4,7 +4,7 @@ import { api, $, esc, store, fmtPrice, fmtYen } from './util.js';
 import { runStrategy, signalOdds, oddsLabel, oddsText } from './strategies.js';
 import { pagedList } from './stockscreener.js';
 import { getProfile, setProfile, getHoldings, setHoldings, syncState } from './favorites.js';
-import { replayWithBudget, kindText, sizeFor, orderText, WAYS, wayOf, waySides, wayProfile, compareWays, wayNotes, replayOpts, budgets, pipsOf, pipsText, CARRY } from './plan.js';
+import { replayWithBudget, kindText, sizeFor, orderText, WAYS, wayOf, waySides, wayProfile, compareWays, wayNotes, replayOpts, budgets, pipsOf, pipsText, CARRY, searchCustom } from './plan.js';
 import { loadRegime, loadCandles, universe, kindOf } from './labview.js';
 import { adviseHolding, exitTiming, longTermView, addOnAdvice } from './holdingadvice.js';
 import { searchFx } from './fxpairs.js';
@@ -160,15 +160,20 @@ function viewOf(r, mode) {
   const budget = mode === 'fx' ? bg.cash : bg.total;
   const ck = JSON.stringify([pf.budget, pf.marginBudget, pf.riskPct, pf.maxPos, pf.fxLots, pf.fxLotSize]);
   if (r.cmpKey !== ck) {
-    r.cmp = compareWays(Object.fromEntries(Object.entries(r.by).map(([k, g]) => [k, g.trades])), mode, pf, budget, r.prices);
+    const tb = Object.fromEntries(Object.entries(r.by).map(([k, g]) => [k, ensureOdds(g).trades]));
+    r.cmp = compareWays(tb, mode, pf, budget, r.prices);
+    // AIの特別ルール（勝つ確率の目安で絞る）：前半で見つけて、後半で確かめる
+    r.custom = searchCustom(tb, mode, pf, budget, r.prices, r.cmp);
     r.cmpKey = ck;
   }
-  const best = r.cmp.best || wayOf(mode);
-  if (r.style === 'swing') setWayPref('bestWay', mode, best.key);
+  const std = r.cmp.best || wayOf(mode);
+  // 特別ルールが後半でも通常のおすすめより良かったときだけ、自動で使う
+  const best = r.custom?.adopted && r.cmp.note !== 'rest' ? r.custom : std;
+  if (r.style === 'swing') setWayPref('bestWay', mode, (best.base || best).key);
   const sel = wayViewOf(mode);
-  const way = sel === 'auto' || !WAYS[mode].some((w) => w.key === sel) ? best : wayOf(mode, sel);
+  const way = sel === 'custom' && r.custom ? r.custom : sel === 'auto' || !WAYS[mode].some((w) => w.key === sel) ? best : wayOf(mode, sel);
   const g = ensureOdds(r.by[way.sides]);
-  return { trades: g.trades, holding: g.holding, next: g.next, prices: r.prices, usdjpy: r.usdjpy, way, best, cmp: r.cmp, auto: way === best && sel === 'auto', pf: wayProfile(pf, mode, way.key), budget };
+  return { trades: g.trades, holding: g.holding, next: g.next, prices: r.prices, usdjpy: r.usdjpy, way, best, std, custom: r.custom, minOdds: way.minOdds || 0, cmp: r.cmp, auto: way === best && sel === 'auto', pf: wayProfile(pf, mode, (way.base || way).key), budget };
 }
 
 // やり方を選ぶボタン（おすすめ＝自動・ほかのやり方も見られる）
@@ -178,7 +183,7 @@ function wayBar(v, mode) {
   return `<div class="way-bar">
     <div class="small" style="margin-bottom:4px">${v.auto || sel === 'auto' ? bestText(v, true) : `「${esc(v.way.label)}」でやった場合を表示中（おすすめは「${esc(v.best.label)}」）`}</div>
     ${v.cmp.note === 'rest' ? `<p class="notice" style="margin:4px 0">⚠ 過去1年は、どのやり方でもマイナスでした。今は<b>お休み（取引しない）</b>のがおすすめです。下のサインは「やるなら」の参考です。</p>` : ''}
-    <div class="chips">${btn('auto', `おすすめ（${esc(v.best.label)}）`)}${WAYS[mode].map((w) => btn(w.key, `${esc(w.label)}の場合`)).join('')}</div>
+    <div class="chips">${btn('auto', `おすすめ（${esc(v.best.label)}）`)}${WAYS[mode].map((w) => btn(w.key, `${esc(w.label)}の場合`)).join('')}${v.custom ? btn('custom', `🤖 AIの特別ルールの場合`) : ''}</div>
   </div>`;
 }
 
@@ -212,8 +217,22 @@ function fxPipNotes(v) {
     pf.fxLots > 0 ? `毎回${pf.fxLots}ロット（${(pf.fxLots * (pf.fxLotSize || 10000)).toLocaleString()}通貨）で入る計算です。ドル円なら1pipsで約${Math.round(pf.fxLots * (pf.fxLotSize || 10000) * 0.01).toLocaleString()}円動きます。` : 'ロット数はおまかせ（損切りまでで減る額が「1回で減ってもいい額」に収まる量）で入る計算です。量は「今のサイン」「売買の一覧」に、何ロット（何通貨）かを出しています。'];
 }
 
+// AIの特別ルール：どう見つけて、本当に良かったか（前半で見つけて後半で確かめた結果）
+function customHtml(v) {
+  const c = v.custom;
+  if (!c) return '<p class="small muted" style="margin:6px 0 0">🤖 AIの特別ルール：前半の期間でプラスになる「勝つ確率○%以上だけ」の組み合わせが見つからなかったので、今回はありません。</p>';
+  const mid = `${Number(c.mid.slice(5, 7))}/${Number(c.mid.slice(8, 10))}`;
+  return `<div class="stat" style="margin-top:8px"><div class="label">🤖 AIが見つけた特別ルール${c.adopted ? '<span class="badge warn" style="margin-left:4px">採用</span>' : '<span class="badge neutral" style="margin-left:4px">参考</span>'}</div>
+    <div style="font-weight:700;margin:2px 0">「${esc(c.label)}」</div>
+    <div class="small">・${c.tried}通りの組み合わせを試して、<b>${mid}より前の期間</b>で一番良かったもの：${fmtYen(c.train.total)}（${c.train.trades}回・勝率${pct(c.train.winRate)}）</div>
+    <div class="small">・それを<b>${mid}から後の期間</b>（選ぶときに見ていない期間）で試すと：<b class="${c.test.total >= 0 ? 'plus' : 'minus'}">${fmtYen(c.test.total)}</b>（${c.test.trades}回）${c.stdTest ? `／ふつうのおすすめ「${esc(v.std.label)}」は同じ期間で${fmtYen(c.stdTest.total)}` : ''}</div>
+    <div class="small">・1年全体では ${fmtYen(c.full.total)}（一番減ったとき ${fmtYen(-c.full.maxDD)}）</div>
+    <div class="small" style="margin-top:4px">${c.adopted ? '→ 見ていない期間でも、ふつうのおすすめより良かったので<b>採用</b>しました。「あなた専用」のプラン・サインはこのルールで出しています。' : '→ 見ていない期間では、ふつうのおすすめより良くなかった（たまたま前半だけ良かった可能性がある）ので、<b>参考</b>にとどめています。'}</div></div>`;
+}
+
 // おすすめの一言：プラスのものから選ぶ。どれもマイナスならお休みをすすめる
 function bestText(v, short) {
+  if (v.best?.key === 'custom' && v.cmp.note !== 'rest') return `🤖 <b>一番いいのは、AIが見つけた特別ルール「${esc(v.best.label)}」だと思います</b>（1年で${fmtYen(v.best.full.total)}）`;
   const b = v.cmp.best;
   if (v.cmp.note === 'rest') return `🛑 <b>今はお休みがおすすめです</b>（過去1年はどのやり方もマイナス。やるなら一番損が小さい「${esc(b.label)}」：${fmtYen(b.r.total)}）`;
   if (v.cmp.note === 'dd') return `🏆 <b>一番いいのは「${esc(b.label)}」だと思います</b>（${fmtYen(b.r.total)}）${short ? '' : '。ただし一番減ったときが予算の35%を超えるので、量（ロット数・株数）を減らすのがおすすめです'}`;
@@ -224,8 +243,9 @@ function bestText(v, short) {
 function waysHtml(v, mode) {
   const { rows, best } = v.cmp;
   return `<h3>やり方で比べると<span class="sub">過去1年・サインどおりに全部やった場合</span></h3>
-    <div class="grid2">${rows.map((x) => replayCard(`${esc(x.label)}${x === best ? '<span class="badge warn" style="margin-left:4px">おすすめ</span>' : ''}${x.key === v.way.key && x !== best ? '<span class="badge ok" style="margin-left:4px">表示中</span>' : ''}`, x.r)).join('')}</div>
+    <div class="grid2">${rows.map((x) => replayCard(`${esc(x.label)}${x === best ? `<span class="badge warn" style="margin-left:4px">${v.best?.key === 'custom' ? 'ふつうのおすすめ' : 'おすすめ'}</span>` : ''}${x.key === v.way.key && x !== best ? '<span class="badge ok" style="margin-left:4px">表示中</span>' : ''}`, x.r)).join('')}</div>
     <p class="small" style="margin:6px 0 0">${bestText(v, false)}</p>
+    ${customHtml(v)}
     <ul class="why" style="font-size:13px;color:var(--text)">${[...wayNotes(v.cmp, mode, v.budget), ...(mode === 'fx' ? fxPipNotes(v) : [])].map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
     <p class="small muted" style="margin:4px 0 0">${mode === 'fx' ? `為替はスワップポイントは入れていません。${getProfile().fxLots > 0 ? `毎回${getProfile().fxLots}ロットで計算しています。` : 'ロット数はおまかせ（損切りの幅から量を決める）で計算しています。'}` : '信用は、楽天証券の制度信用くらいの金利（買い年2.8%・空売りの貸株料 年1.1%）を差し引いています。'}持っている間に一番不利になったところで、${mode === 'fx' ? '証拠金維持率が100%' : mode === 'us' ? '保証金が取引金額の25%' : '保証金維持率が20%'}を割ったら「ロスカット（強制決済）」としています。おすすめは、<b>プラスになったやり方だけ</b>から選びます（一番減ったときが予算の35%以内のものを優先し、簡単なやり方を優先して、はっきり成績が良いときだけ手間やリスクの多いやり方を選びます）。どれもマイナスなら「お休み」をすすめます。</p>`;
 }
@@ -236,12 +256,13 @@ function renderPlan(r0, mode) {
   const budget = r.budget;
   const d = digitsOf(mode);
   // 表示中のやり方（現物・信用・空売り、為替の向き）で過去をやり直す
-  const rule = replayOpts(mode, r.way, pf, r.prices);
+  const rule = replayOpts(mode, r.way.base || r.way, pf, r.prices);
   // 過去1年をあなたのルールでやり直す：全部やった場合と、確率の目安が高いものだけやった場合
-  const all = replayWithBudget(r.trades, rule);
-  const picky = replayWithBudget(r.trades, { ...rule, minOdds: 0.55 });
-  const usePicky = picky.trades >= 5 && picky.total > all.total;
-  const minOdds = usePicky ? 0.55 : 0.5;
+  // 特別ルールのときは、その「勝つ確率○%以上」で絞る
+  const all = replayWithBudget(r.trades, { ...rule, minOdds: r.minOdds });
+  const picky = r.minOdds ? all : replayWithBudget(r.trades, { ...rule, minOdds: 0.55 });
+  const usePicky = !r.minOdds && picky.trades >= 5 && picky.total > all.total;
+  const minOdds = r.minOdds || (usePicky ? 0.55 : 0.5);
   const cashB = budgets(pf).cash;
   const sz = (x, stop) => sizeFor(pf, mode, x.side, { symbol: x.symbol, price: x.last, stop, budget: cashB, riskPct: pf.riskPct, maxPos: pf.maxPos, prices: r.prices, usdjpy: r.usdjpy });
   const opens = r.next.filter((x) => x.type === 'open').map((x) => ({ ...x, size: sz(x, x.stopEst) }))
@@ -730,7 +751,7 @@ export async function showWaysCard(el, mode) {
     const r = await computeLog(mode, el, false, 'swing');
     if (getModeFn() !== mode) return;
     const v = viewOf(r, mode);
-    const b = v.cmp.best;
+    const b = v.best;
     el.innerHTML = `<p class="small" style="margin:0 0 6px">${r.count}銘柄を、全部のやり方（${WAYS[mode].map((w) => w.label).join('・')}）で過去1年やり直して比べました。</p>
       ${waysHtml(v, mode)}
       <p class="small" style="margin:6px 0 0">${v.cmp.note === 'rest' ? `どのやり方もマイナスだったので、今はお休みがおすすめです。「あなた専用」では、やるなら一番損が小さい「<b>${esc(b.label)}</b>」で出しています。` : `今は「<b>${esc(b.label)}</b>」でやるのが一番いいと判断して、「あなた専用」のプラン・サイン・メールもこのやり方で出しています。`}</p>
