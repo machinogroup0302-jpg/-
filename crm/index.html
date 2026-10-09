@@ -420,7 +420,7 @@ tr.void td:nth-child(6){text-decoration:none}
   <section class="view" id="v-pros" hidden>
     <div class="note" style="margin-bottom:10px">まだ確定していないお客様（ミツモアの交渉中・仮成約など）です。内容を確認して「確定」を押すと「顧客一覧」に転記されます。</div>
     <div class="search"><input id="pq" type="search" placeholder="名前・電話番号・住所・作業内容で検索"></div>
-    <div class="tablewrap"><table><thead><tr><th>氏名</th><th>状況</th><th>作業内容</th><th>日程</th><th class="r">金額</th><th>住所</th><th>電話番号</th><th>登録日</th><th></th></tr></thead><tbody id="prows"></tbody></table></div>
+    <div class="tablewrap"><table><thead><tr><th>氏名</th><th>状況</th><th>不足情報</th><th>作業内容</th><th>日程</th><th class="r">金額</th><th>住所</th><th>電話番号</th><th>登録日</th><th></th></tr></thead><tbody id="prows"></tbody></table></div>
   </section>
 
   <section class="view" id="v-rcpt" hidden>
@@ -538,6 +538,7 @@ const NB=64; // bucket count
 const CK=[["cal","カレンダー入力"],["conf","予約確定"],["chk","物の確認"],["prep","物の用意"],["buy","物購入"],["pre","事前準備"],["done","施工状況"]];
 const CF=[["kana","フリガナ"],["name","氏名"],["birth","誕生日"],["zip","郵便番号"],["addr","住所"],["tel","電話番号"],["mail","メールアドレス"],["sns","SNS"],["line","LINE追加状況"],["lineName","LINE名"],["motive","来店動機"],["change","車の買い替え"],["shaken","出張車検"],["coat","コーティング"],["scratch","キズ直し"],["ins","保険加入"],["ideal","理想サービス"],["snsOk","SNS掲載"],["sellReason","売却理由"],["nextCar","乗り換え検討車種"],["interest","興味のあるサービス"],["note","備考"],["maker","メーカー"],["car","車名"],["color","色"],["km","走行距離"],["shakenDate","車検日"],["firstReg","初年度登録"],["vin","車体番号"],["model","型式"],["engine","原動機の型式"],["typeNo","型式指定番号"],["classNo","類別区分番号"],["navi","ナビ型番"],["own","自社販売顧客"],["soldDate","販売日（納車日）"]];
 const OPT={line:["","済み","未"],motive:["","ミツモア","暮らしのマーケット","新規","紹介","知人","リピーター","チラシ","SNS"],change:["","なし","あり"],shaken:["","いつもの場所","やってみたい"],coat:["","興味なし","気になる"],scratch:["","気にならない","気になる"],ins:["","ネット","ディーラー","知人","団体"],own:["","はい"]};
+const PREPBY=["","お客様","自社"];
 const PAY=["","現金","ミツモア","暮らしのマーケット","クレジットカード","QR決済","振込","電子決済","ユアマイスター"];
 const RECEIPT=["","なし","いる","済み","ミツモア","暮らしのマーケット"];
 
@@ -555,6 +556,26 @@ function status(msg,err){const el=$("status");el.hidden=!msg;el.textContent=msg|
 
 /* ---------- derived ---------- */
 function jobCalc(j){const profit=num(j.amount)-num(j.feePay)-num(j.feeRes);let parts=0;for(let i=1;i<=5;i++)parts+=num(j["p"+i]);const park=num(j.park1)+num(j.park2);return {profit,net:profit-parts-park,parts,park}}
+/* 見込み顧客の不足情報 */
+const PREF="北海道|東京都|大阪府|京都府|青森県|岩手県|宮城県|秋田県|山形県|福島県|茨城県|栃木県|群馬県|埼玉県|千葉県|神奈川県|新潟県|富山県|石川県|福井県|山梨県|長野県|岐阜県|静岡県|愛知県|三重県|滋賀県|兵庫県|奈良県|和歌山県|鳥取県|島根県|岡山県|広島県|山口県|徳島県|香川県|愛媛県|高知県|福岡県|佐賀県|長崎県|熊本県|大分県|宮崎県|鹿児島県|沖縄県";
+const ADDR_RE=new RegExp("(?:"+PREF+")[^\\s、。,，「」『』()（）【】<>]{2,40}|[一-龠々ぁ-んァ-ヶ]{1,8}[市区郡][一-龠々ぁ-んァ-ヶー0-9０-９\\-－−]{0,30}[0-9０-９]+(?:丁目|番地?|号|[-－ー−][0-9０-９]+)","g");
+function normAddr(s){return String(s||"").replace(/[０-９]/g,d=>String.fromCharCode(d.charCodeAt(0)-0xFEE0)).replace(/[－ー−‐―]/g,"-").replace(/[\s〒]/g,"").replace(/^\d{3}-?\d{4}/,"")}
+function sameAddr(a,b){const x=normAddr(a),y=normAddr(b);return !!x&&!!y&&(x.includes(y)||y.includes(x))}
+function talkAddrs(c){const txt=[c.talk,c.note].concat(c.jobsArr.flatMap(j=>[j.talk,j.note,j.work2])).filter(Boolean).join("\n").replace(/https?:\/\/\S+/g," ");
+  const out=[];for(const m of txt.matchAll(ADDR_RE)){const a=m[0].trim();if(!out.some(x=>sameAddr(x,a)))out.push(a)}return out}
+function prosMissing(c){const j=c.jobsArr[0]||{};const m=[];const has=v=>!!String(v||"").trim();
+  if(!has(c.addr))m.push({s:"登録住所",l:"登録住所"});
+  const ta=talkAddrs(c).find(a=>!sameAddr(a,c.addr)&&!sameAddr(a,j.workAddr));
+  if(ta)m.push({s:"トークの住所",l:"トークに出てきた住所（"+ta+"）",ta,jid:j.jid});
+  if(!has(c.tel))m.push({s:"電話番号",l:"電話番号"});
+  if(!has(c.car))m.push({s:"車種",l:"車種"});
+  if(!has(j.date)||!has(j.time))m.push({s:"作業日時",l:"作業日時"+(has(j.date)?"（開始時間）":has(j.time)?"（作業日）":"")});
+  if(!has(j.work))m.push({s:"作業内容",l:"作業内容"});
+  if(!has(j.pay))m.push({s:"支払方法",l:"支払方法"});
+  if(!(num(j.amount)>0))m.push({s:"作業金額",l:"作業金額"});
+  if(!has(j.prepBy))m.push({s:"物の用意",l:"物の用意をするのは誰か（お客様／自社）"});
+  else if(!j.prep)m.push({s:j.prepBy+"の用意",l:(j.prepBy==="お客様"?"お客様の物の用意が完了したか":"自社の物の用意ができたか")});
+  return m}
 function rebuild(){
   const list=[];
   for(const b of Object.values(state.buckets)){const c=(b&&b.c)||{};for(const [id,x] of Object.entries(c)){if(!x||x.deleted)continue;
@@ -615,7 +636,7 @@ function renderList(){
 function renderPros(){
   const q=($("pq").value||"").trim().toLowerCase();
   const r=pros.filter(c=>!q||(c._s+" "+c.jobsArr.map(j=>(j.work||"")+" "+(j.work2||"")).join(" ")).toLowerCase().includes(q)).sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||""));
-  $("prows").innerHTML=r.length?r.map(c=>{const j=c.jobsArr[0]||{};return `<tr data-id="${esc(c.id)}"><td><div class="nm"><span>${esc(c.name?sama(c.name):"（名前なし）")}</span><small>${esc(c.motive||"")}</small></div></td><td>${c.prosStatus?`<span class="pill warn">${esc(c.prosStatus)}</span>`:""}</td><td>${esc(j.work||"")}${j.work2?`<br><small class="note">${esc(j.work2)}</small>`:""}</td><td class="num">${esc(((j.date||"").slice(5).replace("-","/")+" "+(j.time||"")).trim()||"未定")}</td><td class="r num">${num(j.amount)?yen(num(j.amount)):""}</td><td>${esc(c.addr||"")}</td><td class="num">${esc(c.tel||"")}</td><td class="num">${esc((c.createdAt||"").slice(0,10).replace(/-/g,"/"))}</td><td><button class="btn small primary" data-promote="${esc(c.id)}">確定</button></td></tr>`}).join(""):`<tr><td colspan="9" class="empty">見込みのお客様はいません。</td></tr>`;
+  $("prows").innerHTML=r.length?r.map(c=>{const j=c.jobsArr[0]||{};return `<tr data-id="${esc(c.id)}"><td><div class="nm"><span>${esc(c.name?sama(c.name):"（名前なし）")}</span><small>${esc(c.motive||"")}</small></div></td><td>${c.prosStatus?`<span class="pill warn">${esc(c.prosStatus)}</span>`:""}</td><td>${(()=>{const m=prosMissing(c);return m.length?m.map(x=>`<span class="pill bad">${esc(x.s)}</span>`).join(" "):'<span class="pill good">そろっています</span>'})()}</td><td>${esc(j.work||"")}${j.work2?`<br><small class="note">${esc(j.work2)}</small>`:""}</td><td class="num">${esc(((j.date||"").slice(5).replace("-","/")+" "+(j.time||"")).trim()||"未定")}</td><td class="r num">${num(j.amount)?yen(num(j.amount)):""}</td><td>${esc(c.addr||"")}</td><td class="num">${esc(c.tel||"")}</td><td class="num">${esc((c.createdAt||"").slice(0,10).replace(/-/g,"/"))}</td><td><button class="btn small primary" data-promote="${esc(c.id)}">確定</button></td></tr>`}).join(""):`<tr><td colspan="10" class="empty">見込みのお客様はいません。</td></tr>`;
 }
 let noBase=0;
 function nextNo(){return String(Math.max(noBase,...everyone.filter(c=>!c.test&&!String(c.id).startsWith("t-")&&!/テスト/.test(c.name||"")).map(c=>Number(c.no)||0))+1)}
@@ -713,6 +734,7 @@ function renderSheet(){
   const tags=[c.motive&&["acc",c.motive],c.change==="あり"&&["warn","買い替え検討"],c.coat==="気になる"&&["warn","コーティングに関心"],c.scratch==="気になる"&&["warn","キズ直しに関心"],c.shaken==="やってみたい"&&["warn","出張車検に関心"],c.line==="済み"&&["good","LINE追加済み"],c.own==="はい"&&["acc","自社販売顧客"]].filter(Boolean);
   let h=`<div class="hd"><div class="t"><span class="note num">${isNew?"新規":c.no?"No. "+esc(c.no):(c.isPros?"見込み":"")}</span><h2>${esc(isNew?"新しい顧客":(c.name?sama(c.name):"（名前なし）"))}</h2><span class="note">${esc(c.kana||"")}</span></div><button class="btn" id="closeS">閉じる</button></div>`;
   if(c.isPros)h+=`<div class="panel" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="pill warn">見込み${c.prosStatus?"・"+esc(c.prosStatus):""}</span><span class="note" style="flex:1">内容を確認し、お客様との約束が決まったら「確定」を押してください。顧客一覧に転記されます。</span><button class="btn primary" data-promote="${esc(c.id)}">確定（顧客一覧へ転記）</button></div>`;
+  if(c.isPros){const m=prosMissing(c);h+=m.length?`<div class="panel"><h3>不足情報（${m.length}件）</h3><ul style="margin:6px 0 0;padding-left:1.2em;display:flex;flex-direction:column;gap:6px">${m.map(x=>`<li>${esc(x.l)}${x.ta?` <button class="btn small" data-tadr="addr" data-v="${esc(x.ta)}">登録住所にする</button>${x.jid?` <button class="btn small" data-tadr="work" data-jid="${esc(x.jid)}" data-v="${esc(x.ta)}">作業場所にする</button>`:""}`:""}</li>`).join("")}</ul><p class="note" style="margin-top:8px">基本情報は「編集」、作業日時・支払方法・物の用意などは作業の「編集」から入力してください。</p></div>`:`<div class="panel"><span class="pill good">必要な情報はすべてそろっています</span></div>`}
   if(tags.length)h+=`<div class="tags">${tags.map(([k,t])=>`<span class="pill ${k}">${esc(t)}</span>`).join("")}</div>`;
   if(editMode==="cust"||isNew){
     h+=`<form class="panel" id="custform" style="display:flex;flex-direction:column;gap:12px"><h3>基本情報</h3><div class="grid2">`+CF.map(([k,l])=>{const v=esc(c[k]||"");const id="cf-"+k;
@@ -858,7 +880,7 @@ async function addPhotos(jid,files){const f=phDb();if(!f||!files.length)return;p
   phBusy[jid]=false;status(ok+"枚の写真を保存しました。"+(ng?"（"+ng+"枚は読み込めませんでした）":""),!!ng);renderSheet()}
 function jobCard(j){const k=jobCalc(j);const done=CK.filter(([key])=>j[key]).length;
   return `<div class="job"><div class="jh"><span class="date">${esc((j.date||"日付未定").replace(/-/g,"/"))} ${esc(j.time||"")}</span><span class="w">${esc(j.work||"（作業内容なし）")}${j.work2?`<br><small class="note">${esc(j.work2)}</small>`:""}</span>${j.trOk?'<span class="pill good">振込確認済み</span>':(j.pay&&j.pay!=="現金"&&num(j.amount)>0?'<span class="pill warn">振込未確認</span>':"")}<span class="pill${done===CK.length?" good":""}">準備 ${done}/${CK.length}</span>${j.rcptNo?`<span class="pill acc">領収書 ${esc(j.rcptNo)}</span>`:""}<button class="btn small" data-rcpt="${esc(j.jid)}">領収書を発行</button><button class="btn small" data-editjob="${esc(j.jid)}">編集</button><button class="btn small" data-ukjob="${esc(j.jid)}">${j.ukAt?"📝 受付表（記入済み）":j.ukSentAt?"📨 受付表（送信済み）":"📝 受付表"}</button>${timerBtns(j)}</div>
-  <div class="money"><span>金額 <b>${yen(num(j.amount))}</b></span><span>支払 <b>${esc(j.pay||"—")}</b></span><span>手数料 <b>${yen(num(j.feePay)+num(j.feeRes))}</b></span><span>部品・駐車場 <b>${yen(k.parts+k.park)}</b></span><span>純利益 <b>${yen(k.net)}</b></span><span>担当 <b>${esc(j.staff||"—")}</b></span><span>作業時間 <b>${esc(j.duration||"—")}</b></span></div>${j.witCo||j.witName?`<div class="note">👤 立会者：${esc([j.witCo,j.witName&&sama(j.witName)].filter(Boolean).join("　"))}</div>`:""}${j.workAddr?`<div class="note">📍 作業場所：${esc(j.workAddr)} <a href="${esc(gmapDest(j.workAddr))}" target="_blank" rel="noopener">地図</a></div>`:""}${j.note?`<div class="note">${esc(j.note)}</div>`:""}${photoStrip(j)}</div>`}
+  <div class="money"><span>金額 <b>${yen(num(j.amount))}</b></span><span>支払 <b>${esc(j.pay||"—")}</b></span><span>手数料 <b>${yen(num(j.feePay)+num(j.feeRes))}</b></span><span>部品・駐車場 <b>${yen(k.parts+k.park)}</b></span><span>純利益 <b>${yen(k.net)}</b></span><span>担当 <b>${esc(j.staff||"—")}</b></span><span>作業時間 <b>${esc(j.duration||"—")}</b></span>${j.prepBy?`<span>物の用意 <b>${esc(j.prepBy)}${j.prep?"（完了）":"（未完了）"}</b></span>`:""}</div>${j.witCo||j.witName?`<div class="note">👤 立会者：${esc([j.witCo,j.witName&&sama(j.witName)].filter(Boolean).join("　"))}</div>`:""}${j.workAddr?`<div class="note">📍 作業場所：${esc(j.workAddr)} <a href="${esc(gmapDest(j.workAddr))}" target="_blank" rel="noopener">地図</a></div>`:""}${j.note?`<div class="note">${esc(j.note)}</div>`:""}${photoStrip(j)}</div>`}
 function jobForm(c,j){const f=(k,l,type="text")=>`<label class="f" for="jf-${k}"><span>${l}</span><input id="jf-${k}" name="${k}" type="${type}" value="${esc(j[k]||"")}"></label>`;
   const s=(k,l,opts)=>`<label class="f" for="jf-${k}"><span>${l}</span><select id="jf-${k}" name="${k}">${opts.concat(j[k]&&!opts.includes(j[k])?[j[k]]:[]).map(o=>`<option${o===(j[k]||"")?" selected":""}>${esc(o)}</option>`).join("")}</select></label>`;
   let parts="";for(let i=1;i<=5;i++)parts+=f("p"+i,"部品代"+i)+f("pd"+i,"部品購入日"+i,"date");
@@ -869,6 +891,7 @@ function jobForm(c,j){const f=(k,l,type="text")=>`<label class="f" for="jf-${k}"
   <div class="grid2">${f("witCo","立会者（会社名）")}${f("witName","立会者（個人名）")}</div>
   <label class="f" for="jf-workAddr"><span>作業実施住所（登録住所と違う場合）</span><input id="jf-workAddr" name="workAddr" value="${esc(j.workAddr||"")}" placeholder="空欄なら登録住所で作業"></label>
   <div class="grid3">${f("duration","作業時間")}${s("pay","支払方法",PAY)}${f("amount","作業金額（円）","number")}${f("feePay","決済手数料（円）","number")}${f("feeRes","予約手数料（円）","number")}${s("receipt","領収書",RECEIPT)}</div>
+  <div class="grid3">${s("prepBy","物の用意をする人",PREPBY)}</div>
   <h3>準備・進行状況</h3><div class="checks">${CK.map(([k,l])=>`<label class="ck${j[k]?" on":""}" for="jf-${k}"><input type="checkbox" id="jf-${k}" name="${k}"${j[k]?" checked":""}>${l}</label>`).join("")}</div>
   <h3>振込</h3><div class="grid3">${f("tr1Amt","振込金額①","number")}${f("tr1Date","振込日①","date")}<label class="ck${j.trOk?" on":""}" for="jf-trOk" style="align-self:end;justify-self:start"><input type="checkbox" id="jf-trOk" name="trOk"${j.trOk?" checked":""}>振込確認済み</label>${f("tr2Amt","振込金額②","number")}${f("tr2Date","振込日②","date")}</div>
   <details><summary class="note" style="cursor:pointer">部品代・駐車場代</summary><div class="grid2" style="margin-top:10px">${parts}${f("park1","駐車場代①","number")}${f("park2","駐車場代②","number")}</div></details>
@@ -1218,6 +1241,7 @@ document.addEventListener("click",async e=>{
   const t=e.target;
   const tab=t.closest("nav.tabs button");if(tab){setView(tab.dataset.v);return}
   if(t.dataset.promote){t.disabled=true;await promote(t.dataset.promote);return}
+  if(t.dataset.tadr&&openId){t.disabled=true;const v=t.dataset.v;if(await writeCust(openId,t.dataset.tadr==="addr"?{addr:v}:{jobs:{[t.dataset.jid]:{workAddr:v}}}))status(t.dataset.tadr==="addr"?"登録住所に入れました。":"作業場所に入れました。");return}
   const row=t.closest("[data-id]");if(row&&!t.closest("#sheet")){openCust(row.dataset.id);return}
   const rrow=t.closest("[data-rc]");if(rrow){openId="__rc:"+rrow.dataset.rc;rcJust=null;rcConfirm=null;$("ov").hidden=false;renderSheet();$("sheet").scrollTop=0;return}
   if(t.dataset.rcpt){const c=everyone.find(x=>x.id===openId);const j=c&&c.jobsArr.find(x=>x.jid===t.dataset.rcpt);if(j){rdraft=draftFromJob(c,j);openId="__rcnew";renderRcForm();$("sheet").scrollTop=0}return}
@@ -1320,7 +1344,7 @@ function setView(v){if(v!=="cp")cpStop();view=v;for(const b of document.querySel
 
 /* ---------- import ---------- */
 function parseCSV(s){const rows=[];let row=[],f="",q=false;s=s.replace(/^﻿/,"");for(let i=0;i<s.length;i++){const c=s[i];if(q){if(c==='"'){if(s[i+1]==='"'){f+='"';i++}else q=false}else f+=c}else{if(c==='"')q=true;else if(c===","){row.push(f);f=""}else if(c==="\n"){row.push(f);rows.push(row);row=[];f=""}else if(c!=="\r")f+=c}}if(f||row.length){row.push(f);rows.push(row)}return rows}
-const JL={"担当者名":"staff","作業日":"date","作業開始時間":"time","カレンダー入力":"cal","作業内容":"work","作業時間":"duration","支払方法":"pay","作業金額":"amount","決済手数料":"feePay","予約手数料":"feeRes","予約確定":"conf","物の確認":"chk","物の用意":"prep","物購入":"buy","事前準備":"pre","施工状況":"done","領収書":"receipt","振込金額①":"tr1Amt","振込日①":"tr1Date","振込金額②":"tr2Amt","振込日②":"tr2Date","振込確認":"trOk","部品代①":"p1","部品購入日①":"pd1","部品代②":"p2","部品購入日②":"pd2","部品代③":"p3","部品購入日③":"pd3","部品代④":"p4","部品購入日④":"pd4","部品代⑤":"p5","部品購入日⑤":"pd5","駐車場代①":"park1","駐車場代②":"park2","備考":"note"};
+const JL={"担当者名":"staff","作業日":"date","作業開始時間":"time","カレンダー入力":"cal","作業内容":"work","作業時間":"duration","支払方法":"pay","作業金額":"amount","決済手数料":"feePay","予約手数料":"feeRes","予約確定":"conf","物の確認":"chk","物の用意":"prep","物の用意をする人":"prepBy","物購入":"buy","事前準備":"pre","施工状況":"done","領収書":"receipt","振込金額①":"tr1Amt","振込日①":"tr1Date","振込金額②":"tr2Amt","振込日②":"tr2Date","振込確認":"trOk","部品代①":"p1","部品購入日①":"pd1","部品代②":"p2","部品購入日②":"pd2","部品代③":"p3","部品購入日③":"pd3","部品代④":"p4","部品購入日④":"pd4","部品代⑤":"p5","部品購入日⑤":"pd5","駐車場代①":"park1","駐車場代②":"park2","備考":"note"};
 const BOOLK=new Set(["cal","conf","chk","prep","buy","pre","done","trOk"]);
 const truthy=v=>{v=String(v||"").trim();return !!v&&!/^(FALSE|false|未|なし|×|0)$/.test(v)};
 function convert(R){
