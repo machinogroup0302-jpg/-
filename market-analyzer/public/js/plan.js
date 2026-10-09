@@ -293,13 +293,29 @@ export function compareWays(tradesBy, mode, pf, budget, prices = {}) {
   const p = pf.budget ? pf : { ...pf, budget };
   const rows = WAYS[mode].filter((w) => tradesBy[w.sides]).map((w) => ({ ...w, r: replayWithBudget(tradesBy[w.sides], replayOpts(mode, w, p, prices)) }));
   if (!rows.length) return { rows, best: null };
-  // おすすめ：途中で資金がなくならず、一番減ったときが予算の35%以内のもの。
-  // 簡単なやり方から順に見て、はっきり（予算の2%か1割以上）良いときだけ、手間やリスクの多いやり方を選ぶ
-  const ok = rows.filter((x) => !x.r.broke && x.r.maxDD <= budget * 0.35);
-  let best = null;
-  for (const x of ok) if (!best || x.r.total > best.r.total + Math.max(budget * 0.02, Math.abs(best.r.total) * 0.1)) best = x;
-  if (!best) best = rows.slice().sort((a, b) => a.r.maxDD - b.r.maxDD)[0];
-  return { rows, best };
+  // おすすめの選び方
+  // 1) プラスになったものだけを候補にする（マイナスのやり方は、どんなに減り方が小さくても選ばない）
+  // 2) その中で、途中で資金がなくならず、一番減ったときが予算の35%以内のものを優先
+  // 3) 簡単なやり方から順に見て、はっきり（予算の2%か1割以上）良いときだけ、手間やリスクの多いやり方を選ぶ
+  // 4) どれもマイナスなら「お休みがおすすめ」（やるなら一番損が小さいもの）
+  const pick = (list) => {
+    let b = null;
+    for (const x of list) if (!b || x.r.total > b.r.total + Math.max(budget * 0.02, Math.abs(b.r.total) * 0.1)) b = x;
+    return b;
+  };
+  const plus = rows.filter((x) => x.r.total > 0 && !x.r.broke);
+  const safe = plus.filter((x) => x.r.maxDD <= budget * 0.35);
+  let best, note = '';
+  if (safe.length) best = pick(safe);
+  else if (plus.length) {
+    // プラスだが減り方が大きいものしかない：増え方÷一番減ったとき が一番いいもの
+    best = plus.slice().sort((a, b) => b.r.total / Math.max(1, b.r.maxDD) - a.r.total / Math.max(1, a.r.maxDD))[0];
+    note = 'dd';
+  } else {
+    best = rows.slice().sort((a, b) => b.r.total - a.r.total)[0];
+    note = 'rest';
+  }
+  return { rows, best, note };
 }
 
 // 比べた結果の説明（「信用で買うと…」「空売りを入れると…」）

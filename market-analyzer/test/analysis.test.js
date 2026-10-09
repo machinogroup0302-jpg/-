@@ -934,3 +934,15 @@ test('持っている株：空っぽで上書きしても、前の中身をと�
   assert.equal(items.holdings_stock.value.length, 0);
   assert.equal(items['holdings_stock~prev'].value[0].name, 'フジクラ');
 });
+
+test('おすすめはマイナスのやり方を選ばない', () => {
+  const mk = (side, ret, mae, n, d0 = 0) => [...Array(n)].map((_, i) => ({ side, ret, stopPct: 0.01, mae, entryDate: `2026-0${1 + ((i + d0) % 9)}-${String(1 + (i % 27)).padStart(2, '0')}`, exitDate: `2026-0${1 + ((i + d0) % 9)}-${String(2 + (i % 27)).padStart(2, '0')}`, entryTime: 1.7e9 + i * 86400 * 3, exitTime: 1.7e9 + i * 86400 * 3 + 86400, entryPrice: 150, symbol: 'USDJPY=X' }));
+  // 買いだけ：大きく勝つが減り方も大きい／売りだけ：小さく負け続ける
+  const long = [...mk(1, 0.03, -0.02, 20), ...mk(1, -0.02, -0.03, 12, 3)];
+  const short = mk(-1, -0.003, -0.004, 30, 1);
+  const cmp = cmpWays({ long, short, both: [...long, ...short] }, 'fx', { riskPct: 2, maxPos: 3 }, 100000, {});
+  assert.ok(cmp.best.r.total > 0);
+  assert.notEqual(cmp.best.key, 'short');
+  const all = cmpWays({ long: short.map((t) => ({ ...t, side: 1 })), short, both: short }, 'fx', { riskPct: 2, maxPos: 3 }, 100000, {});
+  assert.equal(all.note, 'rest');
+});

@@ -176,7 +176,8 @@ function wayBar(v, mode) {
   const sel = wayViewOf(mode);
   const btn = (k, t) => `<button type="button" class="chip" data-way="${k}" aria-pressed="${k === sel}">${t}</button>`;
   return `<div class="way-bar">
-    <div class="small" style="margin-bottom:4px">${v.auto || sel === 'auto' ? `🏆 <b>一番いいのは「${esc(v.best.label)}」だと思います</b>（過去1年で比べて自動で選んでいます）` : `「${esc(v.way.label)}」でやった場合を表示中（おすすめは「${esc(v.best.label)}」）`}</div>
+    <div class="small" style="margin-bottom:4px">${v.auto || sel === 'auto' ? bestText(v, true) : `「${esc(v.way.label)}」でやった場合を表示中（おすすめは「${esc(v.best.label)}」）`}</div>
+    ${v.cmp.note === 'rest' ? `<p class="notice" style="margin:4px 0">⚠ 過去1年は、どのやり方でもマイナスでした。今は<b>お休み（取引しない）</b>のがおすすめです。下のサインは「やるなら」の参考です。</p>` : ''}
     <div class="chips">${btn('auto', `おすすめ（${esc(v.best.label)}）`)}${WAYS[mode].map((w) => btn(w.key, `${esc(w.label)}の場合`)).join('')}</div>
   </div>`;
 }
@@ -211,14 +212,22 @@ function fxPipNotes(v) {
     pf.fxLots > 0 ? `毎回${pf.fxLots}ロット（${(pf.fxLots * (pf.fxLotSize || 10000)).toLocaleString()}通貨）で入る計算です。ドル円なら1pipsで約${Math.round(pf.fxLots * (pf.fxLotSize || 10000) * 0.01).toLocaleString()}円動きます。` : 'ロット数はおまかせ（損切りまでで減る額が「1回で減ってもいい額」に収まる量）で入る計算です。量は「今のサイン」「売買の一覧」に、何ロット（何通貨）かを出しています。'];
 }
 
+// おすすめの一言：プラスのものから選ぶ。どれもマイナスならお休みをすすめる
+function bestText(v, short) {
+  const b = v.cmp.best;
+  if (v.cmp.note === 'rest') return `🛑 <b>今はお休みがおすすめです</b>（過去1年はどのやり方もマイナス。やるなら一番損が小さい「${esc(b.label)}」：${fmtYen(b.r.total)}）`;
+  if (v.cmp.note === 'dd') return `🏆 <b>一番いいのは「${esc(b.label)}」だと思います</b>（${fmtYen(b.r.total)}）${short ? '' : '。ただし一番減ったときが予算の35%を超えるので、量（ロット数・株数）を減らすのがおすすめです'}`;
+  return `🏆 <b>一番いいのは「${esc(b.label)}」だと思います</b>（${fmtYen(b.r.total)}${short ? '・過去1年で比べて自動で選んでいます' : ''}）`;
+}
+
 // やり方ごとの成績（過去1年をあなたの予算でやり直した結果）と説明
 function waysHtml(v, mode) {
   const { rows, best } = v.cmp;
   return `<h3>やり方で比べると<span class="sub">過去1年・サインどおりに全部やった場合</span></h3>
     <div class="grid2">${rows.map((x) => replayCard(`${esc(x.label)}${x === best ? '<span class="badge warn" style="margin-left:4px">おすすめ</span>' : ''}${x.key === v.way.key && x !== best ? '<span class="badge ok" style="margin-left:4px">表示中</span>' : ''}`, x.r)).join('')}</div>
-    <p class="small" style="margin:6px 0 0"><b>🏆 一番いいのは「${esc(best.label)}」だと思います。</b></p>
+    <p class="small" style="margin:6px 0 0">${bestText(v, false)}</p>
     <ul class="why" style="font-size:13px;color:var(--text)">${[...wayNotes(v.cmp, mode, v.budget), ...(mode === 'fx' ? fxPipNotes(v) : [])].map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
-    <p class="small muted" style="margin:4px 0 0">${mode === 'fx' ? `為替はスワップポイントは入れていません。${getProfile().fxLots > 0 ? `毎回${getProfile().fxLots}ロットで計算しています。` : 'ロット数はおまかせ（損切りの幅から量を決める）で計算しています。'}` : '信用は、楽天証券の制度信用くらいの金利（買い年2.8%・空売りの貸株料 年1.1%）を差し引いています。'}持っている間に一番不利になったところで、${mode === 'fx' ? '証拠金維持率が100%' : mode === 'us' ? '保証金が取引金額の25%' : '保証金維持率が20%'}を割ったら「ロスカット（強制決済）」としています。おすすめは「途中で資金がなくならず、一番減ったときが予算の35%以内」のものの中から、簡単なやり方を優先して、はっきり成績が良いときだけ信用・空売りなどを選んでいます。</p>`;
+    <p class="small muted" style="margin:4px 0 0">${mode === 'fx' ? `為替はスワップポイントは入れていません。${getProfile().fxLots > 0 ? `毎回${getProfile().fxLots}ロットで計算しています。` : 'ロット数はおまかせ（損切りの幅から量を決める）で計算しています。'}` : '信用は、楽天証券の制度信用くらいの金利（買い年2.8%・空売りの貸株料 年1.1%）を差し引いています。'}持っている間に一番不利になったところで、${mode === 'fx' ? '証拠金維持率が100%' : mode === 'us' ? '保証金が取引金額の25%' : '保証金維持率が20%'}を割ったら「ロスカット（強制決済）」としています。おすすめは、<b>プラスになったやり方だけ</b>から選びます（一番減ったときが予算の35%以内のものを優先し、簡単なやり方を優先して、はっきり成績が良いときだけ手間やリスクの多いやり方を選びます）。どれもマイナスなら「お休み」をすすめます。</p>`;
 }
 
 function renderPlan(r0, mode) {
@@ -724,7 +733,7 @@ export async function showWaysCard(el, mode) {
     const b = v.cmp.best;
     el.innerHTML = `<p class="small" style="margin:0 0 6px">${r.count}銘柄を、全部のやり方（${WAYS[mode].map((w) => w.label).join('・')}）で過去1年やり直して比べました。</p>
       ${waysHtml(v, mode)}
-      <p class="small" style="margin:6px 0 0">今は「<b>${esc(b.label)}</b>」でやるのが一番いいと判断して、「あなた専用」のプラン・サイン・メールもこのやり方で出しています。</p>
+      <p class="small" style="margin:6px 0 0">${v.cmp.note === 'rest' ? `どのやり方もマイナスだったので、今はお休みがおすすめです。「あなた専用」では、やるなら一番損が小さい「<b>${esc(b.label)}</b>」で出しています。` : `今は「<b>${esc(b.label)}</b>」でやるのが一番いいと判断して、「あなた専用」のプラン・サイン・メールもこのやり方で出しています。`}</p>
       ${updatedNote(r)}`;
   } catch (e) { el.innerHTML = `<p class="error">${esc(e.message)}</p>`; }
 }

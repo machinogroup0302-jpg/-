@@ -426,7 +426,7 @@ async function main() {
       const best = cmp.best;
       groups[m] = by[best.sides];
       u.wayPf[m] = wayProfile(pf, m, best.key);
-      u.wayLabel[m] = best.label;
+      u.wayLabel[m] = best.label + (cmp.note === 'rest' ? '（⚠ 過去1年はどのやり方もマイナス。見送りも考えてください）' : '');
       console.log(`${NAMES[m]}：一番良いやり方は「${best.label}」`);
     }
     const planned = planForUser(u, DAY ? 'day' : 'swing', groups, book, nowSec);
