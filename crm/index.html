@@ -1,0 +1,1468 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="顧客台帳"><meta name="theme-color" content="#0d6b63">
+<link rel="apple-touch-icon" href="icon.png"><link rel="manifest" href="manifest.json">
+<meta name="robots" content="noindex,nofollow">
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<style>
+#authov{position:fixed;inset:0;z-index:200;background:#f3f5f4;display:flex;align-items:center;justify-content:center;padding:24px;font-family:system-ui,sans-serif}
+#authov .box{width:min(360px,100%);text-align:center;display:flex;flex-direction:column;gap:14px}
+#authov h1{font-size:22px;margin:0;color:#1c2624}
+#authov p{margin:0;color:#51605c;font-size:14px;line-height:1.6}
+#authov button{font:inherit;font-size:16px;min-height:48px;border-radius:10px;border:1px solid #d5dcd9;background:#fff;cursor:pointer}
+#authov button.p{background:#0d6b63;color:#fff;border-color:#0d6b63;font-weight:700}
+#authov .err{color:#b3261e}
+#userbar{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink2)}
+#userbar button{font:inherit;font-size:12px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:6px;padding:4px 8px;cursor:pointer}
+@media (prefers-color-scheme: dark){#authov{background:#121816}#authov h1{color:#e7eeeb}#authov p{color:#9fb0ab}#authov button{background:#1b2321;color:#e7eeeb;border-color:#2c3734}}
+</style>
+<script>
+(function(){
+const FBC={"apiKey": "AIzaSyCpGKrMyINvBc29k3NNmKcZ3VGbZAJmNA4", "authDomain": "machino-crm.firebaseapp.com", "projectId": "machino-crm", "storageBucket": "machino-crm.firebasestorage.app", "messagingSenderId": "889881588176", "appId": "1:889881588176:web:bf590e699d6619caaf09d5"};if(/\.(web\.app|firebaseapp\.com)$/.test(location.hostname))FBC.authDomain=location.hostname;
+firebase.initializeApp(FBC);
+const auth=firebase.auth();const fdb=firebase.firestore();
+const wrapSnap=s=>({exists:s.exists,id:s.id,data:()=>s.data()});
+const db={doc:p=>{const r=fdb.doc(p);return{
+  onSnapshot:(cb,err)=>r.onSnapshot(s=>cb(wrapSnap(s)),e=>{console.error(e);err&&err(e)}),
+  get:async()=>wrapSnap(await r.get()),set:v=>r.set(v),update:v=>r.set(v,{merge:true}),delete:()=>r.delete()}},
+ collection:n=>({onSnapshot:(cb,err)=>fdb.collection(n).onSnapshot(s=>cb({empty:s.empty,docs:s.docs.map(wrapSnap)}),e=>{console.error(e);err&&err(e)})})};
+const downloads={save:async({filename,data})=>{const blob=data instanceof Blob?data:new Blob([data],{type:"text/plain;charset=utf-8"});
+  const u=URL.createObjectURL(blob);const a=document.createElement("a");a.href=u;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),4000)}};
+let ready;const readyP=new Promise(r=>ready=r);
+window.claude={use:async n=>n==="db"?(await readyP,db):n==="downloads"?downloads:null};
+window.fbLogout=()=>auth.signOut().then(()=>location.reload());
+function ov(html){let o=document.getElementById("authov");if(!o){o=document.createElement("div");o.id="authov";document.body.appendChild(o)}o.hidden=false;o.innerHTML='<div class="box"><div style="font-size:40px">🔐</div><h1>まちの顧客台帳</h1>'+html+'</div>'}
+function login(){const pr=new firebase.auth.GoogleAuthProvider();pr.setCustomParameters({prompt:"select_account"});
+  const mob=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)||matchMedia("(display-mode: standalone)").matches||navigator.standalone;
+  if(mob){ov('<p>Googleのログイン画面に移動します…</p>');auth.signInWithRedirect(pr).catch(e=>ov('<p class="err">ログインできませんでした（'+e.code+'）。</p><button class="p" id="lgin">もう一度ログイン</button>'));return}
+  auth.signInWithPopup(pr).catch(e=>{if(e.code==="auth/popup-blocked"||e.code==="auth/operation-not-supported-in-this-environment")return auth.signInWithRedirect(pr);
+    if(e.code!=="auth/popup-closed-by-user"&&e.code!=="auth/cancelled-popup-request")ov('<p class="err">ログインできませんでした（'+e.code+'）。</p><button class="p" id="lgin">Googleでログイン</button>')})}
+document.addEventListener("click",e=>{if(e.target.id==="lgin")login();if(e.target.id==="lgout")window.fbLogout()});
+document.addEventListener("DOMContentLoaded",()=>{ov('<p>読み込み中…</p>');
+ auth.getRedirectResult().catch(e=>{console.error(e);ov('<p class="err">ログインできませんでした（'+e.code+'）。</p><p style="font-size:12px">'+(e.message||"").replace(/</g,"&lt;")+'</p><button class="p" id="lgin">もう一度ログイン</button>')});
+ auth.onAuthStateChanged(async u=>{
+  if(!u){ov('<p>スタッフのGoogleアカウントでログインしてください。</p><button class="p" id="lgin">Googleでログイン</button>');return}
+  try{await fdb.doc("meta/lock").get();}catch(e){ov('<p class="err">'+(u.email||"")+' には、この台帳を見る権限がありません。</p><p>管理者に追加を依頼するか、別のアカウントでログインしてください。</p><button id="lgout">ログアウト</button>');return}
+  document.getElementById("authov").hidden=true;
+  const ub=document.getElementById("userbar");if(ub)ub.innerHTML='<span>'+(u.email||"")+'</span><button id="lgout">ログアウト</button>';
+  ready();
+ });
+});
+})();
+</script>
+</head><body>
+<title>まちの顧客台帳</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Zen+Kaku+Gothic+New:wght@500;700&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+:root{
+  --bg:#f3f5f4; --surface:#ffffff; --surface2:#eaeeec; --ink:#1c2624; --ink2:#51605c; --line:#d5dcd9;
+  --accent:#0d6b63; --accent-ink:#ffffff; --accent-soft:#dcefeb;
+  --warn:#a55f00; --warn-soft:#fbeed9; --bad:#b3261e; --bad-soft:#f9e1de; --good:#2d7a47; --good-soft:#e0f1e5;
+  --shadow:0 1px 2px rgba(20,40,36,.06),0 4px 16px rgba(20,40,36,.06);
+  --f-body:"BIZ UDPGothic","Hiragino Sans","Yu Gothic",Meiryo,sans-serif;
+  --f-head:"Zen Kaku Gothic New","BIZ UDPGothic","Hiragino Sans",sans-serif;
+  --f-num:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  color-scheme:dark;--bg:#111816;--surface:#18211f;--surface2:#212c29;--ink:#e3ebe8;--ink2:#9aaba6;--line:#2e3b38;
+  --accent:#4fb8ab;--accent-ink:#0b1a17;--accent-soft:#1d3833;--warn:#e7a650;--warn-soft:#3a2c17;--bad:#f08a80;--bad-soft:#3d1f1c;--good:#7cc795;--good-soft:#1c3324;--shadow:none}}
+:root[data-theme="dark"]{
+  color-scheme:dark;--bg:#111816;--surface:#18211f;--surface2:#212c29;--ink:#e3ebe8;--ink2:#9aaba6;--line:#2e3b38;
+  --accent:#4fb8ab;--accent-ink:#0b1a17;--accent-soft:#1d3833;--warn:#e7a650;--warn-soft:#3a2c17;--bad:#f08a80;--bad-soft:#3d1f1c;--good:#7cc795;--good-soft:#1c3324;--shadow:none}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:14px;line-height:1.6}
+.wrap{max-width:1280px;margin:0 auto;padding-inline:16px;padding-block:0 48px}
+header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--bg);border-bottom:1px solid var(--line)}
+.topin{max-width:1280px;margin:0 auto;padding-inline:16px;padding-block:10px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.brand{font-family:var(--f-head);font-weight:700;font-size:18px;letter-spacing:.02em;display:flex;align-items:baseline;gap:8px}
+.brand small{font-weight:500;font-size:12px;color:var(--ink2)}
+nav.tabs{display:flex;gap:4px;margin-left:auto;flex-wrap:wrap}
+nav.tabs button{font:inherit;border:0;background:transparent;color:var(--ink2);padding:6px 12px;border-radius:6px;cursor:pointer}
+nav.tabs .tabn{margin-left:4px;font-size:.78em;opacity:.8}
+nav.tabs button[aria-current="page"]{background:var(--ink);color:var(--bg);font-weight:700}
+nav.tabs button:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.status{font-size:12px;color:var(--ink2);padding-block:6px}
+.status.err{color:var(--bad)}
+h1,h2,h3{font-family:var(--f-head);text-wrap:balance;margin:0}
+h2{font-size:17px}
+h3{font-size:14px;color:var(--ink2);font-weight:700;letter-spacing:.04em}
+.num{font-family:var(--f-num);font-variant-numeric:tabular-nums}
+.btn{font:inherit;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:7px 14px;border-radius:6px;cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:700}
+.btn.danger{color:var(--bad);border-color:var(--bad-soft)}
+.btn.small{padding:4px 10px;font-size:12px}
+.btn:disabled{opacity:.5;cursor:default}
+input,select,textarea{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:7px 10px;width:100%}
+textarea{min-height:64px;resize:vertical}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--ink2)}
+label.f span{letter-spacing:.03em}
+section.view{padding-top:20px;display:flex;flex-direction:column;gap:20px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;box-shadow:var(--shadow)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.kpi .l{font-size:12px;color:var(--ink2)}
+.kpi .v{font-family:var(--f-num);font-size:24px;font-variant-numeric:tabular-nums;margin-top:2px}
+.kpi .s{font-size:12px;color:var(--ink2)}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media (max-width:860px){.cols{grid-template-columns:1fr}}
+.listhead{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
+.mini{display:flex;flex-direction:column}
+.mini .row{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;padding:9px 4px;border-top:1px solid var(--line);cursor:pointer}
+.mini .row:hover{background:var(--surface2)}
+.mini .row:first-child{border-top:0}
+.date{font-family:var(--f-num);font-size:12px;color:var(--ink2);white-space:nowrap}
+.pill{display:inline-block;font-size:11px;padding:1px 8px;border-radius:999px;background:var(--surface2);color:var(--ink2);white-space:nowrap}
+.pill.warn{background:var(--warn-soft);color:var(--warn)}
+.pill.bad{background:var(--bad-soft);color:var(--bad)}
+.pill.good{background:var(--good-soft);color:var(--good)}
+.pill.acc{background:var(--accent-soft);color:var(--accent)}
+.empty{color:var(--ink2);font-size:13px;padding:12px 4px}
+.chart{display:grid;grid-template-columns:repeat(12,1fr);gap:6px;align-items:end;height:170px;padding-top:8px}
+.bar{display:flex;flex-direction:column;justify-content:flex-end;height:100%;gap:2px;position:relative}
+.bar .b1{background:var(--accent);border-radius:3px 3px 0 0;min-height:1px}
+.bar .b2{background:var(--accent-soft);border-radius:3px 3px 0 0;min-height:1px;position:absolute;left:25%;right:25%;bottom:0}
+.bar .lab{font-size:10px;color:var(--ink2);text-align:center;font-family:var(--f-num)}
+.chartx{display:grid;grid-template-columns:repeat(12,1fr);gap:6px;margin-top:4px}
+.chartx span{font-size:10px;color:var(--ink2);text-align:center;font-family:var(--f-num)}
+.legend{display:flex;gap:14px;font-size:12px;color:var(--ink2)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+.search{display:grid;grid-template-columns:1fr auto;gap:8px}
+.filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.filters select{width:auto}
+.chip{font:inherit;font-size:12px;border:1px solid var(--line);background:var(--surface);color:var(--ink2);padding:4px 10px;border-radius:999px;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:700}
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:760px}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font-size:12px;color:var(--ink2);font-weight:700;background:var(--surface2);position:sticky;top:0}
+th button{font:inherit;border:0;background:none;color:inherit;cursor:pointer;padding:0}
+tbody tr{cursor:pointer}
+tbody tr:hover{background:var(--surface2)}
+td.r,th.r{text-align:right}
+.nm{display:flex;flex-direction:column;line-height:1.3}
+.nm small{font-size:11px;color:var(--ink2)}
+.pager{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:13px;color:var(--ink2)}
+.overlay{position:fixed;inset:0;background:rgba(10,20,18,.45);z-index:40;display:flex;justify-content:flex-end}
+.sheet{background:var(--bg);width:min(760px,100%);height:100%;overflow-y:auto;padding-inline:20px;padding-block:calc(16px + env(safe-area-inset-top,0px)) calc(32px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:16px;box-shadow:-8px 0 30px rgba(0,0,0,.15)}
+.sheet .hd{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.sheet .hd .t{display:flex;flex-direction:column}
+.sheet .hd h2{font-size:22px}
+.tags{display:flex;flex-wrap:wrap;gap:6px}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 16px}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 16px}
+@media (max-width:560px){.grid2,.grid3{grid-template-columns:1fr}}
+dl.kv{display:grid;grid-template-columns:max-content 1fr;gap:6px 16px;margin:0}
+dl.kv dt{font-size:12px;color:var(--ink2);padding-top:1px}
+dl.kv dd{margin:0;word-break:break-word}
+.copy{font:inherit;font-size:11px;border:1px solid var(--line);background:var(--surface);color:var(--ink2);border-radius:4px;padding:0 6px;margin-left:6px;cursor:pointer}
+.job{border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.job .jh{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.job .jh .w{font-weight:700;flex:1;min-width:160px}
+.job .money{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--ink2)}
+.job .money b{color:var(--ink);font-family:var(--f-num);font-weight:500}
+.job .ph{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.job .ph .th{position:relative;width:84px;height:84px;border-radius:8px;overflow:hidden;border:1px solid var(--line);background:var(--surface2,#eee)}
+.job .ph .th img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}
+.job .ph .th button{position:absolute;top:2px;right:2px;width:24px;height:24px;border-radius:12px;border:0;background:rgba(0,0,0,.6);color:#fff;font-size:14px;line-height:24px;padding:0;cursor:pointer}
+.job .ph label.add{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:40px;padding:0 14px;border:1px dashed var(--line);border-radius:8px;font-size:13px;cursor:pointer;color:var(--ink)}
+.job .ph label.add input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+#phbox{position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;padding:16px}
+#phbox img{max-width:100%;max-height:100%;object-fit:contain}
+#ukask{position:fixed;inset:0;z-index:260;background:rgba(10,20,18,.45);display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(3px)}#ukask[hidden]{display:none}
+#ukask .uka-box{background:var(--surface,#fff);color:var(--ink,#1c2624);width:min(420px,100%);border-radius:20px;padding:24px 22px 18px;box-shadow:0 20px 50px rgba(0,0,0,.25);text-align:center;display:flex;flex-direction:column;gap:12px}
+#ukask .uka-ic{font-size:40px;line-height:1}#ukask h3{margin:0;font-size:19px}#ukask p{margin:0;line-height:1.7;font-size:15px}
+#ukask .uka-st{font-size:13px;background:#fff4dc;color:#7a5200;border-radius:10px;padding:6px 10px}#ukask .uka-st.ok{background:#e4f3ef;color:#0d6b63}
+#ukask .uka-l{display:flex;flex-direction:column;gap:6px;text-align:left;font-size:13px;font-weight:700;color:var(--ink2,#51605c)}
+#ukask .uka-l input{font:inherit;font-size:16px;font-weight:400;padding:11px 12px;border:1.5px solid var(--line,#d5dcd9);border-radius:10px;background:var(--bg,#fff);color:var(--ink,#1c2624)}
+#ukask .uka-msg{color:#b3261e;font-size:13px;min-height:0}
+#ukask .uka-btns{display:flex;gap:10px;margin-top:4px}#ukask .uka-btns button{flex:1;font:inherit;font-size:16px;font-weight:700;min-height:48px;border-radius:999px;cursor:pointer}
+#ukask .uka-no{background:transparent;border:1.5px solid var(--line,#d5dcd9);color:var(--ink,#1c2624)}#ukask .uka-yes{background:#0d6b63;border:0;color:#fff}#ukask .uka-yes:disabled{opacity:.6}
+#ukask .uka-txt{width:100%;min-height:120px;font:inherit;font-size:13px;padding:10px;border:1.5px solid var(--line,#d5dcd9);border-radius:10px;background:var(--bg,#f6f8f7);color:var(--ink,#1c2624);resize:none}
+#ukask .uka-here{background:none;border:0;color:var(--ink2,#51605c);font:inherit;font-size:13px;text-decoration:underline;cursor:pointer;padding:4px}
+#ukbox{position:fixed;inset:0;z-index:250;scroll-padding-bottom:110px;background:var(--bg,#f3f5f4);overflow:auto;-webkit-overflow-scrolling:touch}
+#ukbox .ukin{max-width:720px;margin:0 auto;padding:20px 16px 120px;display:flex;flex-direction:column;gap:18px}
+#ukbox h1{font-size:22px;margin:0}#ukbox .ukq{display:flex;flex-direction:column;gap:8px}#ukbox .ukq>b{font-size:15px}
+#ukbox input[type=text],#ukbox input[type=tel],#ukbox input[type=email],#ukbox textarea{font:inherit;font-size:17px;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);width:100%;box-sizing:border-box}
+#ukbox textarea{min-height:90px}#ukbox .ukops{display:flex;flex-wrap:wrap;gap:8px}
+#ukbox .ukop{font:inherit;font-size:16px;min-height:44px;padding:0 16px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}
+#ukbox .ukop.on{background:#0d6b63;border-color:#0d6b63;color:#fff;font-weight:700}
+#ukbox .uksvc{display:flex;align-items:center;gap:8px;flex-wrap:wrap}#ukbox .uksvc span{min-width:110px;font-size:15px}
+#ukbox .ukbar{position:fixed;left:0;right:0;bottom:0;padding:12px 16px calc(12px + env(safe-area-inset-bottom));background:var(--surface);border-top:1px solid var(--line);display:flex;gap:10px;justify-content:center}
+#ukbox .ukbar button{font:inherit;font-size:17px;min-height:50px;padding:0 24px;border-radius:12px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}
+#ukbox .ukbar .uksend{background:#0d6b63;border-color:#0d6b63;color:#fff;font-weight:700;flex:1;max-width:360px}
+.checks{display:flex;flex-wrap:wrap;gap:6px}
+.ck{display:inline-flex;align-items:center;gap:6px;font-size:12px;border:1px solid var(--line);border-radius:999px;padding:3px 10px;cursor:pointer;background:var(--surface)}
+.ck input{width:auto;margin:0}
+.ck.on{background:var(--good-soft);border-color:transparent;color:var(--good)}
+.actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+.note{font-size:12px;color:var(--ink2)}
+.drop{border:2px dashed var(--line);border-radius:10px;padding:24px;text-align:center;color:var(--ink2);background:var(--surface)}
+.drop.on{border-color:var(--accent);background:var(--accent-soft)}
+.steps{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px}
+.confirmbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 12px;border-radius:8px;background:var(--bad-soft);color:var(--bad)}
+.sample{font-size:12px;padding:8px 12px;border-radius:8px;background:var(--warn-soft);color:var(--warn)}
+.schedbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.schedbar input[type=date]{width:auto}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.seg button{font:inherit;border:0;background:var(--surface);color:var(--ink2);padding:6px 14px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--bg);font-weight:700}
+.daygrp{display:flex;flex-direction:column;gap:0}
+.daygrp>h3{margin-bottom:8px}
+.slot{display:grid;grid-template-columns:78px 1fr;gap:12px;align-items:stretch}
+.slot .tm{font-family:var(--f-num);font-variant-numeric:tabular-nums;font-size:13px;padding-top:12px;text-align:right;color:var(--ink)}
+.slot .tm small{display:block;color:var(--ink2);font-size:11px}
+.appt{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:4px;cursor:pointer}
+.appt:hover{border-color:var(--accent)}
+.appt .who{font-weight:700;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.appt .addr{font-size:12px;color:var(--ink2)}
+.leg{display:grid;grid-template-columns:78px 1fr;gap:12px}
+.leg .line{border-left:2px dashed var(--line);margin-left:auto;margin-right:-7px;height:100%;min-height:44px}
+.leg .info{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding-block:8px;font-size:12px;color:var(--ink2)}
+.leg .info b{color:var(--ink);font-family:var(--f-num);font-weight:500}
+.leg a{color:var(--accent)}
+.week{display:grid;grid-template-columns:repeat(7,minmax(130px,1fr));gap:8px;overflow-x:auto}
+.wday{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px;display:flex;flex-direction:column;gap:6px;min-height:120px;cursor:pointer}
+.wday.today{border-color:var(--accent)}
+.wday .dh{font-size:12px;color:var(--ink2);display:flex;justify-content:space-between}
+.wday .it{font-size:12px;line-height:1.35}
+.wday .it b{font-family:var(--f-num);font-weight:500}
+.picker{display:flex;flex-direction:column;gap:6px;max-height:50vh;overflow-y:auto}
+.cal{background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:14px}
+.calhd{display:flex;align-items:baseline;gap:12px;padding:10px 12px;border-bottom:1px solid var(--line)}
+.calhd h3{margin:0;font-family:var(--f-head);font-size:18px}
+.calhd .note{margin-left:auto}
+.calgrid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr))}
+.calgrid .dow{font-size:12px;color:var(--ink2);text-align:center;padding:6px 0;border-bottom:1px solid var(--line);background:var(--surface2)}
+.calgrid .dow.sat,.cday.sat .dn{color:#2f5fb3}.calgrid .dow.sun,.cday.sun .dn{color:var(--bad)}
+.cday{min-height:104px;border:0;border-radius:0;border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:4px 5px;display:flex;flex-direction:column;gap:3px;cursor:pointer;min-width:0;text-align:left;font:inherit;color:inherit;background:transparent}
+.cday:nth-child(7n){border-right:0}
+.cday.out{background:var(--surface2)}.cday.out .dn{opacity:.45}
+.cday:hover{background:var(--accent-soft)}
+.cday.sel{box-shadow:inset 0 0 0 2px var(--accent)}
+.cday .dn{font-family:var(--f-num);font-size:12px;display:flex;align-items:center;justify-content:space-between}
+.cday.today .dn b{background:var(--accent);color:var(--accent-ink);border-radius:999px;min-width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;font-weight:500}
+.cday .dn b{font-weight:500}
+.cday .cnt{font-size:11px;color:var(--ink2)}
+.ev{font-size:11.5px;line-height:1.3;border-radius:4px;padding:2px 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:var(--accent-soft);border-left:3px solid var(--accent)}
+.ev b{font-family:var(--f-num);font-weight:500;margin-right:3px}
+.ev.conf{background:var(--good-soft);border-left-color:var(--good)}
+.ev.pros{background:var(--warn-soft);border-left-color:var(--warn)}
+.ev.done{background:var(--surface2);border-left-color:var(--line);color:var(--ink2);text-decoration:line-through}
+.ev.more{background:transparent;border:0;color:var(--ink2);padding:0 4px}
+.dots{display:none;gap:3px;flex-wrap:wrap}
+.dots i{width:7px;height:7px;border-radius:50%;background:var(--accent)}
+.dots i.conf{background:var(--good)}.dots i.pros{background:var(--warn)}.dots i.done{background:var(--line)}
+.callegend{display:flex;flex-wrap:wrap;gap:12px;padding:8px 12px;font-size:12px;color:var(--ink2);border-top:1px solid var(--line)}
+.callegend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px;background:var(--c)}
+.dayttl{font-family:var(--f-head);font-size:16px;margin:4px 0 10px}
+.picker button{font:inherit;text-align:left;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:6px;padding:8px 10px;cursor:pointer}
+.picker button:hover{border-color:var(--accent)}
+.rsearch{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;align-items:end}
+.rcimg{width:100%;border:1px solid var(--line);border-radius:6px;background:#fff;display:block}
+.rcrow{display:grid;grid-template-columns:minmax(0,1fr) 96px 130px;gap:8px}
+.rcsum{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px}
+.rcsum b{font-family:var(--f-num);font-weight:500}
+.okbar{padding:10px 12px;border-radius:8px;background:var(--good-soft);color:var(--good)}
+tr.void td{color:var(--ink2);text-decoration:line-through}
+tr.void td:nth-child(6){text-decoration:none}
+
+/* ---------- mobile ---------- */
+@media (max-width:700px){
+  body{font-size:15px;padding-bottom:calc(64px + env(safe-area-inset-bottom,0px))}
+  .topin{padding-block:8px;gap:8px}
+  .brand{font-size:17px}
+  nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:30;margin:0;background:var(--surface);border-top:1px solid var(--line);flex-wrap:nowrap;overflow-x:auto;gap:2px;padding:6px 6px calc(6px + env(safe-area-inset-bottom,0px));scrollbar-width:none}
+  nav.tabs::-webkit-scrollbar{display:none}
+  nav.tabs button{flex:1 0 auto;min-height:44px;padding:6px 10px;font-size:13px;white-space:nowrap}
+  input,select,textarea{font-size:16px!important}
+  .btn{min-height:40px}
+  .kpis{grid-template-columns:1fr 1fr;gap:8px}
+  .kpi .v{font-size:20px}
+  .search{grid-template-columns:1fr}
+  .tablewrap table{min-width:0!important}
+  .tablewrap td>*{min-width:0;overflow-wrap:anywhere}
+  .filters{flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px}
+  .filters .chip{flex:0 0 auto}
+  .tablewrap{border:0;background:transparent;overflow:visible}
+  .tablewrap table,.tablewrap tbody,.tablewrap tr,.tablewrap td{display:block;width:100%}
+  .tablewrap thead{display:none}
+  .tablewrap tr{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:10px}
+  .tablewrap td{border:0!important;padding:3px 0!important;text-align:left!important;display:flex;gap:10px;align-items:baseline;min-height:0}
+  .tablewrap td:empty{display:none}
+  .tablewrap td[data-l]::before{content:attr(data-l);flex:0 0 6.5em;color:var(--ink2);font-size:12px}
+  .tablewrap td:first-child{font-size:16px;font-weight:700}
+  .tablewrap td:first-child::before{display:none}
+  .tablewrap td.empty{display:block}
+  .tablewrap td .btn{width:100%}
+  .sheet{width:100%;padding-inline:14px}
+  .sheet .hd{position:sticky;top:calc(-16px - env(safe-area-inset-top,0px));z-index:2;background:var(--bg);margin-inline:-14px;padding:10px 14px;border-bottom:1px solid var(--line)}
+  .sheet .hd h2{font-size:20px}
+  .qas{grid-template-columns:repeat(3,1fr)}
+  dl.kv{grid-template-columns:5.5em 1fr;gap:8px 10px}
+  dl.kv dd{overflow-wrap:anywhere}
+  .job .money{gap:6px 14px}
+  .schedbar{flex-wrap:wrap;gap:6px}
+  .schedbar #sd-req,.schedbar #sd-add{flex:1 1 45%}
+  .week{grid-template-columns:1fr!important}
+  .cday{min-height:58px;padding:3px;align-items:center}
+  .cday .dn{justify-content:center}.cday .cnt{display:none}
+  .cday .ev{display:none}.cday .dots{display:flex;justify-content:center}
+  .calhd h3{font-size:16px}
+  .pager{flex-wrap:wrap;gap:8px}
+}
+.lockov{position:fixed;inset:0;z-index:100;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:24px}
+.lockbox{width:min(340px,100%);display:flex;flex-direction:column;gap:12px;text-align:center}
+.lockic{font-size:40px}
+#lkform{display:flex;flex-direction:column;gap:10px}
+#lk-pin{font-size:28px!important;letter-spacing:.4em;text-align:center;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)}
+#lk-msg{color:var(--bad);min-height:1.4em}
+.qas{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:8px}
+.qa{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:64px;padding:8px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);text-decoration:none;font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+.qa b{font-size:22px;font-weight:400;line-height:1;pointer-events:none}
+.qa:active{background:var(--accent-soft)}
+.nextjob{border:2px solid var(--accent);border-radius:12px;background:var(--surface);padding:12px 14px;display:flex;flex-direction:column;gap:4px}
+.nextjob .nl{font-size:12px;font-weight:700;color:var(--accent)}
+.nextjob .nd{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
+.nextjob .nd small{font-size:13px;font-weight:500;color:var(--ink2)}
+.nextjob .nw{font-weight:600}
+.nextjob .nm2{display:flex;gap:12px;flex-wrap:wrap;font-size:13px;color:var(--ink2)}
+.nextjob .nm2 b{color:var(--ink);font-size:16px}
+.nextjob summary{cursor:pointer;font-size:13px;color:var(--ink2);margin-top:4px}
+@media (prefers-reduced-motion:no-preference){.sheet{animation:slin .18s ease-out}@keyframes slin{from{transform:translateX(24px);opacity:.6}}}
+</style>
+
+<header class="top"><div class="topin">
+  <div class="brand">まちの顧客台帳 <small id="countlbl">読み込み中…</small></div><div id="userbar"></div>
+  <nav class="tabs" aria-label="画面">
+    <button id="tab-home" data-v="home" aria-current="page">ホーム</button>
+    <button id="tab-sched" data-v="sched">スケジュール</button>
+    <button id="tab-list" data-v="list">顧客一覧</button>
+    <button id="tab-pros" data-v="pros">見込み<span class="tabn" id="prosn"></span></button>
+    <button id="tab-rcpt" data-v="rcpt">領収書</button>
+    <button id="tab-cp" data-v="cp">クーポン</button>
+    <button id="tab-io" data-v="io">設定・取り込み</button>
+  </nav>
+</div></header>
+
+<div class="wrap">
+  <div class="status" id="status" hidden></div>
+
+  <section class="view" id="v-home">
+    <div class="sample" id="samplenote" hidden>表示しているのは見本データです。「設定・取り込み」から今のスプレッドシートを取り込むと、実際の顧客に置き換わります。</div>
+    <div class="kpis" id="kpis"></div>
+    <div class="cols">
+      <div class="panel">
+        <div class="listhead"><h2>これからの作業</h2><span class="pill" id="upc"></span></div>
+        <div class="mini" id="upcoming"></div>
+      </div>
+      <div class="panel">
+        <div class="listhead"><h2>振込確認がまだの作業</h2><span class="pill warn" id="unpc"></span></div>
+        <div class="mini" id="unpaid"></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="listhead"><h2>月別の売上と利益（直近12か月）</h2>
+        <div class="legend"><span><i style="background:var(--accent)"></i>売上</span><span><i style="background:var(--accent-soft)"></i>純利益</span></div></div>
+      <div class="chart" id="chart" role="img" aria-label="月別売上グラフ"></div>
+      <div class="chartx" id="chartx"></div>
+    </div>
+  </section>
+
+  <section class="view" id="v-sched" hidden>
+    <div class="schedbar">
+      <div class="seg" role="group" aria-label="表示"><button id="sm-month" aria-pressed="true">月</button><button id="sm-day" aria-pressed="false">日</button><button id="sm-week" aria-pressed="false">週</button></div>
+      <button class="btn small" id="sd-prev">◀ 前へ</button>
+      <input id="sd-date" type="date" aria-label="表示する日">
+      <button class="btn small" id="sd-next">次へ ▶</button>
+      <button class="btn small" id="sd-today">今日</button>
+      <span style="flex:1"></span>
+      <button class="btn" id="sd-req">所要時間の計算を依頼</button>
+      <button class="btn primary" id="sd-add">＋ 予定を追加</button>
+    </div>
+    <div class="note" id="sd-msg"></div>
+    <div id="sched"></div>
+  </section>
+
+  <section class="view" id="v-list" hidden>
+    <div class="search">
+      <input id="q" type="search" placeholder="名前・フリガナ・電話番号・車名・住所で検索">
+      <button class="btn primary" id="newcust">＋ 新規顧客</button>
+    </div>
+    <div class="filters">
+      <select id="f-motive" aria-label="来店動機"><option value="">来店動機：すべて</option></select>
+      <button class="chip" id="c-change" aria-pressed="false">買い替えあり</button>
+      <button class="chip" id="c-coat" aria-pressed="false">コーティングが気になる</button>
+      <button class="chip" id="c-scratch" aria-pressed="false">キズ直しが気になる</button>
+      <button class="chip" id="c-shaken" aria-pressed="false">出張車検をやってみたい</button>
+      <button class="chip" id="c-dormant" aria-pressed="false">1年以上来ていない</button>
+      <button class="chip" id="c-own" aria-pressed="false">自社販売顧客</button>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr>
+          <th><button data-s="no">No.</button></th><th><button data-s="kana">氏名</button></th><th>電話番号</th><th><button data-s="car">車名</button></th>
+          <th>来店動機</th><th><button data-s="last">最終作業日</button></th><th class="r"><button data-s="cnt">回数</button></th><th class="r"><button data-s="sum">累計金額</button></th>
+        </tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <div class="pager"><span id="pginfo"></span><span style="display:flex;gap:6px"><button class="btn small" id="prev">前へ</button><button class="btn small" id="next">次へ</button></span></div>
+  </section>
+
+  <section class="view" id="v-pros" hidden>
+    <div class="note" style="margin-bottom:10px">まだ確定していないお客様（ミツモアの交渉中・仮成約など）です。内容を確認して「確定」を押すと「顧客一覧」に転記されます。</div>
+    <div class="search"><input id="pq" type="search" placeholder="名前・電話番号・住所・作業内容で検索"></div>
+    <div class="tablewrap"><table><thead><tr><th>氏名</th><th>状況</th><th>作業内容</th><th>日程</th><th class="r">金額</th><th>住所</th><th>電話番号</th><th>登録日</th><th></th></tr></thead><tbody id="prows"></tbody></table></div>
+  </section>
+
+  <section class="view" id="v-rcpt" hidden>
+    <div class="sample" id="rc-warn" hidden>領収書の発行者情報（事業者名・登録番号など）がまだ仮の値です。「設定・取り込み」で本来の情報に変えてから発行してください。</div>
+    <div class="panel" style="display:flex;flex-direction:column;gap:12px">
+      <div class="listhead" style="margin:0"><h2>発行済み領収書の検索</h2><span class="note">領収書は各作業の「領収書を発行」から作成します</span></div>
+      <div class="rsearch">
+        <label class="f" for="rs-from"><span>取引年月日（から）</span><input id="rs-from" type="date"></label>
+        <label class="f" for="rs-to"><span>取引年月日（まで）</span><input id="rs-to" type="date"></label>
+        <label class="f" for="rs-min"><span>金額（以上）</span><input id="rs-min" type="number" inputmode="numeric" placeholder="円"></label>
+        <label class="f" for="rs-max"><span>金額（以下）</span><input id="rs-max" type="number" inputmode="numeric" placeholder="円"></label>
+        <label class="f" for="rs-q"><span>取引先（宛名）・番号</span><input id="rs-q" type="search" placeholder="例：山田 / R202609"></label>
+        <label class="ck" for="rs-void" style="align-self:end;justify-self:start"><input type="checkbox" id="rs-void" checked>取消したものも表示</label>
+      </div>
+      <div class="actions" style="justify-content:space-between;align-items:center"><span class="note" id="rc-count"></span><span style="display:flex;gap:8px"><button class="btn small" id="rs-clear">条件をクリア</button><button class="btn small" id="rs-csv">検索結果をCSVで保存</button></span></div>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>領収書番号</th><th>取引年月日</th><th>宛名</th><th class="r">金額（税込）</th><th class="r">うち消費税</th><th>状態</th><th>送信</th><th>発行日時</th></tr></thead>
+        <tbody id="rc-rows"></tbody>
+      </table>
+    </div>
+    <div class="note" id="rc-msg"></div>
+  </section>
+
+  <section class="view" id="v-cp" hidden>
+    <div class="panel" style="display:flex;flex-direction:column;gap:8px">
+      <div class="listhead" style="margin:0"><h2>自社販売顧客へのクーポン</h2><span class="note">販売日（納車日）から6か月ごとに自動で「送付待ち」に並びます</span></div>
+      <p class="note" style="margin:0">対象は、顧客情報で「自社販売顧客：はい」になっているお客様です。送付待ちの行を押すと、クーポンの発行・画像作成・メール作成ができます。</p>
+    </div>
+    <div class="panel" style="display:flex;flex-direction:column;gap:10px">
+      <div class="listhead" style="margin:0"><h2>クーポンを読み取る</h2><span class="note">使用済みにしたクーポンは、もう一度読み取っても使えません</span></div>
+      <div class="search"><input id="cp-code" placeholder="クーポン番号（例：OIL-7K3M9Q2P）　QRリーダーで読み取るとここに入ります" autocomplete="off" aria-label="クーポン番号"><button class="btn primary" id="cp-check">確認</button></div>
+      <div class="actions" style="justify-content:flex-start"><button class="btn" id="cp-cam">カメラで読み取る</button><label class="btn" for="cp-photo">写真から読み取る</label><input id="cp-photo" type="file" accept="image/*" capture="environment" hidden></div>
+      <video id="cp-video" playsinline muted hidden style="width:100%;max-width:420px;border-radius:8px;background:#000"></video>
+      <div id="cp-result"></div><div class="note" id="cp-url" style="word-break:break-all"></div>
+    </div>
+    <div class="kpis" id="cp-sum"></div>
+    <div class="seg" id="cp-seg" role="group" aria-label="表示" style="align-self:flex-start;flex-wrap:wrap"><button data-cp="due" aria-pressed="true">送付待ち</button><button data-cp="soon" aria-pressed="false">30日以内</button><button data-cp="sent" aria-pressed="false">送付済み</button><button data-cp="used" aria-pressed="false">使用済み</button><button data-cp="nodate" aria-pressed="false">販売日未入力</button></div>
+    <div class="tablewrap"><table><thead><tr><th>お客様</th><th>車両</th><th>販売日</th><th>回</th><th>送付予定日</th><th>状態</th><th>クーポン番号</th><th>連絡先</th></tr></thead><tbody id="cp-rows"></tbody></table></div>
+  </section>
+
+  <section class="view" id="v-io" hidden>
+    <div class="panel" style="display:flex;flex-direction:column;gap:12px">
+      <h2>暗証番号ロック</h2>
+      <p class="note" id="pl-state">台帳を開くときと、しばらく操作しなかったときに暗証番号を求めます。暗証番号はスタッフ共通です。</p>
+      <form id="pinform" style="display:flex;flex-direction:column;gap:10px">
+        <div class="grid2">
+          <label class="f" for="pl-cur" id="pl-curl"><span>今の暗証番号</span><input id="pl-cur" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="8" autocomplete="off"></label>
+          <label class="f" for="pl-new"><span>新しい暗証番号（4〜8桁の数字）</span><input id="pl-new" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="8" autocomplete="off"></label>
+          <label class="f" for="pl-new2"><span>新しい暗証番号（確認）</span><input id="pl-new2" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="8" autocomplete="off"></label>
+          <label class="f" for="pl-idle"><span>自動でロックするまでの時間</span><select id="pl-idle"><option value="3">3分</option><option value="5" selected>5分</option><option value="10">10分</option><option value="30">30分</option></select></label>
+        </div>
+        <div class="actions" style="justify-content:space-between;align-items:center;flex-wrap:wrap"><span class="note" id="pl-msg"></span><span style="display:flex;gap:8px"><button type="button" class="btn danger" id="pl-off" hidden>ロックを解除する</button><button type="submit" class="btn primary" id="pl-save">設定する</button></span></div>
+      </form>
+    </div>
+    <div class="panel" style="display:flex;flex-direction:column;gap:12px">
+      <h2>クーポンの内容</h2>
+      <form id="cpform" style="display:flex;flex-direction:column;gap:10px">
+        <div class="grid2">
+          <label class="f" for="cs-title"><span>クーポン名</span><input id="cs-title" name="title"></label>
+          <label class="f" for="cs-price"><span>金額の表示</span><input id="cs-price" name="price"></label>
+          <label class="f" for="cs-days"><span>有効期限（発行日から何日）</span><input id="cs-days" name="days" type="number" min="1"></label>
+          <label class="f" for="cs-note" style="grid-column:1/-1"><span>注意書き</span><input id="cs-note" name="note"></label>
+        </div>
+        <div class="actions" style="justify-content:space-between;align-items:center"><span class="note" id="cs-msg"></span><button type="submit" class="btn primary">保存する</button></div>
+      </form>
+    </div>
+    <div class="panel" style="display:flex;flex-direction:column;gap:12px">
+      <h2>領収書の発行者情報</h2>
+      <p class="note" style="margin:0">領収書に載る自社の情報です。今は仮の値が入っています。登録番号は「T」と13桁の数字です。変更しても、発行済みの領収書の記載は変わりません。</p>
+      <form id="issuerform" style="display:flex;flex-direction:column;gap:10px">
+        <div class="grid2">
+          <label class="f" for="is-name"><span>事業者名（屋号・会社名）</span><input id="is-name" name="name"></label>
+          <label class="f" for="is-regNo"><span>適格請求書発行事業者の登録番号</span><input id="is-regNo" name="regNo" placeholder="T1234567890123"></label>
+          <label class="f" for="is-addr" style="grid-column:1/-1"><span>住所</span><input id="is-addr" name="addr"></label>
+          <label class="f" for="is-tel"><span>電話番号</span><input id="is-tel" name="tel"></label>
+          <label class="f" for="is-mail"><span>お問い合わせ用メール（任意）</span><input id="is-mail" name="mail" type="email"></label>
+          <label class="f" for="is-driveFolder" style="grid-column:1/-1"><span>PDFの保存先（GoogleドライブのフォルダURLまたはID）</span><input id="is-driveFolder" name="driveFolder"></label>
+        </div>
+        <div class="actions" style="justify-content:space-between;align-items:center"><span class="note" id="is-msg"></span><button type="submit" class="btn primary">保存する</button></div>
+      </form>
+      <div style="border-top:1px solid var(--line);padding-top:12px;display:flex;flex-direction:column;gap:8px">
+        <h3>電子帳簿保存法の備え</h3>
+        <p class="note" style="margin:0">発行した領収書のデータは、この台帳の中に保存されます。発行した後は内容を書き換えられず、取り消しと再発行の履歴が残ります。取引年月日・金額・取引先で検索でき、検索結果はCSVで書き出せます。あわせて「訂正削除の防止に関する事務処理規程」のひな形を用意しました。自社に合わせて直して保管してください。</p>
+        <div class="actions" style="justify-content:flex-start"><button class="btn" id="dl-kitei">事務処理規程・システム概要（ひな形）を保存</button></div>
+      </div>
+    </div>
+    <div class="panel" style="display:flex;flex-direction:column;gap:12px">
+      <h2>スプレッドシートから取り込む</h2>
+      <ol class="steps">
+        <li>Googleスプレッドシートで「業務表＆顧客管理」タブを開く</li>
+        <li>「ファイル」→「ダウンロード」→「カンマ区切り形式（.csv）」を選ぶ</li>
+        <li>保存されたCSVを下の枠にドラッグするか、「ファイルを選ぶ」から選ぶ</li>
+      </ol>
+      <div class="drop" id="drop">ここにCSVをドロップ<br><br><label class="btn" for="csvfile">ファイルを選ぶ</label><input id="csvfile" type="file" accept=".csv,text/csv" hidden></div>
+      <div id="preview"></div>
+    </div>
+    <div class="panel" style="display:flex;flex-direction:column;gap:12px">
+      <h2>書き出す</h2>
+      <p class="note" style="margin:0">バックアップや集計用に、顧客と作業記録をCSVで保存できます。</p>
+      <div class="actions" style="justify-content:flex-start"><button class="btn" id="exp-c">顧客一覧をCSVで保存</button><button class="btn" id="exp-j">作業記録をCSVで保存</button></div>
+      <div class="note" id="expmsg"></div>
+    </div>
+  </section>
+</div>
+
+<div class="lockov" id="lockov"><div class="lockbox"><div class="lockic" aria-hidden="true">🔒</div><h2 id="lk-title">読み込み中…</h2><p class="note" id="lk-sub"></p><form id="lkform" hidden><input id="lk-pin" type="password" inputmode="numeric" autocomplete="off" pattern="[0-9]*" maxlength="8" aria-label="暗証番号"><button class="btn primary" type="submit">開く</button></form><p class="note" id="lk-msg" role="alert"></p></div></div>
+<div class="overlay" id="ov" hidden><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
+
+<script>
+(function(){
+"use strict";
+const NB=64; // bucket count
+const CK=[["cal","カレンダー入力"],["conf","予約確定"],["chk","物の確認"],["prep","物の用意"],["buy","物購入"],["pre","事前準備"],["done","施工状況"]];
+const CF=[["kana","フリガナ"],["name","氏名"],["birth","誕生日"],["zip","郵便番号"],["addr","住所"],["tel","電話番号"],["mail","メールアドレス"],["sns","SNS"],["line","LINE追加状況"],["lineName","LINE名"],["motive","来店動機"],["change","車の買い替え"],["shaken","出張車検"],["coat","コーティング"],["scratch","キズ直し"],["ins","保険加入"],["ideal","理想サービス"],["snsOk","SNS掲載"],["sellReason","売却理由"],["nextCar","乗り換え検討車種"],["interest","興味のあるサービス"],["note","備考"],["maker","メーカー"],["car","車名"],["color","色"],["km","走行距離"],["shakenDate","車検日"],["firstReg","初年度登録"],["vin","車体番号"],["model","型式"],["engine","原動機の型式"],["typeNo","型式指定番号"],["classNo","類別区分番号"],["navi","ナビ型番"],["own","自社販売顧客"],["soldDate","販売日（納車日）"]];
+const OPT={line:["","済み","未"],motive:["","ミツモア","暮らしのマーケット","新規","紹介","知人","リピーター","チラシ","SNS"],change:["","なし","あり"],shaken:["","いつもの場所","やってみたい"],coat:["","興味なし","気になる"],scratch:["","気にならない","気になる"],ins:["","ネット","ディーラー","知人","団体"],own:["","はい"]};
+const PAY=["","現金","ミツモア","暮らしのマーケット","クレジットカード","QR決済","振込","電子決済","ユアマイスター"];
+const RECEIPT=["","なし","いる","済み","ミツモア","暮らしのマーケット"];
+
+let db=null, dl=null, state={buckets:{}, sample:false}, all=[], everyone=[], pros=[], view="home";
+let page=0, sortKey="last", sortDir=-1;
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const yen=n=>"¥"+Math.round(n||0).toLocaleString("ja-JP");
+const num=v=>{if(v==null||v==="")return 0;const n=Number(String(v).replace(/[¥￥,\s円]/g,""));return isFinite(n)?n:0};
+function hash(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return (h>>>0)%NB}
+const bpath=id=>"cust/b"+String(hash(id)).padStart(2,"0");
+function normDate(s){s=String(s||"").trim();if(!s)return"";let m=s.match(/^(\d{4})[\/\-.年](\d{1,2})[\/\-.月](\d{1,2})/);if(m)return m[1]+"-"+m[2].padStart(2,"0")+"-"+m[3].padStart(2,"0");return s}
+const today=()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")};
+function status(msg,err){const el=$("status");el.hidden=!msg;el.textContent=msg||"";el.className="status"+(err?" err":"")}
+
+/* ---------- derived ---------- */
+function jobCalc(j){const profit=num(j.amount)-num(j.feePay)-num(j.feeRes);let parts=0;for(let i=1;i<=5;i++)parts+=num(j["p"+i]);const park=num(j.park1)+num(j.park2);return {profit,net:profit-parts-park,parts,park}}
+function rebuild(){
+  const list=[];
+  for(const b of Object.values(state.buckets)){const c=(b&&b.c)||{};for(const [id,x] of Object.entries(c)){if(!x||x.deleted)continue;
+    const jobs=Object.entries(x.jobs||{}).filter(([,j])=>j).map(([jid,j])=>({jid,...j})).sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+    const last=jobs.find(j=>j.date)?.date||"";const sum=jobs.reduce((s,j)=>s+num(j.amount),0);
+    const isPros=x.stage==="見込み";
+    list.push({id,...x,isPros,jobsArr:jobs,last,cnt:jobs.length,sum,_s:[x.name,x.kana,x.tel,String(x.tel||"").replace(/\D/g,""),x.car,x.maker,x.addr,x.no].join(" ").toLowerCase()})}}
+  everyone=list;all=list.filter(c=>!c.isPros);pros=list.filter(c=>c.isPros);setTimeout(ukDeep,0);
+  $("prosn").textContent=pros.length?String(pros.length):"";
+  $("countlbl").textContent=all.length.toLocaleString()+" 人"+(state.sample?"（見本）":"");
+  $("samplenote").hidden=!state.sample;
+  const mset=new Set(all.map(c=>c.motive).filter(Boolean));const sel=$("f-motive");const cur=sel.value;
+  sel.innerHTML='<option value="">来店動機：すべて</option>'+[...mset].sort().map(m=>`<option${m===cur?" selected":""}>${esc(m)}</option>`).join("");
+  render();
+}
+function render(){ if(view==="home")renderHome(); if(view==="list")renderList(); if(view==="sched")renderSched(); if(view==="rcpt")renderRc(); if(view==="cp")renderCp(); if(view==="pros")renderPros(); if(openId&&openId!=="__pick"&&openId!=="__rcnew")renderSheet(); }
+
+/* ---------- home ---------- */
+function renderHome(){
+  const t=today(), ym=t.slice(0,7);const d=new Date();const pm=new Date(d.getFullYear(),d.getMonth()-1,1);const pym=pm.getFullYear()+"-"+String(pm.getMonth()+1).padStart(2,"0");
+  const jobs=[];for(const c of all)for(const j of c.jobsArr)jobs.push({c,j});
+  const agg=k=>jobs.filter(x=>(x.j.date||"").startsWith(k)).reduce((a,x)=>{a.s+=num(x.j.amount);a.n+=jobCalc(x.j).net;a.k++;return a},{s:0,n:0,k:0});
+  const a=agg(ym),b=agg(pym);
+  const up=jobs.filter(x=>x.j.date&&x.j.date>=t).sort((x,y)=>(x.j.date+(x.j.time||"")).localeCompare(y.j.date+(y.j.time||"")));
+  const unp=jobs.filter(x=>x.j.date&&x.j.date<=t&&!x.j.trOk&&num(x.j.amount)>0&&x.j.pay&&x.j.pay!=="現金").sort((x,y)=>(y.j.date).localeCompare(x.j.date));
+  $("kpis").innerHTML=[["今月の売上",yen(a.s),a.k+"件の作業"],["今月の純利益",yen(a.n),"先月 "+yen(b.n)],["先月の売上",yen(b.s),b.k+"件の作業"],["登録顧客",all.length.toLocaleString()+"人","見込み項目つきで管理"]].map(([l,v,s])=>`<div class="kpi"><div class="l">${l}</div><div class="v">${v}</div><div class="s">${s}</div></div>`).join("");
+  const mini=(arr,fn)=>arr.length?arr.slice(0,12).map(fn).join(""):'<div class="empty">該当する作業はありません。</div>';
+  $("upc").textContent=up.length+"件";$("unpc").textContent=unp.length+"件";
+  $("upcoming").innerHTML=mini(up,x=>`<div class="row" data-id="${esc(x.c.id)}"><span class="date">${esc(x.j.date.slice(5).replace("-","/"))} ${esc(x.j.time||"")}</span><span>${esc(sama(x.c.name||x.c.kana))}<br><small class="note">${esc(x.j.work||"")}</small></span><span class="num">${yen(num(x.j.amount))}</span></div>`);
+  $("unpaid").innerHTML=mini(unp,x=>`<div class="row" data-id="${esc(x.c.id)}"><span class="date">${esc(x.j.date.replace(/-/g,"/"))}</span><span>${esc(sama(x.c.name||x.c.kana))}<br><small class="note">${esc(x.j.pay)}・${esc(x.j.work||"")}</small></span><span class="num">${yen(num(x.j.amount))}</span></div>`);
+  // chart
+  const months=[];for(let i=11;i>=0;i--){const m=new Date(d.getFullYear(),d.getMonth()-i,1);months.push(m.getFullYear()+"-"+String(m.getMonth()+1).padStart(2,"0"))}
+  const vals=months.map(agg);const max=Math.max(1,...vals.map(v=>v.s));
+  $("chart").innerHTML=vals.map((v,i)=>`<div class="bar" title="${months[i]} 売上 ${yen(v.s)} / 純利益 ${yen(v.n)}"><span class="lab">${v.s?Math.round(v.s/10000)+"万":""}</span><div class="b1" style="height:${(v.s/max*85).toFixed(1)}%"></div><div class="b2" style="height:${(Math.max(0,v.n)/max*85).toFixed(1)}%"></div></div>`).join("");
+  $("chartx").innerHTML=months.map(m=>`<span>${Number(m.slice(5))}月</span>`).join("");
+}
+
+/* ---------- list ---------- */
+const chips={change:"c-change",coat:"c-coat",scratch:"c-scratch",shaken:"c-shaken",dormant:"c-dormant",own:"c-own"};
+function filtered(){
+  const q=$("q").value.trim().toLowerCase().replace(/\s+/g," ");const qs=q?q.split(" "):[];
+  const mo=$("f-motive").value;const on=k=>$(chips[k]).getAttribute("aria-pressed")==="true";
+  const yearAgo=(()=>{const d=new Date();d.setFullYear(d.getFullYear()-1);return d.toISOString().slice(0,10)})();
+  let r=all.filter(c=>qs.every(w=>c._s.includes(w))&&(!mo||c.motive===mo)&&(!on("change")||c.change==="あり")&&(!on("coat")||c.coat==="気になる")&&(!on("scratch")||c.scratch==="気になる")&&(!on("shaken")||c.shaken==="やってみたい")&&(!on("own")||c.own==="はい")&&(!on("dormant")||(c.last&&c.last<yearAgo)));
+  const key={no:c=>Number(c.no)||0,kana:c=>c.kana||c.name||"",car:c=>c.car||"",last:c=>c.last||"",cnt:c=>c.cnt,sum:c=>c.sum}[sortKey];
+  r.sort((a,b)=>{const x=key(a),y=key(b);return (x<y?-1:x>y?1:0)*sortDir});
+  return r;
+}
+function renderList(){
+  const r=filtered();const per=50;const pages=Math.max(1,Math.ceil(r.length/per));if(page>=pages)page=pages-1;
+  const sl=r.slice(page*per,page*per+per);
+  $("rows").innerHTML=sl.length?sl.map(c=>`<tr data-id="${esc(c.id)}"><td class="num">${esc(c.no)}</td><td><div class="nm"><span>${esc(c.name?sama(c.name):"（名前なし）")}</span><small>${esc(c.kana)}</small></div></td><td class="num">${esc(c.tel)}</td><td>${esc(c.car)}</td><td>${c.motive?`<span class="pill">${esc(c.motive)}</span>`:""}</td><td class="num">${esc((c.last||"").replace(/-/g,"/"))}</td><td class="r num">${c.cnt}</td><td class="r num">${yen(c.sum)}</td></tr>`).join(""):`<tr><td colspan="8" class="empty">条件に合う顧客はいません。検索語や絞り込みを変えてください。</td></tr>`;
+  $("pginfo").textContent=`${r.length.toLocaleString()}人中 ${r.length?page*per+1:0}〜${Math.min(r.length,page*per+per)}人目`;
+  $("prev").disabled=page===0;$("next").disabled=page>=pages-1;
+}
+
+/* ---------- prospects ---------- */
+function renderPros(){
+  const q=($("pq").value||"").trim().toLowerCase();
+  const r=pros.filter(c=>!q||(c._s+" "+c.jobsArr.map(j=>(j.work||"")+" "+(j.work2||"")).join(" ")).toLowerCase().includes(q)).sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||""));
+  $("prows").innerHTML=r.length?r.map(c=>{const j=c.jobsArr[0]||{};return `<tr data-id="${esc(c.id)}"><td><div class="nm"><span>${esc(c.name?sama(c.name):"（名前なし）")}</span><small>${esc(c.motive||"")}</small></div></td><td>${c.prosStatus?`<span class="pill warn">${esc(c.prosStatus)}</span>`:""}</td><td>${esc(j.work||"")}${j.work2?`<br><small class="note">${esc(j.work2)}</small>`:""}</td><td class="num">${esc(((j.date||"").slice(5).replace("-","/")+" "+(j.time||"")).trim()||"未定")}</td><td class="r num">${num(j.amount)?yen(num(j.amount)):""}</td><td>${esc(c.addr||"")}</td><td class="num">${esc(c.tel||"")}</td><td class="num">${esc((c.createdAt||"").slice(0,10).replace(/-/g,"/"))}</td><td><button class="btn small primary" data-promote="${esc(c.id)}">確定</button></td></tr>`}).join(""):`<tr><td colspan="9" class="empty">見込みのお客様はいません。</td></tr>`;
+}
+let noBase=0;
+function nextNo(){return String(Math.max(noBase,...everyone.filter(c=>!c.test&&!String(c.id).startsWith("t-")&&!/テスト/.test(c.name||"")).map(c=>Number(c.no)||0))+1)}
+async function promote(id){const c=everyone.find(x=>x.id===id)||{};const no=c.no||nextNo();if(await writeCust(id,{stage:"顧客",prosStatus:"",no,confirmedAt:new Date().toISOString()})){status("確定しました。顧客No."+no+" で顧客一覧に転記しました。")}}
+
+/* ---------- schedule ---------- */
+let schedMode="month", schedDate=null, travel={};
+function durMin(s){s=String(s||"");let m=0;const h=s.match(/(\d+(?:\.\d+)?)\s*時間/);const mi=s.match(/(\d+)\s*分/);if(h)m+=parseFloat(h[1])*60;if(mi)m+=Number(mi[1]);return m||60}
+const toMin=t=>{const m=String(t||"").match(/^(\d{1,2}):(\d{2})/);return m?Number(m[1])*60+Number(m[2]):null};
+const fromMin=n=>String(Math.floor(n/60)).padStart(2,"0")+":"+String(n%60).padStart(2,"0");
+function addrOf(c){return [c.addr].filter(Boolean).join(" ").trim()}
+function legKey(a,b,dep){const s=a+"|"+b+"|"+dep;let h=5381;for(let i=0;i<s.length;i++)h=(Math.imul(h,33)^s.charCodeAt(i))>>>0;return "k"+h.toString(36)}
+function dayJobs(date){const out=[];for(const c of everyone)for(const j of c.jobsArr)if(j.date===date)out.push({c,j,st:toMin(j.time)});
+  out.sort((a,b)=>(a.st??9999)-(b.st??9999));const g={};for(const x of out){const k=x.j.staff||"担当未定";(g[k]=g[k]||[]).push(x)}return g}
+function legsFor(date){const legs=[];for(const arr of Object.values(dayJobs(date))){for(let i=0;i+1<arr.length;i++){const a=arr[i],b=arr[i+1];if(a.st==null||b.st==null)continue;
+  const dep=fromMin(a.st+durMin(a.j.duration));const fa=a.j.workAddr||addrOf(a.c),fb=b.j.workAddr||addrOf(b.c);if(!fa||!fb)continue;
+  legs.push({key:legKey(fa,fb,date+" "+dep),from:fa,to:fb,date,depart:dep,gap:b.st-(a.st+durMin(a.j.duration)),a,b})}}return legs}
+function gmapDest(b){return "https://www.google.com/maps/dir/?api=1&travelmode=driving&destination="+encodeURIComponent(b)}
+function gmapUrl(a,b){return "https://www.google.com/maps/dir/?api=1&travelmode=driving&origin="+encodeURIComponent(a)+"&destination="+encodeURIComponent(b)}
+function legInfo(l){const r=travel[l.key];
+  if(!r)return `<span class="pill">所要時間 計算待ち</span><span>${esc(l.depart)}発の予定・Yahoo!で自動計算されます</span>`;
+  const late=r.max!=null&&r.max>l.gap;
+  return `<span>移動 <b>${r.min===r.max?r.max:r.min+"〜"+r.max}分</b><small class="note">（Yahoo!${r.toll?"・有料道路あり":""}）</small>${r.km?"・"+esc(r.km)+"km":""}${r.gen&&r.gen!==r.max?`<small class="note">／一般道 ${esc(r.gen)}分</small>`:""}（${esc(l.depart)}発の予測）</span>`+(late?`<span class="pill bad">次の開始まで${l.gap}分・間に合わない恐れ</span>`:`<span class="pill good">余裕 ${l.gap-r.max}分</span>`)}
+function renderSched(){
+  if(!schedDate)schedDate=today();$("sd-date").value=schedDate;
+  $("sm-day").setAttribute("aria-pressed",schedMode==="day");$("sm-week").setAttribute("aria-pressed",schedMode==="week");$("sm-month").setAttribute("aria-pressed",schedMode==="month");
+  $("sd-prev").textContent=schedMode==="month"?"◀ 前月":"◀ 前へ";$("sd-next").textContent=schedMode==="month"?"翌月 ▶":"次へ ▶";
+  const el=$("sched");
+  if(schedMode==="month"){el.innerHTML=monthHtml(schedDate)+`<h3 class="dayttl">${esc(fmtJD(schedDate))} の予定</h3>`+dayHtml(schedDate);return}
+  if(schedMode==="week"){const d0=new Date(schedDate+"T00:00");d0.setDate(d0.getDate()-((d0.getDay()+6)%7));let h='<div class="week">';
+    for(let i=0;i<7;i++){const d=new Date(d0);d.setDate(d0.getDate()+i);const ds=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+      const items=Object.values(dayJobs(ds)).flat().sort((a,b)=>(a.st??9999)-(b.st??9999));
+      h+=`<div class="wday${ds===today()?" today":""}" data-day="${ds}"><div class="dh"><span>${d.getMonth()+1}/${d.getDate()}（${"日月火水木金土"[d.getDay()]}）</span><span>${items.length}件</span></div>${items.map(x=>`<div class="it"><b>${esc(x.j.time||"--:--")}</b> ${esc(sama(x.c.name||x.c.kana))}<br><span class="note">${esc(x.j.work||"")}</span></div>`).join("")}</div>`}
+    el.innerHTML=h+"</div>";return}
+  el.innerHTML=dayHtml(schedDate);
+}
+const ymd=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+function fmtJD(ds){const d=new Date(ds+"T00:00");return (d.getMonth()+1)+"月"+d.getDate()+"日（"+"日月火水木金土"[d.getDay()]+"）"}
+function evCls(x){return x.j.done?"done":x.c.isPros?"pros":x.j.conf?"conf":""}
+function monthHtml(date){
+  const b=new Date(date+"T00:00");const y=b.getFullYear(),m=b.getMonth();const first=new Date(y,m,1);const start=new Date(first);start.setDate(1-((first.getDay()+6)%7));
+  const last=new Date(y,m+1,0);const weeks=Math.ceil((((first.getDay()+6)%7)+last.getDate())/7);const td=today();let total=0,sum=0;
+  let h='<div class="calgrid">'+["月","火","水","木","金","土","日"].map((w,i)=>`<div class="dow${i===5?" sat":i===6?" sun":""}">${w}</div>`).join("");
+  for(let i=0;i<weeks*7;i++){const d=new Date(start);d.setDate(start.getDate()+i);const ds=ymd(d);
+    const items=Object.values(dayJobs(ds)).flat().sort((a,b)=>(a.st??9999)-(b.st??9999));
+    if(d.getMonth()===m){total+=items.length;for(const x of items)if(!x.c.isPros)sum+=num(x.j.amount)||0}
+    const cls=["cday"];if(d.getMonth()!==m)cls.push("out");if(ds===td)cls.push("today");if(ds===date)cls.push("sel");if(d.getDay()===6)cls.push("sat");if(d.getDay()===0)cls.push("sun");
+    const show=items.slice(0,3);
+    h+=`<button type="button" class="${cls.join(" ")}" data-day="${ds}" aria-label="${esc(fmtJD(ds))} ${items.length}件"><span class="dn"><b>${d.getDate()}</b>${items.length?`<span class="cnt">${items.length}件</span>`:""}</span>`+
+      show.map(x=>`<span class="ev ${evCls(x)}"><b>${esc(x.j.time||"")}</b>${esc(sama(x.c.name||x.c.kana||""))}</span>`).join("")+(items.length>3?`<span class="ev more">他${items.length-3}件</span>`:"")+
+      (items.length?`<span class="dots">${items.slice(0,4).map(x=>`<i class="${evCls(x)}"></i>`).join("")}</span>`:"")+`</button>`}
+  h+="</div>";
+  return `<div class="cal"><div class="calhd"><h3>${y}年${m+1}月</h3><span class="note">予定 ${total}件・確定分 ${yen(sum)}</span></div>${h}<div class="callegend"><span style="--c:var(--good)">予約確定</span><span style="--c:var(--accent)">未確定</span><span style="--c:var(--warn)">見込み</span><span style="--c:var(--line)">完了</span></div></div>`}
+function dayHtml(date){
+  const g=dayJobs(date);const keys=Object.keys(g);
+  if(!keys.length)return '<div class="panel empty">この日の予定はありません。「＋ 予定を追加」から登録できます。</div>';
+  const legs=legsFor(date);const lmap={};for(const l of legs)lmap[l.a.c.id+"/"+l.a.j.jid]=l;
+  return keys.map(k=>`<div class="panel daygrp"><h3>担当：${esc(k)}（${g[k].length}件）</h3>`+g[k].map((x,i)=>{const end=x.st!=null?fromMin(x.st+durMin(x.j.duration)):"";const l=lmap[x.c.id+"/"+x.j.jid];const nx=g[k][i+1];
+    let s=`<div class="slot"><div class="tm">${esc(x.j.time||"--:--")}<small>〜${esc(end)}</small></div><div class="appt" data-id="${esc(x.c.id)}"><div class="who">${esc(sama(x.c.name||x.c.kana))}<span class="pill">${esc(x.j.work||"作業内容未入力")}</span>${x.j.done?'<span class="pill">完了</span>':x.c.isPros?'<span class="pill bad">見込み（未確定）</span>':x.j.conf?'<span class="pill good">予約確定</span>':'<span class="pill warn">未確定</span>'}</div><div class="addr">${esc(addrOf(x.c)||"住所未登録")}${x.c.tel?"・"+esc(x.c.tel):""}</div><div class="addr">${esc(x.c.car||"")} ${num(x.j.amount)?yen(num(x.j.amount)):""} ${esc(x.j.duration||"（作業時間未入力・60分で計算）")}</div></div></div>`;
+    if(nx){s+=`<div class="leg"><div class="line"></div><div class="info">${l?legInfo(l)+`<a href="${esc(gmapUrl(l.from,l.to))}" target="_blank" rel="noopener">Googleマップで開く</a>`:'<span class="pill">住所か開始時刻が未入力のため計算できません</span>'}</div></div>`}
+    return s}).join("")+"</div>").join("");
+}
+function shiftDay(n){const d=new Date(schedDate+"T00:00");if(schedMode==="month"){const t=new Date(d.getFullYear(),d.getMonth()+n,1);schedDate=ymd(t);renderSched();return}d.setDate(d.getDate()+n*(schedMode==="week"?7:1));schedDate=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");renderSched()}
+let travelQ={},aqT=null;
+function pendingLegs(){const legs=[];const d=new Date();for(let i=0;i<14;i++){const x=new Date(d);x.setDate(d.getDate()+i);for(const l of legsFor(ymd(x)))if(!travel[l.key])legs.push({key:l.key,from:l.from,to:l.to,date:l.date,depart:l.depart})}return legs}
+function autoQueue(){clearTimeout(aqT);aqT=setTimeout(async()=>{if(!db||state.sample)return;const legs=pendingLegs();const cur=travelQ.legs||[];const qk=new Set(cur.map(l=>l.key));
+  if(legs.length===cur.length&&legs.every(l=>qk.has(l.key)))return;
+  try{await db.doc("travel/queue").set({legs,requestedAt:new Date().toISOString(),auto:true})}catch(e){}},4000)}
+async function requestTravel(){
+  const legs=pendingLegs();
+  if(!legs.length){$("sd-msg").textContent="今日から2週間分の区間は、すべて計算済みです。";return}
+  if(!db||state.sample){$("sd-msg").textContent="見本データでは依頼できません。スプレッドシートを取り込んでからお試しください。";return}
+  try{await db.doc("travel/queue").set({legs,requestedAt:new Date().toISOString()});$("sd-msg").textContent=`${legs.length}区間の計算を依頼しました。Yahoo!で計算した時間が自動で入ります（1時間ごとに反映）。`}
+  catch(e){$("sd-msg").textContent="依頼できませんでした（"+(e.code||"エラー")+"）。"}
+}
+function openPicker(){openId="__pick";$("ov").hidden=false;const S=$("sheet");
+  S.innerHTML=`<div class="hd"><div class="t"><h2>予定を追加する顧客</h2><span class="note">${esc(schedDate.replace(/-/g,"/"))} の予定として登録します</span></div><button class="btn" id="closeS">閉じる</button></div><input id="pk-q" type="search" placeholder="名前・電話番号・車名で検索"><div class="picker" id="pk-list"></div>`;
+  const draw=()=>{const q=$("pk-q").value.trim().toLowerCase();const r=q?all.filter(c=>c._s.includes(q)).slice(0,30):all.slice().sort((a,b)=>(b.last||"").localeCompare(a.last||"")).slice(0,15);
+    $("pk-list").innerHTML=r.map(c=>`<button data-pick="${esc(c.id)}">${esc(sama(c.name||c.kana))} <span class="note">${esc(c.tel||"")} ${esc(c.car||"")}</span></button>`).join("")||'<div class="empty">見つかりません。顧客一覧の「新規顧客」から先に登録してください。</div>'};
+  $("pk-q").addEventListener("input",draw);draw();$("pk-q").focus()}
+
+const sama=n=>{n=String(n||"").trim();return !n||/(様|御中)$/.test(n)?n:n+" 様"};
+/* ---------- detail sheet ---------- */
+let openId=null, editMode=null, newJobDate=null;
+const lastStaff=()=>{for(const c of all)for(const j of c.jobsArr)if(j.staff)return j.staff;return ""}; // editMode: null | "cust" | jobId | "newjob"
+function openCust(id){watchPhotos();openId=id;editMode=null;$("ov").hidden=false;renderSheet();$("sheet").scrollTop=0}
+function closeSheet(){openId=null;editMode=null;newJobDate=null;rdraft=null;rcJust=null;rcConfirm=null;$("ov").hidden=true}
+function renderSheet(){
+  if(openId&&openId.startsWith("__rc:"))return renderRcSheet(openId.slice(5));
+  if(openId==="__rcnew")return renderRcForm();
+  if(openId&&openId.startsWith("__cp:")){const [cid,n]=openId.slice(5).split("#");return renderCpSheet(cid,Number(n))}
+  const isNew=openId==="__new";const c=isNew?{id:"__new",jobsArr:[]}:everyone.find(x=>x.id===openId);
+  if(!c){closeSheet();return}
+  const S=$("sheet");
+  const tags=[c.motive&&["acc",c.motive],c.change==="あり"&&["warn","買い替え検討"],c.coat==="気になる"&&["warn","コーティングに関心"],c.scratch==="気になる"&&["warn","キズ直しに関心"],c.shaken==="やってみたい"&&["warn","出張車検に関心"],c.line==="済み"&&["good","LINE追加済み"],c.own==="はい"&&["acc","自社販売顧客"]].filter(Boolean);
+  let h=`<div class="hd"><div class="t"><span class="note num">${isNew?"新規":c.no?"No. "+esc(c.no):(c.isPros?"見込み":"")}</span><h2>${esc(isNew?"新しい顧客":(c.name?sama(c.name):"（名前なし）"))}</h2><span class="note">${esc(c.kana||"")}</span></div><button class="btn" id="closeS">閉じる</button></div>`;
+  if(c.isPros)h+=`<div class="panel" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="pill warn">見込み${c.prosStatus?"・"+esc(c.prosStatus):""}</span><span class="note" style="flex:1">内容を確認し、お客様との約束が決まったら「確定」を押してください。顧客一覧に転記されます。</span><button class="btn primary" data-promote="${esc(c.id)}">確定（顧客一覧へ転記）</button></div>`;
+  if(tags.length)h+=`<div class="tags">${tags.map(([k,t])=>`<span class="pill ${k}">${esc(t)}</span>`).join("")}</div>`;
+  if(editMode==="cust"||isNew){
+    h+=`<form class="panel" id="custform" style="display:flex;flex-direction:column;gap:12px"><h3>基本情報</h3><div class="grid2">`+CF.map(([k,l])=>{const v=esc(c[k]||"");const id="cf-"+k;
+      if(OPT[k])return `<label class="f" for="${id}"><span>${l}</span><select id="${id}" name="${k}">${OPT[k].concat(c[k]&&!OPT[k].includes(c[k])?[c[k]]:[]).map(o=>`<option${o===(c[k]||"")?" selected":""}>${esc(o)}</option>`).join("")}</select></label>`;
+      if(k==="note"||k==="addr")return `<label class="f" for="${id}" style="grid-column:1/-1"><span>${l}</span><textarea id="${id}" name="${k}">${v}</textarea></label>`;
+      return `<label class="f" for="${id}"><span>${l}</span><input id="${id}" name="${k}" value="${v}"${k==="soldDate"?' type="date"':""}></label>`}).join("")+`</div>
+      <div class="actions">${isNew?"":'<button type="button" class="btn danger" id="delC">この顧客を削除</button>'}<button type="button" class="btn" id="cancelC">キャンセル</button><button type="submit" class="btn primary">保存する</button></div><div id="delconf"></div></form>`;
+  }else{
+    const kv=(rows)=>rows.filter(([,v])=>v).map(([l,v])=>`<dt>${l}</dt><dd>${v}</dd>`).join("");
+    const telD=String(c.tel||"").replace(/[^\d+]/g,"");const addrFull=[c.zip?"〒"+c.zip:"",c.addr||""].filter(Boolean).join(" ");
+    const mm=(()=>{for(const j of c.jobsArr){const m=String(j.note||"").match(/https:\/\/meetsmore\.com\/pros\/[^\s　）)]+/);if(m)return m[0]}return ""})();
+    const acts=[telD&&`<a class="qa" href="tel:${esc(telD)}"><b>📞</b>電話する</a>`,c.addr&&`<a class="qa" href="${esc(gmapDest(c.addr))}" target="_blank" rel="noopener"><b>🗺️</b>地図・ルート</a>`,telD&&`<a class="qa" href="sms:${esc(telD)}"><b>💬</b>SMS</a>`,mm&&`<a class="qa" href="${esc(mm)}" target="_blank" rel="noopener"><b>📨</b>ミツモア</a>`,c.addr&&`<button class="qa" data-copy="${esc(addrFull)}"><b>📋</b>住所コピー</button>`].filter(Boolean);
+    if(acts.length)h+=`<div class="qas">${acts.join("")}</div>`;
+    const t0=today();const nx=c.jobsArr.filter(j=>j.date&&j.date>=t0).sort((x,y)=>(x.date+(x.time||"")).localeCompare(y.date+(y.time||"")))[0];
+    if(nx)h+=`<div class="nextjob"><div class="nl">次の予定</div><div class="nd">${esc(nx.date.slice(5).replace("-","/"))}（${"日月火水木金土"[new Date(nx.date+"T00:00").getDay()]}）${esc(nx.time||"")}${nx.duration?`<small>・${esc(nx.duration)}</small>`:""}</div><div class="nw">${esc(nx.work||"作業内容未入力")}</div>${nx.work2?`<div class="note">${esc(nx.work2)}</div>`:""}<div class="nm2">${num(nx.amount)?`<b>${yen(num(nx.amount))}</b>`:""}${nx.pay?`<span>${esc(nx.pay)}</span>`:""}${nx.staff?`<span>担当 ${esc(nx.staff)}</span>`:""}</div>${nx.note?`<details><summary>メモを見る</summary><div class="note" style="white-space:pre-wrap">${esc(nx.note)}</div></details>`:""}</div>`;
+    const car=[c.maker,c.car,c.color].filter(Boolean).join(" ");
+    h+=`<div class="panel" style="display:flex;flex-direction:column;gap:12px"><div class="listhead" style="margin:0"><h3>お客様情報</h3><button class="btn small" id="editC">編集</button></div>
+      <dl class="kv">${kv([["電話番号",c.tel?`<span class="num">${esc(c.tel)}</span>`:""],["住所",esc(addrFull)],["誕生日",esc(c.birth||"")],["メール",esc(c.mail||"")],["SNS",esc(c.sns||"")],["保険加入",esc(c.ins||"")],["備考",esc(c.note||"")]])||'<dt>—</dt><dd class="note">未入力</dd>'}</dl>
+      <h3>車両</h3><dl class="kv">${kv([["車名",esc(car)],["ナビ型番",esc(c.navi||"")],["型式",esc(c.model||"")],["初年度登録",esc(c.firstReg||"")],["車検日",esc(c.shakenDate||"")],["車体番号",esc(c.vin||"")],["自社販売",c.own==="はい"?`はい（販売日 ${esc((normDate(c.soldDate)||"未入力").replace(/-/g,"/"))}）`:""]])||'<dt>—</dt><dd class="note">未入力</dd>'}</dl></div>`;
+    // jobs
+    const tot=c.jobsArr.reduce((a,j)=>{const k=jobCalc(j);a.s+=num(j.amount);a.n+=k.net;return a},{s:0,n:0});
+    h+=`<div class="listhead" style="margin:0"><h2>作業履歴 <span class="note">${c.jobsArr.length}件・累計 ${yen(tot.s)}（純利益 ${yen(tot.n)}）</span></h2><button class="btn primary small" id="addJob">＋ 作業を追加</button></div>`;
+    if(editMode==="newjob")h+=jobForm(c,{jid:"__newjob",date:newJobDate||today(),staff:lastStaff()});
+    h+=c.jobsArr.length?c.jobsArr.map(j=>editMode===j.jid?jobForm(c,j):jobCard(j)).join(""):(editMode==="newjob"?"":'<div class="empty">まだ作業記録がありません。</div>');
+  }
+  S.innerHTML=h;
+}
+const hm=iso=>{const d=new Date(iso);return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0")};
+function fmtDur(m){const h=Math.floor(m/60),mm=m%60;return h&&mm?h+"時間"+mm+"分":h?h+"時間":mm+"分"}
+function timerBtns(j){
+  if(j.wStart&&!j.wEnd)return `<span class="pill warn">作業中 ${esc(hm(j.wStart))}〜</span><button class="btn small primary" data-wend="${esc(j.jid)}">作業終了</button>`;
+  return `<button class="btn small" data-wstart="${esc(j.jid)}">${j.wEnd?"作業開始（計り直し）":"作業開始"}</button>`+(j.wEnd?`<span class="pill good">計測 ${esc(hm(j.wStart))}〜${esc(hm(j.wEnd))}</span>`:"")}
+async function workTimer(jid,kind){const c=everyone.find(x=>x.id===openId);const j=c&&c.jobsArr.find(x=>x.jid===jid);if(!j)return;const now=new Date().toISOString();
+  if(kind==="start"){if(j.wEnd&&!confirm("作業時間を計り直しますか？（前回の計測は上書きされます）"))return;
+    if(await writeCust(openId,{jobs:{[jid]:{wStart:now,wEnd:""}}})){status("作業開始を記録しました（"+hm(now)+"）。");
+      if(!j.ukAt){if(mmTalk(c))mmUk(c.id,jid);else ukAsk(c.id,jid)}}}
+  else{const raw=Math.max(0,(new Date(now)-new Date(j.wStart))/60000);const m=Math.floor(raw/15)*15;
+    if(await writeCust(openId,{jobs:{[jid]:{wEnd:now,workMin:m,duration:fmtDur(m)}}}))status("作業終了を記録しました。作業時間は "+fmtDur(m)+"（実測 "+Math.floor(raw)+"分・15分未満切り捨て）です。");}
+  setTimeout(renderSheet,50)}
+document.addEventListener("change",e=>{const t=e.target;if(t&&t.dataset&&t.dataset.phjid){const fs=[...t.files];t.value="";addPhotos(t.dataset.phjid,fs)}});
+/* ---------- 受付表（電子） ---------- */
+const UKO={motive:["ミツモア","インスタ","X","フェイスブック","LINE","当社HP","チラシ","紹介"],svc:["洗車","コーティング","傷直し","パーツ取付","車検"],svc2:["車の購入","車の売却","新古車・中古車を業者オークションで代行購入","お乗りの車を業者オークションへ代行出品"]};
+let ukFor=null,ukJid=null,ukSel={},ukDeepDone=false;
+const UK_API="https://script.google.com/macros/s/AKfycbyD5Pspx4-ZNzr5TIF6oBg4iy4v4nRvCbrwlttH-IRTbigiAeKNmtpeQ7MWvO_kABHd/exec";
+async function ukToken(c,cid,jid,to){const f=firebase.firestore();const A="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";const rid=[...crypto.getRandomValues(new Uint8Array(24))].map(x=>A[x%A.length]).join("");
+  const u=firebase.auth().currentUser;
+  await f.doc("mailq/"+rid).set({to:to||"",via:to?"mail":"meetsmore",name:c.name||c.kana||"",cid,jid,bucket:bpath(cid),createdAt:new Date().toISOString(),by:(u&&u.email)||""});return rid}
+function mmTalk(c){if(!c)return "";if(/^m[0-9a-f]{16,}$/.test(c.id||"")&&(c.src==="meetsmore"||c.motive==="ミツモア"))return "https://meetsmore.com/pros/hired/"+c.id.slice(1);
+  const txt=[c.note||""].concat(Object.values(c.jobs||{}).map(j=>(j&&j.note)||"")).join(" ");const m=txt.match(/https:\/\/meetsmore\.com\/pros\/hired\/[0-9a-zA-Z]+/);return m?m[0]:""}
+function mmBox(html){let o=document.getElementById("ukask");if(!o){o=document.createElement("div");o.id="ukask";document.body.appendChild(o)}
+  o.innerHTML=`<div class="uka-box" role="dialog" aria-modal="true">${html}</div>`;o.hidden=false;o.onclick=e=>{if(e.target===o||e.target.dataset.close!==undefined)o.hidden=true};return o}
+async function mmUk(cid,jid){const c=everyone.find(x=>x.id===cid)||{};const talk=mmTalk(c);const nm=sama(c.name||c.kana||"お客様");
+  const o=mmBox(`<div class="uka-ic">⏳</div><h3>受付表を準備しています…</h3>`);
+  let url="";try{url="https://machino-crm.web.app/r.html?r="+await ukToken(c,cid,jid,"")}catch(e){o.querySelector(".uka-box").innerHTML=`<div class="uka-ic">⚠️</div><h3>受付表のURLを作れませんでした</h3><p>${esc(e.message||e)}</p><div class="uka-btns"><button type="button" class="uka-no" data-close>閉じる</button></div>`;return}
+  const msg=`${c.name||c.kana||""}様\nこの度はご依頼いただきありがとうございます。\nお手数ですが、下記より受付表のご記入をお願いいたします（1〜2分で終わります）。\n${url}`;
+  o.querySelector(".uka-box").innerHTML=`<div class="uka-ic">💬</div><h3>ミツモアのトークで受付表を送る</h3><p>下のボタンで文面をコピーして、${esc(nm)}のトークを開きます。<br><b>トークに貼り付けて送信</b>してください。</p>
+  <textarea class="uka-txt" readonly>${esc(msg)}</textarea><div class="uka-msg" id="uka-msg"></div>
+  <div class="uka-btns"><button type="button" class="uka-no" data-close>あとで</button><button type="button" class="uka-yes" id="mm-go">コピーしてトークを開く</button></div>`;
+  document.getElementById("mm-go").onclick=async()=>{try{await navigator.clipboard.writeText(msg)}catch(e){const t=o.querySelector(".uka-txt");t.select();document.execCommand("copy")}
+    window.open(talk,"_blank","noopener");writeCust(cid,{jobs:{[jid]:{ukSentAt:new Date().toISOString(),ukVia:"ミツモア"}}});
+    o.querySelector(".uka-box").innerHTML=`<div class="uka-ic">✅</div><h3>文面をコピーしました</h3><p>開いたミツモアのトークで、メッセージ欄に<b>貼り付け（長押し→ペースト / Ctrl+V）</b>して送信してください。</p><div class="uka-btns"><button type="button" class="uka-yes" data-close>閉じる</button></div>`}}
+function mmRc(rid){const r=rcAll.find(x=>x.id===rid);if(!r||!r.custId)return;const c=everyone.find(x=>x.id===r.custId);const talk=mmTalk(c);if(!talk)return;
+  const o=mmBox(`<div class="uka-ic">🧾</div><h3>ミツモアのトークに領収書を送る</h3><p>領収書のPDF（${esc(rcFname(r))}）を保存しました。<br>トークを開いて、<b>📎 からPDFを添付して送信</b>してください。</p>
+  <div class="uka-btns"><button type="button" class="uka-no" data-close>あとで</button><button type="button" class="uka-yes" id="mm-rc">トークを開く</button></div>
+  <button type="button" class="uka-here" id="mm-rcpdf">PDFをもう一度保存する</button>`);
+  document.getElementById("mm-rc").onclick=()=>{window.open(talk,"_blank","noopener");o.hidden=true};
+  document.getElementById("mm-rcpdf").onclick=()=>savePdf(rid)}
+function ukAsk(cid,jid){const c=everyone.find(x=>x.id===cid)||{};const j=(c.jobs||{})[jid]||{};const nm=sama(c.name||c.kana||"お客様");
+  let o=document.getElementById("ukask");if(!o){o=document.createElement("div");o.id="ukask";document.body.appendChild(o)}
+  const st=j.ukAt?`<div class="uka-st ok">この作業の受付表は記入済みです</div>`:j.ukSentAt?`<div class="uka-st">${esc(String(j.ukSentAt).slice(0,10).replace(/-/g,"/"))} に送信済みです（再送できます）</div>`:"";
+  o.innerHTML=`<div class="uka-box" role="dialog" aria-modal="true"><div class="uka-ic">📨</div><h3>受付表をメールで送信</h3>${st}
+  <p id="uka-q"></p><label class="uka-l">送信先メールアドレス<input type="email" id="uka-mail" value="${esc(c.mail||"")}" placeholder="example@mail.com" autocomplete="off"></label>
+  <div class="uka-msg" id="uka-msg"></div>
+  <div class="uka-btns"><button type="button" class="uka-no" id="uka-no">キャンセル</button><button type="button" class="uka-yes" id="uka-yes">はい</button></div>
+  ${mmTalk(c)?'<button type="button" class="uka-here" id="uka-mm">ミツモアのトークで送る</button>':""}<button type="button" class="uka-here" id="uka-here">メールせずにこの場で記入する</button></div>`;
+  const mi=document.getElementById("uka-mail"),q=document.getElementById("uka-q");
+  const upd=()=>{const m=mi.value.trim();q.innerHTML=m?`<b>${esc(nm)}</b>（${esc(m)}）に受付表を送信します。<br>送信してよろしいですか？`:`<b>${esc(nm)}</b> のメールアドレスが登録されていません。<br>送信先を入力してください。`};upd();mi.oninput=upd;
+  o.hidden=false;const close=()=>{o.hidden=true};
+  o.onclick=e=>{if(e.target===o)close()};document.getElementById("uka-no").onclick=close;
+  document.getElementById("uka-here").onclick=()=>{close();openUk(cid,jid)};
+  if(document.getElementById("uka-mm"))document.getElementById("uka-mm").onclick=()=>mmUk(cid,jid);
+  document.getElementById("uka-yes").onclick=async()=>{const m=mi.value.trim(),msg=document.getElementById("uka-msg"),y=document.getElementById("uka-yes");
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(m)){msg.textContent="メールアドレスを正しく入力してください。";mi.focus();return}
+    y.disabled=true;y.textContent="送信中…";msg.textContent="";
+    try{const rid=await ukToken(c,cid,jid,m);
+      if(!String(c.mail||"").trim())writeCust(cid,{mail:m});
+      const r=await fetch(UK_API,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({a:"send",id:rid})}).then(x=>x.json());
+      if(!r.ok)throw new Error(r.err||"送信エラー");
+      o.querySelector(".uka-box").innerHTML=`<div class="uka-ic">✅</div><h3>送信しました</h3><p>${esc(nm)}（${esc(m)}）に受付表のメールを送りました。<br>ご記入いただくと、顧客台帳に自動で反映されます。</p><div class="uka-btns"><button type="button" class="uka-yes" id="uka-ok">閉じる</button></div>`;
+      document.getElementById("uka-ok").onclick=close}
+    catch(e){console.error(e);y.disabled=false;y.textContent="はい";msg.textContent="送信できませんでした（"+(e.message||e)+"）。少し待ってからもう一度お試しください。"}}}
+function ukDeep(){if(ukDeepDone)return;const m=location.hash.match(/^#uk=([^/]*)\/(.*)$/);if(!m)return;const cid=decodeURIComponent(m[1]),jid=decodeURIComponent(m[2]);if(!everyone.find(x=>x.id===cid))return;ukDeepDone=true;openCust(cid);openUk(cid,jid||null)}
+function openUk(cid,jid){ukFor=cid||null;ukJid=jid||null;try{history.replaceState(null,"","#uk="+encodeURIComponent(cid||"")+"/"+encodeURIComponent(jid||""))}catch(e){};ukSel={motive:[],svc2:[]};for(const s of UKO.svc)ukSel["svc_"+s]=[];
+  const c=ukFor?everyone.find(x=>x.id===ukFor)||{}:{};const v=k=>esc(c[k]||"");
+  const ops=(g,list)=>`<div class="ukops">${list.map(o=>`<button type="button" class="ukop" data-g="${g}" data-v="${esc(o)}">${esc(o)}</button>`).join("")}</div>`;
+  const inp=(k,l,t="text",ph="")=>`<label class="ukq"><b>${l}</b><input type="${t}" id="uk-${k}" value="${v(k)}" placeholder="${ph}"></label>`;
+  let o=document.getElementById("ukbox");if(!o){o=document.createElement("div");o.id="ukbox";document.body.appendChild(o)}
+  o.innerHTML=`<div class="ukin"><h1>委託販売受付表</h1><div class="note">ご記入ありがとうございます。わかる範囲でご入力ください。</div>
+  ${inp("kana","フリガナ")}${inp("name","お名前")}${inp("tel","電話番号","tel")}${inp("zip","郵便番号","text","例）330-0001")}${inp("addr","ご住所")}${inp("birth","生年月日","date")}
+  <div class="ukq"><b>当社を知ったきっかけ（複数選択可）</b>${ops("motive",UKO.motive)}<input type="text" id="uk-ref" placeholder="紹介の場合：ご紹介者のお名前"></div>
+  <div class="ukq"><b>興味のあるサービス（複数選択可）</b>${UKO.svc.map(s=>`<div class="uksvc"><span>${s}</span>${ops("svc_"+s,["出張","来店"])}</div>`).join("")}${ops("svc2",UKO.svc2)}</div>
+  <label class="ukq"><b>理想のサービス・ご要望</b><textarea id="uk-ideal" placeholder="自由にご記入ください"></textarea></label>
+  <div class="note" id="uk-msg"></div></div>
+  <div class="ukbar"><button type="button" id="uk-cancel">閉じる</button><button type="button" class="uksend" id="uk-send">送信する</button></div>`;
+  o.hidden=false;o.scrollTop=0}
+async function ukClick(t){const b=t.closest("button");if(!b)return;
+  if(b.id==="uk-cancel"){if(confirm("受付表を閉じますか？（入力内容は保存されません）"))document.getElementById("ukbox").hidden=true;try{history.replaceState(null,"",location.pathname)}catch(e){};return}
+  if(b.id==="uk-send")return ukSend();
+  const g=b.dataset.g,v=b.dataset.v;if(!g)return;const single=false;const a=ukSel[g]||(ukSel[g]=[]);
+  if(single){ukSel[g]=a[0]===v?[]:[v]}else{const i=a.indexOf(v);i>=0?a.splice(i,1):a.push(v)}
+  b.parentElement.querySelectorAll(".ukop").forEach(x=>x.classList.toggle("on",ukSel[g].includes(x.dataset.v)))}
+async function ukSend(){const g=id=>String((document.getElementById("uk-"+id)||{}).value||"").trim();const msg=document.getElementById("uk-msg");
+  const vals={kana:g("kana"),name:g("name"),tel:g("tel"),zip:g("zip"),addr:g("addr"),birth:g("birth"),
+    motive:ukSel.motive.map(x=>x==="紹介"&&g("ref")?"紹介（"+g("ref")+"）":x).join("・"),
+    interest:UKO.svc.filter(s=>ukSel["svc_"+s].length).map(s=>s+"（"+ukSel["svc_"+s].join("・")+"）").concat(ukSel.svc2).join("・"),ideal:g("ideal")};
+  if(!vals.name&&!vals.kana){msg.textContent="お名前かフリガナをご入力ください。";msg.className="note err";return}
+  const now=new Date().toISOString();let id=ukFor;const c=id?everyone.find(x=>x.id===id)||{}:{};const patch={};
+  for(const[k,v]of Object.entries(vals))if(v&&!String(c[k]||"").trim())patch[k]=v;
+  const iv=k=>UKO.svc.includes(k)&&ukSel["svc_"+k].length?"興味あり（"+ukSel["svc_"+k].join("・")+"）":"";
+  if(iv("コーティング")&&!c.coat)patch.coat=iv("コーティング");if(iv("車検")&&!c.shaken)patch.shaken=iv("車検");
+  patch.forms={["f"+now.replace(/\D/g,"").slice(0,14)]:{...vals,at:now,kind:"委託販売受付表",jid:ukJid||""}};if(ukJid)patch.jobs={[ukJid]:{ukAt:now}};
+  if(!id){id=newId("n");patch.no=nextNo();patch.createdAt=now;patch.confirmedAt=now;patch.stage="顧客";patch.src=patch.src||"受付表"}
+  patch.updatedAt=now;const b=document.getElementById("uk-send");b.disabled=true;b.textContent="送信中…";
+  if(await writeCust(id,patch)){document.getElementById("ukbox").innerHTML=`<div class="ukin" style="align-items:center;text-align:center;padding-top:80px"><div style="font-size:48px">✅</div><h1>送信しました</h1><p>ご記入ありがとうございました。</p><button type="button" class="ukop on" id="uk-done" style="min-width:200px">閉じる</button></div>`;
+    document.getElementById("uk-done").onclick=()=>{document.getElementById("ukbox").hidden=true;try{history.replaceState(null,"",location.pathname)}catch(e){};openCust(id)}}
+  else{b.disabled=false;b.textContent="送信する";msg.textContent="送信できませんでした。電波の良い場所でもう一度お試しください。";msg.className="note err"}}
+/* ---------- photos (per job) ---------- */
+let photos={},phSub=false,phBusy={};
+function phDb(){return typeof firebase!=="undefined"&&firebase.apps&&firebase.apps.length?firebase.firestore():null}
+function watchPhotos(){if(phSub)return;const f=phDb();if(!f)return;phSub=true;
+  f.collection("photos").onSnapshot(q=>{const m={};q.forEach(d=>{const x=d.data();if(!x||!x.jid)return;(m[x.jid]=m[x.jid]||[]).push({id:d.id,...x})});
+    for(const k in m)m[k].sort((a,b)=>(a.t||"").localeCompare(b.t||"")||(a.n||0)-(b.n||0));photos=m;if(openId&&!editMode)renderSheet()},e=>console.error(e))}
+function photoStrip(j){if(!phDb())return "";const L=photos[j.jid]||[];
+  return `<div class="ph">${L.map(p=>`<div class="th"><img src="${p.b}" alt="作業写真" data-phview="${esc(p.id)}"><button type="button" title="削除" data-phdel="${esc(p.id)}">×</button></div>`).join("")}<label class="add">${phBusy[j.jid]?"保存中…":"📷 写真を追加"}<input type="file" accept="image/*" multiple data-phjid="${esc(j.jid)}"></label></div>`}
+function shrink(file){return new Promise((res,rej)=>{const u=URL.createObjectURL(file);const im=new Image();
+  im.onload=()=>{let w=im.naturalWidth,h=im.naturalHeight,max=1600,q=0.82,out="";
+    for(let i=0;i<6;i++){const r=Math.min(1,max/Math.max(w,h));const cv=document.createElement("canvas");cv.width=Math.round(w*r);cv.height=Math.round(h*r);
+      cv.getContext("2d").drawImage(im,0,0,cv.width,cv.height);out=cv.toDataURL("image/jpeg",q);if(out.length<850000)break;max=Math.round(max*0.8);q=Math.max(0.6,q-0.05)}
+    URL.revokeObjectURL(u);out.length<1000000?res(out):rej(new Error("too big"))};
+  im.onerror=()=>{URL.revokeObjectURL(u);rej(new Error("この画像形式は読み込めませんでした"))};im.src=u})}
+async function addPhotos(jid,files){const f=phDb();if(!f||!files.length)return;phBusy[jid]=true;renderSheet();let ok=0,ng=0;const base=(photos[jid]||[]).length;
+  for(const [i,file] of [...files].entries()){try{const b=await shrink(file);await f.collection("photos").add({cid:openId,jid,b,n:base+i,t:new Date().toISOString()});ok++}catch(e){console.error(e);ng++}}
+  phBusy[jid]=false;status(ok+"枚の写真を保存しました。"+(ng?"（"+ng+"枚は読み込めませんでした）":""),!!ng);renderSheet()}
+function jobCard(j){const k=jobCalc(j);const done=CK.filter(([key])=>j[key]).length;
+  return `<div class="job"><div class="jh"><span class="date">${esc((j.date||"日付未定").replace(/-/g,"/"))} ${esc(j.time||"")}</span><span class="w">${esc(j.work||"（作業内容なし）")}${j.work2?`<br><small class="note">${esc(j.work2)}</small>`:""}</span>${j.trOk?'<span class="pill good">振込確認済み</span>':(j.pay&&j.pay!=="現金"&&num(j.amount)>0?'<span class="pill warn">振込未確認</span>':"")}<span class="pill${done===CK.length?" good":""}">準備 ${done}/${CK.length}</span>${j.rcptNo?`<span class="pill acc">領収書 ${esc(j.rcptNo)}</span>`:""}<button class="btn small" data-rcpt="${esc(j.jid)}">領収書を発行</button><button class="btn small" data-editjob="${esc(j.jid)}">編集</button><button class="btn small" data-ukjob="${esc(j.jid)}">${j.ukAt?"📝 受付表（記入済み）":j.ukSentAt?"📨 受付表（送信済み）":"📝 受付表"}</button>${timerBtns(j)}</div>
+  <div class="money"><span>金額 <b>${yen(num(j.amount))}</b></span><span>支払 <b>${esc(j.pay||"—")}</b></span><span>手数料 <b>${yen(num(j.feePay)+num(j.feeRes))}</b></span><span>部品・駐車場 <b>${yen(k.parts+k.park)}</b></span><span>純利益 <b>${yen(k.net)}</b></span><span>担当 <b>${esc(j.staff||"—")}</b></span><span>作業時間 <b>${esc(j.duration||"—")}</b></span></div>${j.witCo||j.witName?`<div class="note">👤 立会者：${esc([j.witCo,j.witName&&sama(j.witName)].filter(Boolean).join("　"))}</div>`:""}${j.workAddr?`<div class="note">📍 作業場所：${esc(j.workAddr)} <a href="${esc(gmapDest(j.workAddr))}" target="_blank" rel="noopener">地図</a></div>`:""}${j.note?`<div class="note">${esc(j.note)}</div>`:""}${photoStrip(j)}</div>`}
+function jobForm(c,j){const f=(k,l,type="text")=>`<label class="f" for="jf-${k}"><span>${l}</span><input id="jf-${k}" name="${k}" type="${type}" value="${esc(j[k]||"")}"></label>`;
+  const s=(k,l,opts)=>`<label class="f" for="jf-${k}"><span>${l}</span><select id="jf-${k}" name="${k}">${opts.concat(j[k]&&!opts.includes(j[k])?[j[k]]:[]).map(o=>`<option${o===(j[k]||"")?" selected":""}>${esc(o)}</option>`).join("")}</select></label>`;
+  let parts="";for(let i=1;i<=5;i++)parts+=f("p"+i,"部品代"+i)+f("pd"+i,"部品購入日"+i,"date");
+  return `<form class="job" id="jobform" data-jid="${esc(j.jid)}"><h3>${j.jid==="__newjob"?"作業を追加":"作業を編集"}</h3>
+  <div class="grid3">${f("date","作業日","date")}${f("time","開始時間","time")}${f("staff","担当者名")}</div>
+  <label class="f" for="jf-work"><span>作業内容</span><input id="jf-work" name="work" value="${esc(j.work||"")}"></label>
+  <label class="f" for="jf-work2"><span>追加の作業内容</span><input id="jf-work2" name="work2" value="${esc(j.work2||"")}"></label>
+  <div class="grid2">${f("witCo","立会者（会社名）")}${f("witName","立会者（個人名）")}</div>
+  <label class="f" for="jf-workAddr"><span>作業実施住所（登録住所と違う場合）</span><input id="jf-workAddr" name="workAddr" value="${esc(j.workAddr||"")}" placeholder="空欄なら登録住所で作業"></label>
+  <div class="grid3">${f("duration","作業時間")}${s("pay","支払方法",PAY)}${f("amount","作業金額（円）","number")}${f("feePay","決済手数料（円）","number")}${f("feeRes","予約手数料（円）","number")}${s("receipt","領収書",RECEIPT)}</div>
+  <h3>準備・進行状況</h3><div class="checks">${CK.map(([k,l])=>`<label class="ck${j[k]?" on":""}" for="jf-${k}"><input type="checkbox" id="jf-${k}" name="${k}"${j[k]?" checked":""}>${l}</label>`).join("")}</div>
+  <h3>振込</h3><div class="grid3">${f("tr1Amt","振込金額①","number")}${f("tr1Date","振込日①","date")}<label class="ck${j.trOk?" on":""}" for="jf-trOk" style="align-self:end;justify-self:start"><input type="checkbox" id="jf-trOk" name="trOk"${j.trOk?" checked":""}>振込確認済み</label>${f("tr2Amt","振込金額②","number")}${f("tr2Date","振込日②","date")}</div>
+  <details><summary class="note" style="cursor:pointer">部品代・駐車場代</summary><div class="grid2" style="margin-top:10px">${parts}${f("park1","駐車場代①","number")}${f("park2","駐車場代②","number")}</div></details>
+  <label class="f" for="jf-note"><span>備考</span><textarea id="jf-note" name="note">${esc(j.note||"")}</textarea></label>
+  <div class="actions">${j.jid!=="__newjob"?'<button type="button" class="btn danger" id="delJ">この作業を削除</button>':""}<button type="button" class="btn" id="cancelJ">キャンセル</button><button type="submit" class="btn primary">保存する</button></div><div id="deljconf"></div></form>`}
+
+/* ---------- writes ---------- */
+async function ensureBucket(p){const s=await db.doc(p).get();if(!s.exists)await db.doc(p).set({c:{}})}
+async function writeCust(id,patch){
+  if(state.sample){ // local only
+    const b=state.buckets[bpath(id)]||(state.buckets[bpath(id)]={c:{}});b.c[id]=deepMerge(b.c[id]||{},patch);rebuild();status("見本データは保存されません。スプレッドシートを取り込むと保存できるようになります。");return true}
+  if(!db){status("保存先に接続できていないため保存できません。ページを開き直してください。",true);return false}
+  const p=bpath(id);
+  try{await ensureBucket(p);await db.doc(p).update({c:{[id]:{...patch,updatedAt:new Date().toISOString()}}});status("保存しました。");return true}
+  catch(e){status(e.code==="invalid_argument"?"保存できませんでした。この台帳を編集する権限（投稿者以上）が必要です。":"保存できませんでした（"+(e.code||"エラー")+"）。少し待ってからもう一度お試しください。",true);return false}
+}
+function deepMerge(a,b){const o={...a};for(const[k,v]of Object.entries(b)){o[k]=v&&typeof v==="object"&&!Array.isArray(v)&&o[k]&&typeof o[k]==="object"?deepMerge(o[k],v):v}return o}
+const newId=p=>p+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+
+/* minimal QR encoder: version 1-4, EC level M, byte mode */
+function qrMatrix(text){const data=[...new TextEncoder().encode(text)];
+  const V=[null,{n:16,ec:10,b:1},{n:28,ec:16,b:1},{n:44,ec:26,b:1},{n:64,ec:18,b:2},{n:86,ec:24,b:2},{n:108,ec:16,b:4}];
+  let ver=1;while(ver<=6&&data.length+2>V[ver].n)ver++;if(ver>6)throw new Error("too long");
+  const size=17+4*ver,{n,ec,b}=V[ver];const bits=[];const put=(v,l)=>{for(let i=l-1;i>=0;i--)bits.push((v>>>i)&1)};
+  put(4,4);put(data.length,8);for(const d of data)put(d,8);put(0,Math.min(4,n*8-bits.length));while(bits.length%8)bits.push(0);
+  const cw=[];for(let i=0;i<bits.length;i+=8){let v=0;for(let j=0;j<8;j++)v=(v<<1)|bits[i+j];cw.push(v)}for(let p=0;cw.length<n;p++)cw.push(p%2?0x11:0xEC);
+  const mul=(x,y)=>{let z=0;for(let i=7;i>=0;i--){z=(z<<1)^((z>>>7)*0x11d);z^=((y>>>i)&1)*x}return z&255};
+  const div=[];for(let i=0;i<ec-1;i++)div.push(0);div.push(1);let root=1;for(let i=0;i<ec;i++){for(let j=0;j<div.length;j++){div[j]=mul(div[j],root);if(j+1<div.length)div[j]^=div[j+1]}root=mul(root,2)}
+  const rs=d=>{const r=div.map(()=>0);for(const x of d){const f=x^r.shift();r.push(0);div.forEach((c,i)=>r[i]^=mul(c,f))}return r};
+  const bl=n/b;const blocks=[];for(let i=0;i<b;i++){const d=cw.slice(i*bl,(i+1)*bl);blocks.push({d,e:rs(d)})}
+  const all=[];for(let i=0;i<bl;i++)for(const k of blocks)all.push(k.d[i]);for(let i=0;i<ec;i++)for(const k of blocks)all.push(k.e[i]);
+  const M=[...Array(size)].map(()=>Array(size).fill(false)),F=[...Array(size)].map(()=>Array(size).fill(false));
+  const set=(x,y,v)=>{M[y][x]=v;F[y][x]=true};
+  for(let i=0;i<size;i++){set(6,i,i%2==0);set(i,6,i%2==0)}
+  for(const[cx,cy]of[[3,3],[size-4,3],[3,size-4]])for(let dy=-4;dy<=4;dy++)for(let dx=-4;dx<=4;dx++){const x=cx+dx,y=cy+dy;if(x<0||y<0||x>=size||y>=size)continue;const d=Math.max(Math.abs(dx),Math.abs(dy));set(x,y,d!=2&&d!=4)}
+  if(ver>1){const p=size-7;for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++)set(p+dx,p+dy,Math.max(Math.abs(dx),Math.abs(dy))!=1)}
+  const fmt=()=>{const d=(0<<3)|0;let r=d;for(let i=0;i<10;i++)r=(r<<1)^((r>>>9)*0x537);const v=((d<<10)|r)^0x5412;const g=i=>((v>>>i)&1)==1;
+    for(let i=0;i<=5;i++)set(8,i,g(i));set(8,7,g(6));set(8,8,g(7));set(7,8,g(8));for(let i=9;i<15;i++)set(14-i,8,g(i));
+    for(let i=0;i<8;i++)set(size-1-i,8,g(i));for(let i=8;i<15;i++)set(8,size-15+i,g(i));set(8,size-8,true)};fmt();
+  let i=0;for(let right=size-1;right>=1;right-=2){if(right==6)right=5;for(let vert=0;vert<size;vert++)for(let j=0;j<2;j++){const x=right-j,up=((right+1)&2)==0,y=up?size-1-vert:vert;
+    if(!F[y][x]&&i<all.length*8){M[y][x]=((all[i>>>3]>>>(7-(i&7)))&1)==1;i++}}}
+  for(let y=0;y<size;y++)for(let x=0;x<size;x++)if(!F[y][x]&&(x+y)%2==0)M[y][x]=!M[y][x];
+  return M}
+function drawQR(g,x,y,px,text){const M=qrMatrix(text);const n=M.length,q=4,m=px/(n+2*q);g.fillStyle="#fff";g.fillRect(x,y,px,px);g.fillStyle="#000";
+  for(let r=0;r<n;r++)for(let c=0;c<n;c++)if(M[r][c])g.fillRect(Math.floor(x+(c+q)*m),Math.floor(y+(r+q)*m),Math.ceil(m),Math.ceil(m))}
+
+/* ---------- coupons ---------- */
+const CP0={title:"オイル交換 半額クーポン",price:"税込7,500円",days:90,note:"ご予約時にこのクーポンをお知らせください。他の割引との併用はできません。"};
+let cpSet={...CP0}, cpShow="due";
+const cpImgCache={};
+function addMonths(ds,m){const d=new Date(ds+"T00:00");const day=d.getDate();d.setDate(1);d.setMonth(d.getMonth()+m);const last=new Date(d.getFullYear(),d.getMonth()+1,0).getDate();d.setDate(Math.min(day,last));return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
+const addDays=(ds,n)=>{const d=new Date(ds+"T00:00");d.setDate(d.getDate()+n);return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")};
+function cpRows(){const t=today(),soon=addDays(t,30);const out=[];
+  for(const c of all){if(c.own!=="はい")continue;const sd=normDate(c.soldDate);if(!/^\d{4}-\d{2}-\d{2}$/.test(sd)){out.push({c,n:0,due:"",st:"nodate"});continue}
+    const cps=c.coupons||{};for(let n=1;n<=40;n++){const due=addMonths(sd,6*n);if(due>soon)break;const k="n"+n;const x=cps[k];
+      const st=x?(x.usedAt?"used":x.sentAt?"sent":"issued"):(due<=t?"due":"soon");out.push({c,n,due,st,x})}}
+  return out}
+function renderCp(){const rows=cpRows();const cnt=k=>rows.filter(r=>r.st===k).length;
+  const ownN=all.filter(c=>c.own==="はい").length;
+  $("cp-sum").innerHTML=[["送付待ち",cnt("due")+cnt("issued"),"warn"],["30日以内に送付",cnt("soon"),""],["送付済み（未使用）",cnt("sent"),"acc"],["使用済み",cnt("used"),"good"],["自社販売顧客",ownN,""]].map(([l,v,k])=>`<div class="kpi"><div class="l">${l}</div><div class="v">${v}</div></div>`).join("");
+  for(const b of document.querySelectorAll("#cp-seg button"))b.setAttribute("aria-pressed",b.dataset.cp===cpShow);
+  const f={due:r=>r.st==="due"||r.st==="issued",soon:r=>r.st==="soon",sent:r=>r.st==="sent",used:r=>r.st==="used",nodate:r=>r.st==="nodate"}[cpShow];
+  const list=rows.filter(f).sort((a,b)=>(a.due||"").localeCompare(b.due||""));
+  const lab={due:'<span class="pill warn">送付待ち</span>',issued:'<span class="pill warn">発行済み・未送付</span>',soon:'<span class="pill">予定</span>',sent:'<span class="pill acc">送付済み</span>',used:'<span class="pill good">使用済み</span>',nodate:'<span class="pill bad">販売日が未入力</span>'};
+  $("cp-rows").innerHTML=list.length?list.map(r=>`<tr data-cp="${esc(r.c.id)}" data-n="${r.n}"><td>${esc(sama(r.c.name||r.c.kana))}<br><small class="note">${esc(r.c.tel||"")}</small></td><td>${esc([r.c.maker,r.c.car].filter(Boolean).join(" "))}</td><td class="num">${esc((normDate(r.c.soldDate)||"—").replace(/-/g,"/"))}</td><td class="num">${r.n?r.n+"回目":"—"}</td><td class="num">${esc((r.due||"—").replace(/-/g,"/"))}</td><td>${lab[r.st]}</td><td class="num">${r.x?esc(r.x.code):""}</td><td>${r.c.mail?'<span class="pill">メールあり</span>':'<span class="pill">メールなし</span>'}</td></tr>`).join(""):`<tr><td colspan="8" class="empty">${ownN?"該当するお客様はいません。":"自社販売顧客がまだ登録されていません。顧客の「編集」で「自社販売顧客：はい」と「販売日（納車日）」を入れると、半年ごとに自動でここに並びます。"}</td></tr>`;
+}
+function cpCode(){const A="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";const used=new Set();for(const c of all)for(const x of Object.values(c.coupons||{}))if(x&&x.code)used.add(x.code);
+  for(;;){const r=crypto.getRandomValues(new Uint8Array(8));const code="OIL-"+[...r].map(v=>A[v%A.length]).join("");if(!used.has(code))return code}}
+function cpFind(code){code=String(code||"").toUpperCase();for(const c of all)for(const[k,x]of Object.entries(c.coupons||{}))if(x&&x.code===code)return {c,k,n:Number(k.slice(1)),x};return null}
+async function cpCanvas(c,x){const W=1200,H=680;const cv=document.createElement("canvas");cv.width=W;cv.height=H;const g=cv.getContext("2d");const F='"BIZ UDPGothic","Hiragino Sans","Yu Gothic",Meiryo,sans-serif';
+  const txt=[cpSet.title,cpSet.price,cpSet.note,c.name,issuer.name,issuer.tel,x.code,"様有効期限までクーポン番号半額ご利用対象車両0123456789年月日"].join("");
+  try{await Promise.all([document.fonts.load('400 30px "BIZ UDPGothic"',txt),document.fonts.load('700 30px "BIZ UDPGothic"',txt)])}catch(_){}
+  const t=(s,x0,y,size,o={})=>{g.font=(o.b?"700 ":"400 ")+size+"px "+F;g.textAlign=o.a||"left";g.fillStyle=o.c||"#1c2624";let str=String(s??"");if(o.max)while(str.length>1&&g.measureText(str).width>o.max)str=str.slice(0,-1);g.fillText(str,x0,y)};
+  g.fillStyle="#fff";g.fillRect(0,0,W,H);g.fillStyle="#0d6b63";g.fillRect(0,0,W,120);
+  t("COUPON",60,80,44,{b:1,c:"#ffffff"});t(issuer.name,W-60,78,30,{a:"right",c:"#ffffff",max:700});
+  g.setLineDash([14,10]);g.strokeStyle="#0d6b63";g.lineWidth=4;g.strokeRect(40,150,W-80,H-190);g.setLineDash([]);
+  const L=90,QX=W-90-250,CX=(L+QX-30)/2,TW=QX-30-L;
+  t((c.name||"お客")+" 様",L,225,38,{b:1,max:TW});
+  t(cpSet.title,CX,325,54,{b:1,a:"center",c:"#0d6b63",max:TW});
+  t(cpSet.price,CX,425,78,{b:1,a:"center",max:TW});
+  t("有効期限："+jd(x.expire)+"まで",L,510,28,{max:TW});
+  if(c.car)t("対象車両："+[c.maker,c.car].filter(Boolean).join(" "),L,552,22,{c:"#51605c",max:TW});
+  t(cpSet.note,L,610,20,{c:"#51605c",max:W-2*L});
+  drawQR(g,QX,180,250,x.code);t(x.code,QX+125,458,24,{b:1,a:"center"});t("ご来店時にご提示ください",QX+125,490,18,{a:"center",c:"#51605c"});
+  return cv}
+function cpMail(c,x){const subj=`【${issuer.name}】${cpSet.title}のお届け`;
+  const body=`${c.name||""} 様\n\nいつもありがとうございます。${issuer.name}です。\nお車のご購入から${x.n*6}か月の感謝をこめて、クーポンをお送りします。\n\n■ ${cpSet.title}\n■ ${cpSet.price}\n■ 有効期限：${jd(x.expire)}まで\n■ クーポン番号：${x.code}\n\n${cpSet.note}\nご予約はこのメールへのご返信、またはお電話で承ります。\n\n${issuer.name}\n${issuer.tel||""}`;
+  return "mailto:"+encodeURIComponent(c.mail||"").replace(/%40/g,"@")+"?subject="+encodeURIComponent(subj)+"&body="+encodeURIComponent(body)}
+function renderCpSheet(cid,n){const c=all.find(x=>x.id===cid);const S=$("sheet");if(!c){closeSheet();return}
+  const k="n"+n;const x=(c.coupons||{})[k];const due=n?addMonths(normDate(c.soldDate),6*n):"";
+  let h=`<div class="hd"><div class="t"><span class="note">${n?`販売から${n*6}か月・${n}回目`:""}</span><h2>${esc(c.name||c.kana)} 様</h2><span class="note">${esc([c.maker,c.car].filter(Boolean).join(" "))}・販売日 ${esc((normDate(c.soldDate)||"未入力").replace(/-/g,"/"))}</span></div><button class="btn" id="closeS">閉じる</button></div>`;
+  if(!n){h+=`<div class="panel empty">販売日（納車日）が未入力のため、送付時期を計算できません。<br><button class="btn small" data-open-cust="${esc(c.id)}" style="margin-top:8px">顧客を開いて入力する</button></div>`;S.innerHTML=h;return}
+  if(!x){h+=`<div class="panel" style="display:flex;flex-direction:column;gap:10px"><div>送付予定日：<b class="num">${esc(due.replace(/-/g,"/"))}</b></div><div class="note">「クーポンを発行」を押すと、クーポン番号と有効期限（発行日から${cpSet.days}日）が決まり、画像ができます。</div><div class="actions" style="justify-content:flex-start"><button class="btn primary" id="cp-issue" data-cid="${esc(c.id)}" data-n="${n}">クーポンを発行</button><button class="btn" data-open-cust="${esc(c.id)}">顧客を開く</button></div></div>`;S.innerHTML=h;return}
+  h+=`<div class="tags">${x.usedAt?`<span class="pill good">使用済み（${esc(x.usedAt.slice(0,10).replace(/-/g,"/"))}）</span>`:x.sentAt?`<span class="pill acc">送付済み（${esc(x.sentAt.slice(0,10).replace(/-/g,"/"))}・${esc(x.via||"")}）</span>`:'<span class="pill warn">未送付</span>'}<span class="pill">番号 ${esc(x.code)}</span><span class="pill">有効期限 ${esc(x.expire.replace(/-/g,"/"))}</span></div>`;
+  h+=`<img class="rcimg" id="cp-img" alt="クーポン画像">`;
+  h+=`<div class="panel" style="display:flex;flex-direction:column;gap:10px"><h3>お客様へ送る</h3>
+    <div class="actions" style="justify-content:flex-start">${c.mail?`<a class="btn primary" id="cp-mail" data-cid="${esc(c.id)}" data-n="${n}" href="${esc(cpMail(c,{...x,n}))}" target="_blank" rel="noopener" style="text-decoration:none">メールを作成</a>`:""}<button class="btn" id="cp-save" data-cid="${esc(c.id)}" data-n="${n}">画像を保存</button><button class="btn" id="cp-copy" data-cid="${esc(c.id)}" data-n="${n}">LINE用の文面をコピー</button></div>
+    <p class="note" style="margin:0">${c.mail?"メールアプリが宛先・件名・本文の入った状態で開きます。画像は必要に応じて添付してください。":"メールアドレスが未登録です。LINEで送る場合は、文面をコピーして画像と一緒に送ってください。"}</p>
+    <div class="actions" style="justify-content:flex-start">${x.sentAt?"":`<button class="btn small" id="cp-sent" data-cid="${esc(c.id)}" data-n="${n}">LINE・手渡しで送った（送付済みにする）</button>`}${x.usedAt?"":`<button class="btn small" id="cp-used" data-cid="${esc(c.id)}" data-n="${n}">使用済みにする</button>`}</div></div>`;
+  S.innerHTML=h;const key=c.id+k;if(cpImgCache[key])$("cp-img").src=cpImgCache[key];else cpCanvas(c,x).then(cv=>{cpImgCache[key]=cv.toDataURL("image/png");const im=$("cp-img");if(im)im.src=cpImgCache[key]})}
+async function cpIssue(cid,n){const c=all.find(x=>x.id===cid);const now=new Date();const iso=now.toISOString();const x={code:cpCode(),issuedAt:iso,expire:addDays(today(),Number(cpSet.days)||90),title:cpSet.title,price:cpSet.price};
+  if(await writeCust(cid,{coupons:{["n"+n]:x}}))setTimeout(renderSheet,60)}
+async function cpMark(cid,n,patch){if(await writeCust(cid,{coupons:{["n"+n]:patch}}))setTimeout(renderSheet,60)}
+async function cpSave(cid,n){const c=all.find(x=>x.id===cid);const x=c.coupons["n"+n];const cv=await cpCanvas(c,x);const blob=await new Promise(r=>cv.toBlob(r,"image/png"));const fn=`クーポン_${x.code}_${String(c.name||"").replace(/[\\/:*?"<>|\s]/g,"")}.png`;
+  if(mcp){try{status("クーポン画像をGoogleドライブに保存しています…");const res=await mcp.callTool(DRIVE,"create_file",{title:fn,base64Content:await blobB64(blob),contentMimeType:"image/png",disableConversionToGoogleType:true,parentId:issuer.driveFolder||DEF_FOLDER},{cache:false});status("クーポン画像をGoogleドライブに保存しました。");return}catch(e){status(driveErr(e),true)}}
+  if(!dl){status("この画面では画像を保存できません。",true);return}
+  try{await dl.save({filename:fn,data:blob});status("クーポン画像を保存しました。")}catch(e){status(e.code==="declined"?"保存をキャンセルしました。":"保存できませんでした（"+(e.code||"エラー")+"）。",e.code!=="declined")}}
+async function cpCopy(cid,n,btn){const c=all.find(x=>x.id===cid);const x=c.coupons["n"+n];const s=`${c.name||""}様\nいつもありがとうございます。${issuer.name}です。\nお車のご購入から${n*6}か月の感謝をこめて、クーポンをお送りします！\n\n【${cpSet.title}】${cpSet.price}\n有効期限：${jd(x.expire)}まで\nクーポン番号：${x.code}\n\n${cpSet.note}`;
+  try{await navigator.clipboard.writeText(s);btn.textContent="コピーしました"}catch(_){status("コピーできませんでした。",true)}}
+function fillCpForm(){const f=$("cpform");if(!f||f.contains(document.activeElement))return;for(const k of ["title","price","days","note"])f.elements[k].value=cpSet[k]??""}
+
+
+/* coupon scan */
+let cpStream=null,cpJsqr=null;
+function loadJsqr(){if(window.jsQR)return Promise.resolve(window.jsQR);if(cpJsqr)return cpJsqr;cpJsqr=new Promise((res,rej)=>{const sc=document.createElement("script");sc.src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js";sc.onload=()=>res(window.jsQR);sc.onerror=()=>{cpJsqr=null;rej(new Error("load"))};document.head.appendChild(sc)});return cpJsqr}
+async function decodeFrom(src){const w=src.videoWidth||src.naturalWidth||src.width,h=src.videoHeight||src.naturalHeight||src.height;if(!w||!h)return null;
+  if("BarcodeDetector" in window){try{const r=await new BarcodeDetector({formats:["qr_code"]}).detect(src);if(r[0])return r[0].rawValue}catch(_){}}
+  const q=await loadJsqr();const sc=Math.min(1,1280/Math.max(w,h));const cv=document.createElement("canvas");cv.width=Math.round(w*sc);cv.height=Math.round(h*sc);const g=cv.getContext("2d");g.drawImage(src,0,0,cv.width,cv.height);
+  const d=g.getImageData(0,0,cv.width,cv.height);const r=q(d.data,cv.width,cv.height);return r?r.data:null}
+function cpStop(){if(cpStream){cpStream.getTracks().forEach(t=>t.stop());cpStream=null}const v=$("cp-video");if(v){v.hidden=true;v.srcObject=null}const b=$("cp-cam");if(b)b.textContent="カメラで読み取る"}
+async function cpCamera(){if(cpStream){cpStop();return}const v=$("cp-video");
+  try{cpStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}});v.srcObject=cpStream;v.hidden=false;await v.play();$("cp-cam").textContent="カメラを止める";
+    const loop=async()=>{if(!cpStream)return;try{const txt=await decodeFrom(v);if(txt){cpStop();$("cp-code").value=txt;cpCheck();return}}catch(e){cpStop();cpMsg("bad","読み取りの部品を読み込めませんでした。番号を入力するか、QRリーダーをお使いください。");return}setTimeout(loop,350)};loop()}
+  catch(e){cpStop();cpMsg("warn","この画面ではカメラを使えませんでした。「写真から読み取る」でQRを撮影するか、番号を入力してください。")}}
+async function cpPhoto(file){try{const url=URL.createObjectURL(file);const im=new Image();await new Promise((r,j)=>{im.onload=r;im.onerror=j;im.src=url});const txt=await decodeFrom(im);URL.revokeObjectURL(url);
+  if(!txt){cpMsg("warn","写真からQRコードを読み取れませんでした。QRが大きく写るように撮り直すか、番号を入力してください。");return}$("cp-code").value=txt;cpCheck()}
+  catch(e){cpMsg("bad","写真を読み取れませんでした。番号を入力してください。")}}
+function cpMsg(k,t){$("cp-result").innerHTML=`<div class="${k==="good"?"okbar":k==="bad"?"confirmbar":"sample"}">${t}</div>`}
+function cpCheck(){const raw=$("cp-code").value.trim();const m=raw.toUpperCase().match(/OIL-[A-Z0-9]{4,}/);if(!m){cpMsg("warn","クーポン番号が見つかりません。「OIL-」から始まる番号を入れてください。");return}
+  const f=cpFind(m[0]);if(!f){cpMsg("bad",`<b>${esc(m[0])}</b>：該当するクーポンがありません。番号をご確認ください。`);return}
+  const {c,x,n}=f;const who=`${esc(c.name||c.kana)} 様・${n*6}か月目（${esc(x.title||cpSet.title)}）`;
+  if(x.usedAt){cpMsg("bad",`<b>使用済みです。</b>このクーポンは ${esc(dt(x.usedAt))} に使用されています。<br>${who}`);return}
+  if(x.expire&&x.expire<today()){cpMsg("warn",`<b>有効期限切れです</b>（${esc(x.expire.replace(/-/g,"/"))}まで）。<br>${who}`);return}
+  $("cp-result").innerHTML=`<div class="okbar" style="display:flex;flex-direction:column;gap:8px"><div><b>有効なクーポンです。</b> ${who}<br>${esc(x.price||cpSet.price)}・有効期限 ${esc((x.expire||"").replace(/-/g,"/"))}まで・番号 ${esc(x.code)}</div><div class="actions" style="justify-content:flex-start"><button class="btn primary" id="cp-use" data-code="${esc(x.code)}">使用済みにする</button><button class="btn" data-open-cust="${esc(c.id)}">顧客を開く</button></div><div class="note" style="color:inherit">使用済みにすると、同じクーポンは二度と使えなくなります。</div></div>`}
+async function cpUse(code,btn){btn.disabled=true;const f=cpFind(code);if(!f){cpCheck();return}
+  if(db&&!state.sample){try{const snap=await db.doc(bpath(f.c.id)).get();const cur=(((snap.data()||{}).c||{})[f.c.id]||{}).coupons||{};if(cur[f.k]&&cur[f.k].usedAt){cpMsg("bad",`<b>使用済みです。</b>たった今、別の端末で ${esc(dt(cur[f.k].usedAt))} に使用されました。`);return}}catch(_){}}
+  const at=new Date().toISOString();if(await writeCust(f.c.id,{coupons:{[f.k]:{usedAt:at}}})){cpMsg("good",`<b>使用済みにしました。</b>${esc(f.c.name||"")} 様・${esc(code)}（${esc(dt(at))}）`);$("cp-code").value="";setTimeout(renderCp,80)}else btn.disabled=false}
+
+/* ---------- receipts ---------- */
+const DEF_FOLDER="1QI03bqF1LR4fsEdi3iFL1H3G807FTNWl", DRIVE="Google Drive";
+const ISS0={name:"（仮）事業者名",regNo:"T0000000000000",addr:"（仮）住所",tel:"（仮）電話番号",mail:"",driveFolder:DEF_FOLDER};
+let mcp=null;
+const rcFname=r=>`領収書_${r.no}_${String(r.to).replace(/[\\/:*?"<>|\s]/g,"")}${r.status==="void"?"_取消":""}.pdf`;
+function blobB64(blob){return new Promise((res,rej)=>{const fr=new FileReader();fr.onload=()=>res(String(fr.result).split(",")[1]);fr.onerror=()=>rej(fr.error);fr.readAsDataURL(blob)})}
+function driveErr(e){const c=e&&e.code;return c==="server_not_connected"?"Google Driveが接続されていないため、ドライブに保存できませんでした。claude.aiの設定のコネクタからGoogle Driveを追加してください。":c==="not_in_manifest"?"この台帳でのGoogle Driveの利用が許可されていないため、ドライブに保存できませんでした。":c==="needs_reauth"?"Google Driveの接続が切れています。claude.aiの設定のコネクタから接続し直してください。":c==="tool_error"?"ドライブに保存できませんでした。保存先フォルダが見つからないか、書き込めない可能性があります（設定・取り込みで保存先を確認してください）。":"ドライブに保存できませんでした（"+(c||"エラー")+"）。"}
+async function drivePdf(rid,over){const base=rcAll.find(x=>x.id===rid);if(!base)return;const r={...base,...(over||{})};
+  if(!mcp){status("この画面ではGoogleドライブに保存できません。「この端末に保存」をお使いください。",true);return}
+  status("PDFをGoogleドライブに保存しています…");
+  try{const blob=await toPdf(await rcCanvas(r),"領収書 "+r.no);
+    const res=await mcp.callTool(DRIVE,"create_file",{title:rcFname(r),base64Content:await blobB64(blob),contentMimeType:"application/pdf",disableConversionToGoogleType:true,parentId:issuer.driveFolder||DEF_FOLDER},{cache:false});
+    const p=(res&&res.payload)||{};const now=new Date();const d={id:String(p.id||""),url:String(p.viewUrl||""),at:now.toISOString()};
+    await writeRc(r.path,r.id,{[r.status==="void"?"driveVoid":"drive"]:d,hist:{["h"+now.getTime()]:{at:now.toISOString(),act:"Googleドライブに保存（"+rcFname(r)+"）"}}});
+    status("PDFをGoogleドライブに保存しました。");return true}
+  catch(e){status(driveErr(e),true);return false}}
+let issuer={...ISS0}, rcDocs={}, rcAll=[], rdraft=null, rcJust=null, rcConfirm=null;
+const rcImgCache={};
+const issuerTemp=()=>/^T0{13}$/.test(issuer.regNo||"")||/（仮）/.test(issuer.name||"");
+const jd=s=>{const m=String(s||"").match(/^(\d{4})-(\d{2})-(\d{2})/);return m?`${m[1]}年${Number(m[2])}月${Number(m[3])}日`:String(s||"")};
+const dt=iso=>{if(!iso)return"";const d=new Date(iso);return d.getFullYear()+"/"+String(d.getMonth()+1).padStart(2,"0")+"/"+String(d.getDate()).padStart(2,"0")+" "+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0")};
+function rcCalc(items){const by={};let total=0;for(const it of items||[]){const a=Math.round(num(it.amt));if(!a)continue;const r=Number(it.rate)||10;by[r]=(by[r]||0)+a;total+=a}
+  return {total,rates:Object.keys(by).map(Number).sort((a,b)=>b-a).map(r=>({rate:r,total:by[r],tax:Math.floor(by[r]*r/(100+r))}))}}
+function rebuildRc(){const out=[];for(const[p,d]of Object.entries(rcDocs))for(const[id,r]of Object.entries((d&&d.r)||{}))if(r&&r.no)out.push({id,path:p,...r});
+  out.sort((a,b)=>(b.issuedAt||"").localeCompare(a.issuedAt||""));rcAll=out;
+  if(view==="rcpt")renderRc();if(openId&&openId.startsWith("__rc:"))renderSheet()}
+function rcFiltered(){const f=$("rs-from").value,t=$("rs-to").value,mn=$("rs-min").value,mx=$("rs-max").value,q=$("rs-q").value.trim().toLowerCase(),iv=$("rs-void").checked;
+  return rcAll.filter(r=>(!f||r.date>=f)&&(!t||r.date<=t)&&(mn===""||r.total>=Number(mn))&&(mx===""||r.total<=Number(mx))&&(!q||(r.to+" "+r.no).toLowerCase().includes(q))&&(iv||r.status!=="void"))}
+function renderRc(){
+  $("rc-warn").hidden=!issuerTemp();
+  const r=rcFiltered();const taxOf=x=>(x.rates||[]).reduce((a,y)=>a+y.tax,0);
+  $("rc-count").textContent=`${r.length}件（合計 ${yen(r.filter(x=>x.status!=="void").reduce((a,x)=>a+x.total,0))}・取消分を除く）`;
+  $("rc-rows").innerHTML=r.length?r.map(x=>{const sent=Object.values(x.sends||{}).length;return `<tr data-rc="${esc(x.id)}" class="${x.status==="void"?"void":""}"><td class="num">${esc(x.no)}</td><td class="num">${esc(x.date.replace(/-/g,"/"))}</td><td>${esc(x.to)} ${esc(x.hon||"")}</td><td class="r num">${yen(x.total)}</td><td class="r num">${yen(taxOf(x))}</td><td>${x.status==="void"?'<span class="pill bad">取消</span>':'<span class="pill good">発行済み</span>'}${x.reissueOf?' <span class="pill">再発行</span>':""}</td><td>${sent?`<span class="pill acc">${sent}回</span>`:'<span class="pill">未送信</span>'}</td><td class="num">${esc(dt(x.issuedAt))}</td></tr>`}).join(""):`<tr><td colspan="8" class="empty">${rcAll.length?"条件に合う領収書はありません。":"まだ領収書は発行されていません。顧客の作業履歴にある「領収書を発行」から作成できます。"}</td></tr>`;
+}
+function draftFromJob(c,j){return {custId:c.id,jobId:j.jid,to:c.name||c.kana||"",hon:"様",date:j.date||today(),items:[{name:[j.work,j.work2].filter(Boolean).join("・")||"作業代",amt:j.amount||"",rate:10},{name:"",amt:"",rate:10},{name:"",amt:"",rate:10},{name:"",amt:"",rate:10}],tadashi:(j.work?j.work+"代":"作業代")+"として",pay:j.pay||"",mail:c.mail||"",staff:j.staff||"",reissueOf:""}}
+function draftFromRc(r){const items=(r.items||[]).map(x=>({...x}));while(items.length<4)items.push({name:"",amt:"",rate:10});return {custId:r.custId||"",jobId:r.jobId||"",to:r.to,hon:r.hon,date:r.date,items,tadashi:r.tadashi||"",pay:r.pay||"",mail:r.mail||"",staff:r.staff||"",reissueOf:r.id,reissueNo:r.no}}
+function renderRcForm(){const d=rdraft;const S=$("sheet");const c=all.find(x=>x.id===d.custId);
+  const ro=(v,sel)=>[10,8].map(r=>`<option value="${r}"${Number(v)===r?" selected":""}>${r}%${r===8?"（軽減）":""}</option>`).join("");
+  S.innerHTML=`<div class="hd"><div class="t"><span class="note">${d.reissueOf?"No. "+esc(d.reissueNo)+" の再発行":"新しい領収書"}</span><h2>領収書を発行</h2><span class="note">${esc(c?sama(c.name||c.kana):d.to)}</span></div><button class="btn" id="closeS">閉じる</button></div>
+  ${issuerTemp()?'<div class="sample">発行者情報が仮の値のままです（試作中はこのまま発行できます）。本番運用の前に「設定・取り込み」で登録番号などを入れてください。</div>':""}
+  <form id="rcform" class="panel" style="display:flex;flex-direction:column;gap:12px">
+    <div class="grid3"><label class="f" for="rf-to"><span>宛名</span><input id="rf-to" name="to" value="${esc(d.to)}"></label>
+      <label class="f" for="rf-hon"><span>敬称</span><select id="rf-hon" name="hon">${["様","御中"].map(o=>`<option${o===d.hon?" selected":""}>${o}</option>`).join("")}</select></label>
+      <label class="f" for="rf-date"><span>取引年月日</span><input id="rf-date" name="date" type="date" value="${esc(d.date)}"></label></div>
+    <h3>明細（税込の金額を入力）</h3>
+    ${d.items.map((it,i)=>`<div class="rcrow"><input aria-label="品目${i+1}" data-it="${i}" data-k="name" placeholder="品目${i+1}" value="${esc(it.name)}"><select aria-label="税率${i+1}" data-it="${i}" data-k="rate">${ro(it.rate)}</select><input aria-label="金額${i+1}" data-it="${i}" data-k="amt" type="number" inputmode="numeric" placeholder="円" value="${esc(it.amt)}"></div>`).join("")}
+    <div class="rcsum" id="rf-sum"></div>
+    <label class="f" for="rf-tadashi"><span>但し書き</span><input id="rf-tadashi" name="tadashi" value="${esc(d.tadashi)}"></label>
+    <div class="grid2"><label class="f" for="rf-pay"><span>お支払方法</span><select id="rf-pay" name="pay">${PAY.concat(d.pay&&!PAY.includes(d.pay)?[d.pay]:[]).map(o=>`<option${o===d.pay?" selected":""}>${esc(o)}</option>`).join("")}</select></label>
+      <label class="f" for="rf-mail"><span>送信先メールアドレス（お客様）</span><input id="rf-mail" name="mail" type="email" value="${esc(d.mail)}" placeholder="example@mail.com"></label></div>
+    <p class="note" style="margin:0">発行した後は内容を変更できません。誤りがあったときは「取消」して再発行します（取消の記録は残ります）。</p>
+    <div class="actions"><button type="button" class="btn" id="rf-cancel">キャンセル</button><button type="submit" class="btn" value="only">発行してPDFを保存</button><button type="submit" class="btn primary" value="send">発行してメール送信へ</button></div>
+    <div id="rf-msg"></div>
+  </form>`;updRfSum()}
+function readRf(){const f=$("rcform");if(!f)return;const d=rdraft;for(const k of ["to","hon","date","tadashi","pay","mail"])d[k]=String(f.elements[k].value).trim();
+  for(const el of f.querySelectorAll("[data-it]")){d.items[Number(el.dataset.it)][el.dataset.k]=el.dataset.k==="rate"?Number(el.value):el.value}}
+function updRfSum(){const {total,rates}=rcCalc(rdraft.items);$("rf-sum").innerHTML=`<span>合計 <b>${yen(total)}</b>（税込）</span>`+rates.map(r=>`<span>${r.rate}%対象 <b>${yen(r.total)}</b>（うち消費税 <b>${yen(r.tax)}</b>）</span>`).join("")}
+async function ensureRcDoc(p){const s=await db.doc(p).get();if(!s.exists)await db.doc(p).set({r:{}})}
+async function writeRc(p,rid,patch){
+  if(state.sample||!db){const d=rcDocs[p]||(rcDocs[p]={r:{}});d.r[rid]=deepMerge(d.r[rid]||{},patch);rebuildRc();return true}
+  try{await ensureRcDoc(p);await db.doc(p).update({r:{[rid]:patch}});return true}
+  catch(e){status("領収書を保存できませんでした（"+(e.code||"エラー")+"）。もう一度お試しください。",true);return false}}
+async function issueRc(act){readRf();const d=rdraft;const m=$("rf-msg");const err=t=>{m.innerHTML=`<div class="confirmbar">${esc(t)}</div>`};
+  const items=d.items.filter(it=>it.name||num(it.amt)).map(it=>({name:it.name||"品目",amt:Math.round(num(it.amt)),rate:Number(it.rate)||10}));
+  const {total,rates}=rcCalc(items);
+  if(!d.to)return err("宛名を入力してください。");if(!d.date)return err("取引年月日を入力してください。");if(!items.length||total<=0)return err("明細に金額を入力してください。");
+  if(act==="send"&&!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(d.mail))return err("送信先のメールアドレスを正しく入力してください。");
+  const now=new Date();const ym=now.getFullYear()+String(now.getMonth()+1).padStart(2,"0");const p="rcpt/m"+ym;
+  const seq=rcAll.filter(r=>String(r.no).startsWith("R"+ym+"-")).length+1;const no="R"+ym+"-"+String(seq).padStart(3,"0");
+  const rid=newId("r");const iso=now.toISOString();
+  const rec={no,issuedAt:iso,date:d.date,to:d.to,hon:d.hon,items,total,rates,tadashi:d.tadashi,pay:d.pay,mail:d.mail,custId:d.custId,jobId:d.jobId,staff:d.staff,issuer:{...issuer},status:"issued",reissueOf:d.reissueNo||"",hist:{["h"+now.getTime()]:{at:iso,act:d.reissueOf?"再発行（元 "+d.reissueNo+"）":"発行"}}};
+  $("rcform").querySelectorAll("button").forEach(b=>b.disabled=true);
+  if(!await writeRc(p,rid,rec)){$("rcform").querySelectorAll("button").forEach(b=>b.disabled=false);return}
+  if(d.reissueOf){const o=rcAll.find(x=>x.id===d.reissueOf);if(o)await writeRc(o.path,o.id,{replacedBy:no})}
+  if(d.custId&&d.jobId){const c=all.find(x=>x.id===d.custId);const patch={jobs:{[d.jobId]:{receipt:"済み",rcptNo:no}}};if(c&&!c.mail&&d.mail)patch.mail=d.mail;await writeCust(d.custId,patch)}
+  if(!rcDocs[p]||!rcDocs[p].r||!rcDocs[p].r[rid]){(rcDocs[p]=rcDocs[p]||{r:{}}).r[rid]=rec;rebuildRc()}
+  rcJust={rid,act};rdraft=null;openId="__rc:"+rid;renderSheet();$("sheet").scrollTop=0;
+  if(mcp)drivePdf(rid);else savePdf(rid).then(()=>mmRc(rid))}
+function mailHref(r,to){const subj=`領収書（No.${r.no}）のお送り`;const iss=r.issuer||issuer;
+  const body=`${r.to} ${r.hon||""}\n\nいつもありがとうございます。${iss.name}です。\n${jd(r.date)}のお取引の領収書をお送りします。\n添付のPDFをご確認ください。\n\n領収書番号：${r.no}\n金額：${yen(r.total)}（税込）\n\n${iss.name}\n${iss.tel||""}${iss.mail?"\n"+iss.mail:""}`;
+  return "mailto:"+encodeURIComponent(to||"").replace(/%40/g,"@")+"?subject="+encodeURIComponent(subj)+"&body="+encodeURIComponent(body)}
+function renderRcSheet(rid){const r=rcAll.find(x=>x.id===rid);const S=$("sheet");if(!r){S.innerHTML=`<div class="hd"><h2>領収書</h2><button class="btn" id="closeS">閉じる</button></div><div class="empty">読み込み中…</div>`;return}
+  const cur=S.querySelector("#rs-mail");const mailV=cur?cur.value:(r.mail||"");
+  const sends=Object.values(r.sends||{}).sort((a,b)=>(a.at||"").localeCompare(b.at||""));const hist=Object.values(r.hist||{}).sort((a,b)=>(a.at||"").localeCompare(b.at||""));
+  let h=`<div class="hd"><div class="t"><span class="note num">No. ${esc(r.no)}</span><h2>${esc(r.to)} ${esc(r.hon||"")}</h2><span class="note">${esc(jd(r.date))}・${yen(r.total)}（税込）</span></div><button class="btn" id="closeS">閉じる</button></div>
+  <div class="tags">${r.status==="void"?`<span class="pill bad">取消（${esc(dt(r.voidAt))}）</span>`:'<span class="pill good">発行済み</span>'}${r.reissueOf?`<span class="pill">No.${esc(r.reissueOf)} の再発行</span>`:""}${r.replacedBy?`<span class="pill warn">No.${esc(r.replacedBy)} で再発行済み</span>`:""}</div>`;
+  if(rcJust&&rcJust.rid===rid)h+=`<div class="okbar">領収書 No.${esc(r.no)} を発行しました。${mcp?"PDFはGoogleドライブの保存先フォルダに入ります。":"PDFの保存を確認する画面が出たら「保存」を押してください。"}${rcJust.act==="send"?"続けて下の「メールを作成」からお客様へ送ってください。":""}</div>`;
+  if(r.status!=="void")h+=`<div class="panel" style="display:flex;flex-direction:column;gap:10px"><h3>お客様へ送る</h3>
+    <label class="f" for="rs-mail"><span>送信先メールアドレス</span><input id="rs-mail" type="email" value="${esc(mailV)}" placeholder="example@mail.com"></label>
+    <div class="actions" style="justify-content:flex-start">${r.drive&&r.drive.url?`<a class="btn" href="${esc(r.drive.url)}" target="_blank" rel="noopener" style="text-decoration:none">ドライブのPDFを開く</a>`:(mcp?`<button class="btn" id="rs-drive" data-rid="${esc(r.id)}">Googleドライブに保存</button>`:"")}<button class="btn" id="rs-pdf" data-rid="${esc(r.id)}">この端末に保存</button><a class="btn primary" id="rs-send" data-rid="${esc(r.id)}" href="${esc(mailHref(r,mailV))}" target="_blank" rel="noopener" style="text-decoration:none">メールを作成</a></div>
+    <p class="note" style="margin:0">メールアプリが宛先・件名・本文の入った状態で開きます。保存したPDFを添付して送信してください。</p></div>`;
+  h+=`<img class="rcimg" id="rc-img" alt="領収書 No.${esc(r.no)} のプレビュー">`;
+  h+=`<div class="panel"><dl class="kv"><dt>取引年月日</dt><dd>${esc(jd(r.date))}</dd><dt>明細</dt><dd>${(r.items||[]).map(it=>`${esc(it.name)}（${it.rate}%）${yen(it.amt)}`).join("<br>")}</dd><dt>税率ごとの合計</dt><dd>${(r.rates||[]).map(x=>`${x.rate}%対象 ${yen(x.total)}（うち消費税 ${yen(x.tax)}）`).join("<br>")}</dd><dt>但し書き</dt><dd>${esc(r.tadashi||"—")}</dd><dt>お支払方法</dt><dd>${esc(r.pay||"—")}</dd><dt>発行者</dt><dd>${esc(r.issuer?.name)}（${esc(r.issuer?.regNo)}）</dd><dt>発行日時</dt><dd class="num">${esc(dt(r.issuedAt))}</dd>
+    <dt>PDFの保管</dt><dd>${r.drive?`Googleドライブ ${esc(dt(r.drive.at))}${r.drive.url?` <a href="${esc(r.drive.url)}" target="_blank" rel="noopener" style="color:var(--accent)">開く</a>`:""}`:"まだ保存されていません"}${r.driveVoid?`<br>取消版 ${esc(dt(r.driveVoid.at))}${r.driveVoid.url?` <a href="${esc(r.driveVoid.url)}" target="_blank" rel="noopener" style="color:var(--accent)">開く</a>`:""}`:""}</dd>
+    <dt>送信の記録</dt><dd>${sends.length?sends.map(x=>`${esc(dt(x.at))} ${esc(x.to)}（${esc(x.via||"")}）`).join("<br>"):"まだありません"}</dd>
+    <dt>履歴</dt><dd>${hist.map(x=>`${esc(dt(x.at))} ${esc(x.act)}${x.note?"：「"+esc(x.note)+"」":""}`).join("<br>")}</dd></dl></div>`;
+  if(r.status!=="void"){h+=`<div class="actions">${r.custId&&all.some(c=>c.id===r.custId)?`<button class="btn" data-open-cust="${esc(r.custId)}">顧客を開く</button>`:""}<button class="btn danger" id="rs-void1">取消</button><button class="btn danger" id="rs-reissue1">取消して再発行</button></div>`;
+    if(rcConfirm)h+=`<div class="confirmbar" style="flex-direction:column;align-items:stretch"><span>${rcConfirm==="re"?"この領収書を取り消して、同じ内容をもとに新しい番号で発行し直します。":"この領収書を取り消します。"}取り消した記録は残り、元に戻せません。</span><label class="f" for="rs-reason"><span style="color:inherit">取消の理由（必須）</span><input id="rs-reason" placeholder="例：金額の誤り"></label><div class="actions"><button class="btn small" id="rs-no">やめる</button><button class="btn danger small" id="rs-yes">取り消す</button></div></div>`}
+  S.innerHTML=h;
+  const key=r.id+r.status;if(rcImgCache[key])$("rc-img").src=rcImgCache[key];else rcCanvas(r).then(cv=>{rcImgCache[key]=cv.toDataURL("image/png");const im=$("rc-img");if(im)im.src=rcImgCache[key]})}
+async function voidRc(rid,re){const r=rcAll.find(x=>x.id===rid);const reason=($("rs-reason")?.value||"").trim();if(!reason){$("rs-reason").focus();status("取消の理由を入力してください。",true);return}
+  const now=new Date();if(!await writeRc(r.path,rid,{status:"void",voidAt:now.toISOString(),voidReason:reason,hist:{["h"+now.getTime()]:{at:now.toISOString(),act:"取消",note:reason}}}))return;
+  status("領収書 No."+r.no+" を取り消しました。");rcConfirm=null;
+  if(mcp&&r.drive)drivePdf(rid,{status:"void",voidAt:now.toISOString(),voidReason:reason});
+  if(re){rdraft=draftFromRc(r);openId="__rcnew";renderRcForm()}else renderSheet()}
+/* receipt drawing (A4, 150dpi) */
+async function rcCanvas(r){const W=1240,H=1754,L=110,R=W-110;const cv=document.createElement("canvas");cv.width=W;cv.height=H;const g=cv.getContext("2d");
+  const F='"BIZ UDPGothic","Hiragino Sans","Yu Gothic",Meiryo,sans-serif';const iss=r.issuer||issuer;
+  const txt=[r.to,r.hon,r.tadashi,r.pay,iss.name,iss.addr,iss.tel,iss.regNo,(r.items||[]).map(i=>i.name).join(""),"領収書金額税込但し上記正にいたしました取引年月日品目率対象うち消費税合計お支払方法登録番号発行日本は電子データで行ている収入印紙貼付不要す再取消済軽減※元のです0123456789,¥-年月日%（）：・No."].join("");
+  try{await Promise.all([document.fonts.load('400 30px "BIZ UDPGothic"',txt),document.fonts.load('700 30px "BIZ UDPGothic"',txt)])}catch(_){}
+  g.fillStyle="#fff";g.fillRect(0,0,W,H);
+  const t=(s,x,y,size,o={})=>{g.font=(o.b?"700 ":"400 ")+size+"px "+F;g.textAlign=o.a||"left";g.fillStyle=o.c||"#111";let str=String(s??"");if(o.max){while(str.length>1&&g.measureText(str).width>o.max)str=str.slice(0,-1);if(str!==String(s??""))str=str.slice(0,-1)+"…"}g.fillText(str,x,y)};
+  const ln=(x1,y1,x2,y2,w=2,c="#111")=>{g.strokeStyle=c;g.lineWidth=w;g.beginPath();g.moveTo(x1,y1);g.lineTo(x2,y2);g.stroke()};
+  t("領 収 書",W/2,200,76,{b:1,a:"center"});
+  t("No. "+r.no,R,100,24,{a:"right"});t("発行日 "+jd(String(new Date(r.issuedAt).toLocaleDateString("sv"))),R,136,24,{a:"right"});
+  t(r.to+"　"+(r.hon||""),L,320,44,{b:1,max:700});ln(L,342,L+720,342,2);
+  g.fillStyle="#f2f4f3";g.fillRect(L,392,R-L,132);g.strokeStyle="#111";g.lineWidth=3;g.strokeRect(L,392,R-L,132);
+  t("金額",L+40,474,34);t("¥"+Number(r.total).toLocaleString("ja-JP")+" -",W/2+40,482,70,{b:1,a:"center"});t("（税込）",R-40,474,28,{a:"right"});
+  t("但し　"+(r.tadashi||""),L,600,30,{max:R-L});t("上記正に領収いたしました。",L,652,30);
+  t("取引年月日："+jd(r.date),L,740,28);
+  let y=780;g.fillStyle="#e9edeb";g.fillRect(L,y,R-L,56);t("品目",L+20,y+38,26,{b:1});t("税率",R-300,y+38,26,{b:1,a:"center"});t("金額（税込）",R-20,y+38,26,{b:1,a:"right"});y+=56;
+  for(const it of r.items||[]){y+=58;t(it.name+(it.rate===8?" ※":""),L+20,y-18,28,{max:R-L-420});t(it.rate+"%",R-300,y-18,28,{a:"center"});t(yen(it.amt),R-20,y-18,28,{a:"right"});ln(L,y,R,y,1,"#999")}
+  y+=60;for(const x of r.rates||[]){t(`${x.rate}%対象　${yen(x.total)}　（うち消費税 ${yen(x.tax)}）`,R-20,y,28,{a:"right"});y+=46}
+  ln(R-560,y-26,R,y-26,2);t("合計　"+yen(r.total),R-20,y+16,34,{b:1,a:"right"});y+=80;
+  if(r.pay)t("お支払方法："+r.pay,L,y,26);
+  let iy=Math.max(y+80,1330);t(iss.name,R,iy,34,{b:1,a:"right",max:700});t(iss.addr,R,iy+48,24,{a:"right",max:760});t((iss.tel?"TEL "+iss.tel:""),R,iy+88,24,{a:"right"});t("登録番号　"+iss.regNo,R,iy+132,28,{b:1,a:"right"});
+  let fy=H-150;const notes=["※ 本領収書は電子データで発行しています（収入印紙の貼付は不要です）。"];if((r.items||[]).some(i=>i.rate===8))notes.push("※ 印は軽減税率（8%）の対象です。");if(r.reissueOf)notes.push("本書は No."+r.reissueOf+" の再発行です。");
+  for(const n of notes){t(n,L,fy,22,{c:"#555"});fy+=36}
+  if(r.status==="void"){g.save();g.translate(W/2,H/2);g.rotate(-0.35);g.strokeStyle="#c62828";g.lineWidth=10;g.strokeRect(-330,-110,660,220);t("取　消",0,40,120,{b:1,a:"center",c:"#c62828"});t(jd(String(new Date(r.voidAt).toLocaleDateString("sv"))),0,95,34,{a:"center",c:"#c62828"});g.restore()}
+  return cv}
+async function toPdf(cv,title){const W=cv.width,H=cv.height;let img,filter;
+  if(window.CompressionStream){const px=cv.getContext("2d").getImageData(0,0,W,H).data;const rgb=new Uint8Array(W*H*3);for(let i=0,j=0;i<px.length;i+=4){rgb[j++]=px[i];rgb[j++]=px[i+1];rgb[j++]=px[i+2]}
+    img=new Uint8Array(await new Response(new Blob([rgb]).stream().pipeThrough(new CompressionStream("deflate"))).arrayBuffer());filter="/FlateDecode"}
+  else{const b=await new Promise(res=>cv.toBlob(res,"image/jpeg",0.95));img=new Uint8Array(await b.arrayBuffer());filter="/DCTDecode"}
+  const enc=new TextEncoder();const parts=[];let len=0;const off=[];const push=x=>{const u=typeof x==="string"?enc.encode(x):x;parts.push(u);len+=u.length};
+  const hex16=s=>{let h="FEFF";for(const ch of s){const c=ch.codePointAt(0);if(c>0xffff){const v=c-0x10000;h+=(0xd800+(v>>10)).toString(16).padStart(4,"0")+(0xdc00+(v&1023)).toString(16).padStart(4,"0")}else h+=c.toString(16).padStart(4,"0")}return "<"+h.toUpperCase()+">"};
+  const n=new Date(),p2=v=>String(v).padStart(2,"0");const cd=`D:${n.getFullYear()}${p2(n.getMonth()+1)}${p2(n.getDate())}${p2(n.getHours())}${p2(n.getMinutes())}${p2(n.getSeconds())}+09'00'`;
+  push(new Uint8Array([37,80,68,70,45,49,46,52,10,37,226,227,207,211,10]));
+  const obj=(k,s)=>{off[k]=len;push(k+" 0 obj\n"+s+"\nendobj\n")};
+  obj(1,"<< /Type /Catalog /Pages 2 0 R >>");obj(2,"<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+  obj(3,"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>");
+  off[4]=len;push(`4 0 obj\n<< /Type /XObject /Subtype /Image /Width ${W} /Height ${H} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter ${filter} /Length ${img.length} >>\nstream\n`);push(img);push("\nendstream\nendobj\n");
+  const cs="q 595.28 0 0 841.89 0 0 cm /Im0 Do Q";obj(5,`<< /Length ${cs.length} >>\nstream\n${cs}\nendstream`);
+  obj(6,`<< /Title ${hex16(title)} /Producer (CRM receipt) /CreationDate (${cd}) >>`);
+  const xo=len;let x="xref\n0 7\n0000000000 65535 f \n";for(let k=1;k<=6;k++)x+=String(off[k]).padStart(10,"0")+" 00000 n \n";
+  push(x+`trailer\n<< /Size 7 /Root 1 0 R /Info 6 0 R >>\nstartxref\n${xo}\n%%EOF\n`);
+  return new Blob(parts,{type:"application/pdf"})}
+async function savePdf(rid){const r=rcAll.find(x=>x.id===rid);if(!r)return;
+  if(!dl){status("この画面ではPDFを保存できません。",true);return}
+  try{status("PDFを作成しています…");const blob=await toPdf(await rcCanvas(r),"領収書 "+r.no);
+    await dl.save({filename:rcFname(r),data:blob});status("PDFを保存しました。")}
+  catch(e){status(e.code==="declined"?"PDFの保存をキャンセルしました。":"PDFを保存できませんでした（"+(e.code||e.message||"エラー")+"）。",e.code!=="declined")}}
+function exportRcCsv(){const r=rcFiltered();const rows=[["領収書番号","発行日時","取引年月日","宛名","敬称","合計（税込）","10%対象","10%消費税","8%対象","8%消費税","但し書き","お支払方法","状態","取消日時","取消理由","再発行元","再発行先","送信先","登録番号"]];
+  for(const x of r){const g=k=>(x.rates||[]).find(y=>y.rate===k)||{};rows.push([x.no,dt(x.issuedAt),x.date,x.to,x.hon,x.total,g(10).total||"",g(10).tax||"",g(8).total||"",g(8).tax||"",x.tadashi,x.pay,x.status==="void"?"取消":"発行済み",dt(x.voidAt),x.voidReason||"",x.reissueOf||"",x.replacedBy||"",Object.values(x.sends||{}).map(s=>s.to).join(" / "),x.issuer?.regNo||""])}
+  const data="﻿"+rows.map(a=>a.map(csvq).join(",")).join("\n");
+  if(!dl){$("rc-msg").textContent="この画面ではファイルの保存が使えません。";return}
+  dl.save({filename:"領収書一覧_"+today()+".csv",data}).then(()=>$("rc-msg").textContent="保存しました。",e=>$("rc-msg").textContent=e.code==="declined"?"保存をキャンセルしました。":"保存できませんでした（"+(e.code||"エラー")+"）。")}
+function kiteiText(){const nm=issuer.name||"（事業者名）";return `電子取引データの訂正及び削除の防止に関する事務処理規程（ひな形）
+
+${nm}
+
+第1条（目的）
+この規程は、電子計算機を使用して作成する国税関係帳簿書類の保存方法等の特例に関する法律第7条に定められた電子取引の取引情報に係る電磁的記録の保存義務を適正に履行するために必要な事項を定め、これに基づき保存する電磁的記録の真実性を確保することを目的とする。
+
+第2条（適用範囲）
+この規程は、当社の役員及び従業員が行う電子取引（顧客への電子領収書の発行・送付を含む）の取引情報に適用する。
+
+第3条（管理責任者）
+この規程の管理責任者は、〇〇〇〇（役職・氏名）とする。
+
+第4条（電子領収書の発行と保存）
+1 電子領収書は、顧客管理台帳の領収書機能により発行する。
+2 発行した領収書のデータ（番号、発行日時、取引年月日、宛名、明細、税率ごとの金額及び消費税額、発行者情報）は、同台帳内に自動で保存される。
+3 保存期間は、法定の保存期間（原則7年）とする。
+
+第5条（訂正及び削除の原則禁止）
+発行済みの電子領収書のデータは、原則として訂正又は削除してはならない。
+
+第6条（訂正及び削除を行う場合）
+発行済みの領収書に誤りがあった場合は、次の手順による。
+1 担当者は、管理責任者の承認を得たうえで、台帳の「取消」又は「取消して再発行」を行う。
+2 取消の際は、取消の理由を必ず入力する。
+3 取消した領収書のデータは削除せず、取消日時・理由・再発行先の番号とともに保存する。
+4 取消した旨と再発行した領収書を、顧客に改めて送付する。
+
+第7条（検索と提示）
+税務職員から求めがあった場合は、台帳の検索機能（取引年月日・金額・取引先）により該当する領収書を抽出し、PDF又はCSVで速やかに提示・提出する。
+
+第8条（施行）
+この規程は、令和〇年〇月〇日から施行する。
+
+────────────────────────
+システム概要書（電子領収書機能）
+
+1 システム名：顧客台帳（Claude上のアプリ）
+2 機能：顧客の作業記録から電子領収書を作成し、PDFを保存、メールでお客様へ送付する。
+3 記載事項：発行者の名称・登録番号、取引年月日、取引内容、税率ごとの合計金額（税込）、適用税率と消費税額、宛名、領収書番号。
+4 番号の付け方：R＋発行年月（6桁）＋「-」＋月内の連番（3桁）。
+5 保存：発行時のデータ（発行者情報を含む）をそのまま保存する。画面から内容を変更する機能はなく、取消・再発行のみ可能で、その日時と理由が履歴として残る。
+6 検索：取引年月日（範囲）、金額（範囲）、取引先名を組み合わせて検索でき、結果をCSVで出力できる。
+7 表示・出力：画面表示のほか、A4のPDFとして出力できる。
+`}
+async function saveKitei(){if(!dl){status("この画面ではファイルの保存が使えません。",true);return}
+  try{await dl.save({filename:"事務処理規程_システム概要_ひな形.txt",data:kiteiText()});status("ひな形を保存しました。")}catch(e){status(e.code==="declined"?"保存をキャンセルしました。":"保存できませんでした（"+(e.code||"エラー")+"）。",e.code!=="declined")}}
+function fillIssuerForm(){const f=$("issuerform");if(!f||f.contains(document.activeElement))return;for(const k of ["name","regNo","addr","tel","mail","driveFolder"])f.elements[k].value=issuer[k]||""}
+
+/* ---------- events ---------- */
+document.addEventListener("click",async e=>{
+  const t=e.target;
+  const tab=t.closest("nav.tabs button");if(tab){setView(tab.dataset.v);return}
+  if(t.dataset.promote){t.disabled=true;await promote(t.dataset.promote);return}
+  const row=t.closest("[data-id]");if(row&&!t.closest("#sheet")){openCust(row.dataset.id);return}
+  const rrow=t.closest("[data-rc]");if(rrow){openId="__rc:"+rrow.dataset.rc;rcJust=null;rcConfirm=null;$("ov").hidden=false;renderSheet();$("sheet").scrollTop=0;return}
+  if(t.dataset.rcpt){const c=everyone.find(x=>x.id===openId);const j=c&&c.jobsArr.find(x=>x.jid===t.dataset.rcpt);if(j){rdraft=draftFromJob(c,j);openId="__rcnew";renderRcForm();$("sheet").scrollTop=0}return}
+  if(t.id==="rf-cancel"){const cid=rdraft&&rdraft.custId;rdraft=null;if(cid&&all.some(c=>c.id===cid))openCust(cid);else closeSheet();return}
+  if(t.dataset.openCust){rcJust=null;openCust(t.dataset.openCust);return}
+  if(t.id==="rs-pdf")return savePdf(t.dataset.rid);
+  if(t.id==="rs-drive"){t.disabled=true;await drivePdf(t.dataset.rid);t.disabled=false;return}
+  const snd=t.closest("#rs-send");if(snd){const r=rcAll.find(x=>x.id===snd.dataset.rid);const to=$("rs-mail").value.trim();if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)){e.preventDefault();status("送信先のメールアドレスを正しく入力してください。",true);$("rs-mail").focus();return}
+    const now=new Date();writeRc(r.path,r.id,{sends:{["s"+now.getTime()]:{at:now.toISOString(),to,via:"メールアプリで作成"}},hist:{["h"+now.getTime()]:{at:now.toISOString(),act:"メール作成（"+to+"）"}}});return}
+  if(t.id==="rs-void1"){rcConfirm="void";renderSheet();$("rs-reason")?.focus();return}
+  if(t.id==="rs-reissue1"){rcConfirm="re";renderSheet();$("rs-reason")?.focus();return}
+  if(t.id==="rs-no"){rcConfirm=null;renderSheet();return}
+  if(t.id==="rs-yes")return voidRc(openId.slice(5),rcConfirm==="re");
+  if(t.id==="rs-clear"){for(const k of ["rs-from","rs-to","rs-min","rs-max","rs-q"])$(k).value="";$("rs-void").checked=true;renderRc();return}
+  if(t.id==="rs-csv")return exportRcCsv();
+  if(t.id==="dl-kitei")return saveKitei();
+  const cpb=t.closest("#cp-seg button");if(cpb){cpShow=cpb.dataset.cp;renderCp();return}
+  const cpr=t.closest("[data-cp]");if(cpr&&cpr.tagName==="TR"){openId="__cp:"+cpr.dataset.cp+"#"+cpr.dataset.n;$("ov").hidden=false;renderSheet();$("sheet").scrollTop=0;return}
+  if(t.id==="cp-issue")return cpIssue(t.dataset.cid,Number(t.dataset.n));
+  if(t.id==="cp-check")return cpCheck();
+  if(t.id==="cp-cam")return cpCamera();
+  if(t.id==="cp-use")return cpUse(t.dataset.code,t);
+  if(t.id==="cp-save")return cpSave(t.dataset.cid,Number(t.dataset.n));
+  if(t.id==="cp-copy")return cpCopy(t.dataset.cid,Number(t.dataset.n),t);
+  if(t.id==="cp-sent")return cpMark(t.dataset.cid,Number(t.dataset.n),{sentAt:new Date().toISOString(),via:"LINE・手渡しなど"});
+  if(t.id==="cp-used")return cpMark(t.dataset.cid,Number(t.dataset.n),{usedAt:new Date().toISOString()});
+  const cpm=t.closest("#cp-mail");if(cpm){const c=all.find(x=>x.id===cpm.dataset.cid);const x=c&&c.coupons&&c.coupons["n"+cpm.dataset.n];if(x&&!x.sentAt)writeCust(c.id,{coupons:{["n"+cpm.dataset.n]:{sentAt:new Date().toISOString(),via:"メール（"+c.mail+"）"}}}).then(()=>setTimeout(renderSheet,60));return}
+  if(t.id==="ov"||t.id==="closeS"){closeSheet();return}
+  const ch=t.closest(".chip");if(ch){ch.setAttribute("aria-pressed",ch.getAttribute("aria-pressed")==="true"?"false":"true");page=0;renderList();return}
+  const sb=t.closest("th button");if(sb){const k=sb.dataset.s;if(sortKey===k)sortDir*=-1;else{sortKey=k;sortDir=(k==="kana"||k==="car"||k==="no")?1:-1}renderList();return}
+  if(t.id==="prev"){page--;renderList();window.scrollTo(0,0);return}
+  if(t.id==="next"){page++;renderList();window.scrollTo(0,0);return}
+  if(t.id==="sm-month"){schedMode="month";renderSched();return}
+  if(t.id==="sm-day"){schedMode="day";renderSched();return}
+  if(t.id==="sm-week"){schedMode="week";renderSched();return}
+  if(t.id==="sd-prev"){shiftDay(-1);return}
+  if(t.id==="sd-next"){shiftDay(1);return}
+  if(t.id==="sd-today"){schedDate=today();renderSched();return}
+  if(t.id==="sd-req")return requestTravel();
+  if(t.id==="sd-add"){openPicker();return}
+  if(t.dataset.pick){newJobDate=schedDate;openId=t.dataset.pick;editMode="newjob";renderSheet();return}
+  const wd=t.closest("[data-day]");if(wd){schedDate=wd.dataset.day;if(schedMode!=="month")schedMode="day";renderSched();if(schedMode==="month"&&innerWidth<=700){const tt=document.querySelector(".dayttl");tt&&tt.scrollIntoView({behavior:"smooth",block:"start"})}return}
+  if(t.id==="newcust"){openId="__new";editMode="cust";$("ov").hidden=false;renderSheet();return}
+  if(t.id==="editC"){editMode="cust";renderSheet();return}
+  if(t.id==="cancelC"){if(openId==="__new")closeSheet();else{editMode=null;renderSheet()}return}
+  if(t.dataset.ukjob){ukAsk(openId,t.dataset.ukjob);return}
+  if(t.closest&&t.closest("#ukbox")){ukClick(t);return}
+  if(t.id==="addJob"){editMode="newjob";renderSheet();return}
+  if(t.dataset.phview){const p=Object.values(photos).flat().find(x=>x.id===t.dataset.phview);if(p){const o=document.createElement("div");o.id="phbox";o.innerHTML='<img alt="作業写真">';o.firstChild.src=p.b;o.onclick=()=>o.remove();document.body.appendChild(o)}return}
+  if(t.dataset.phdel){if(confirm("この写真を削除しますか？")){try{await phDb().collection("photos").doc(t.dataset.phdel).delete();status("写真を削除しました。")}catch(e){status("削除できませんでした。",true)}}return}
+  if(t.dataset.wstart){workTimer(t.dataset.wstart,"start");return}
+  if(t.dataset.wend){workTimer(t.dataset.wend,"end");return}
+  if(t.dataset.editjob){editMode=t.dataset.editjob;renderSheet();return}
+  if(t.id==="cancelJ"){editMode=null;renderSheet();return}
+  if(t.dataset.copy){try{await navigator.clipboard.writeText(t.dataset.copy);t.textContent="コピーしました"}catch(_){const r=document.createRange();r.selectNodeContents(t.parentElement);getSelection().removeAllRanges();getSelection().addRange(r)}return}
+  if(t.id==="delC"){$("delconf").innerHTML='<div class="confirmbar">この顧客と作業履歴を一覧から削除します。<button type="button" class="btn danger small" id="delCyes">削除する</button><button type="button" class="btn small" id="delCno">やめる</button></div>';return}
+  if(t.id==="delCno"){$("delconf").innerHTML="";return}
+  if(t.id==="delCyes"){if(await writeCust(openId,{deleted:true}))closeSheet();return}
+  if(t.id==="delJ"){$("deljconf").innerHTML='<div class="confirmbar">この作業記録を削除します。<button type="button" class="btn danger small" id="delJyes">削除する</button><button type="button" class="btn small" id="delJno">やめる</button></div>';return}
+  if(t.id==="delJno"){$("deljconf").innerHTML="";return}
+  if(t.id==="delJyes"){const jid=editMode;if(await writeCust(openId,{jobs:{[jid]:null}})){editMode=null;renderSheet()}return}
+  if(t.id==="exp-c")return exportCsv("c");
+  if(t.id==="exp-j")return exportCsv("j");
+  if(t.id==="impgo")return runImport();
+  if(t.id==="impcancel"){pending=null;$("preview").innerHTML="";return}
+});
+document.addEventListener("change",e=>{const l=e.target.closest(".ck");if(l)l.classList.toggle("on",e.target.checked)});
+document.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.id==="cp-code"){e.preventDefault();cpCheck();return}if(e.key==="Escape"&&!$("ov").hidden)closeSheet()});
+document.addEventListener("input",e=>{const t=e.target;
+  if(t.closest&&t.closest("#rcform")&&rdraft){readRf();updRfSum()}
+  if(t.id==="rs-mail"){const a=$("rs-send");const r=rcAll.find(x=>x.id===a?.dataset.rid);if(a&&r)a.href=mailHref(r,t.value.trim())}
+  if(t.closest&&t.closest("#v-rcpt"))renderRc()});
+document.addEventListener("submit",async e=>{e.preventDefault();const f=e.target;const fd=new FormData(f);
+  if(f.id==="rcform")return issueRc(e.submitter&&e.submitter.value==="send"?"send":"only");
+  if(f.id==="cpform"){const d={title:String(fd.get("title")||"").trim()||CP0.title,price:String(fd.get("price")||"").trim()||CP0.price,days:Math.max(1,Number(fd.get("days"))||CP0.days),note:String(fd.get("note")||"").trim()};
+    if(state.sample||!db){cpSet=d;$("cs-msg").textContent="見本データのため、この画面の中だけで反映しました。";return}
+    try{await db.doc("meta/coupon").set({...d,updatedAt:new Date().toISOString()});$("cs-msg").textContent="保存しました。これから発行するクーポンに反映されます。"}catch(e2){$("cs-msg").textContent="保存できませんでした（"+(e2.code||"エラー")+"）。"}return}
+  if(f.id==="issuerform"){const d={};for(const k of ["name","regNo","addr","tel","mail","driveFolder"])d[k]=String(fd.get(k)||"").trim();
+    d.driveFolder=(d.driveFolder.match(/folders\/([\w-]+)/)||[])[1]||d.driveFolder||DEF_FOLDER;
+    if(d.regNo&&!/^T\d{13}$/.test(d.regNo)){$("is-msg").textContent="登録番号は「T」と13桁の数字で入力してください。";return}
+    if(!d.name){$("is-msg").textContent="事業者名を入力してください。";return}
+    if(state.sample||!db){issuer={...ISS0,...d};$("is-msg").textContent="見本データのため、この画面の中だけで反映しました。";render();return}
+    try{await db.doc("meta/issuer").set({...d,updatedAt:new Date().toISOString()});$("is-msg").textContent="保存しました。これから発行する領収書に反映されます。"}catch(e2){$("is-msg").textContent="保存できませんでした（"+(e2.code||"エラー")+"）。"}return}
+  if(f.id==="custform"){const patch={};for(const[k]of CF)patch[k]=String(fd.get(k)||"").trim();
+    if(!patch.name&&!patch.kana){status("氏名かフリガナのどちらかを入力してください。",true);return}
+    let id=openId;if(id==="__new"){id=newId("n");patch.no=nextNo();patch.createdAt=new Date().toISOString()}
+    if(await writeCust(id,patch)){openId=id;editMode=null;setTimeout(renderSheet,50)}}
+  if(f.id==="jobform"){let jid=f.dataset.jid;const j={};for(const el of f.elements){if(!el.name)continue;j[el.name]=el.type==="checkbox"?el.checked:String(el.value).trim()}
+    if(jid==="__newjob")jid=newId("j");
+    if(await writeCust(openId,{jobs:{[jid]:j}})){editMode=null;setTimeout(renderSheet,50)}}
+});
+$("pq").addEventListener("input",()=>renderPros());
+let qT;$("q").addEventListener("input",()=>{clearTimeout(qT);qT=setTimeout(()=>{page=0;renderList()},150)});
+$("f-motive").addEventListener("change",()=>{page=0;renderList()});
+$("rs-void").addEventListener("change",renderRc);
+$("cp-photo").addEventListener("change",e=>{const f=e.target.files[0];if(f)cpPhoto(f);e.target.value=""});
+$("sd-date").addEventListener("change",e=>{if(e.target.value){schedDate=e.target.value;renderSched()}});
+function setView(v){if(v!=="cp")cpStop();view=v;for(const b of document.querySelectorAll("nav.tabs button"))b.setAttribute("aria-current",b.dataset.v===v?"page":"false");
+  for(const s of ["home","sched","list","pros","rcpt","cp","io"])$("v-"+s).hidden=s!==v;try{localStorage.setItem("crm-view",v)}catch(_){}render()}
+
+/* ---------- import ---------- */
+function parseCSV(s){const rows=[];let row=[],f="",q=false;s=s.replace(/^﻿/,"");for(let i=0;i<s.length;i++){const c=s[i];if(q){if(c==='"'){if(s[i+1]==='"'){f+='"';i++}else q=false}else f+=c}else{if(c==='"')q=true;else if(c===","){row.push(f);f=""}else if(c==="\n"){row.push(f);rows.push(row);row=[];f=""}else if(c!=="\r")f+=c}}if(f||row.length){row.push(f);rows.push(row)}return rows}
+const JL={"担当者名":"staff","作業日":"date","作業開始時間":"time","カレンダー入力":"cal","作業内容":"work","作業時間":"duration","支払方法":"pay","作業金額":"amount","決済手数料":"feePay","予約手数料":"feeRes","予約確定":"conf","物の確認":"chk","物の用意":"prep","物購入":"buy","事前準備":"pre","施工状況":"done","領収書":"receipt","振込金額①":"tr1Amt","振込日①":"tr1Date","振込金額②":"tr2Amt","振込日②":"tr2Date","振込確認":"trOk","部品代①":"p1","部品購入日①":"pd1","部品代②":"p2","部品購入日②":"pd2","部品代③":"p3","部品購入日③":"pd3","部品代④":"p4","部品購入日④":"pd4","部品代⑤":"p5","部品購入日⑤":"pd5","駐車場代①":"park1","駐車場代②":"park2","備考":"note"};
+const BOOLK=new Set(["cal","conf","chk","prep","buy","pre","done","trOk"]);
+const truthy=v=>{v=String(v||"").trim();return !!v&&!/^(FALSE|false|未|なし|×|0)$/.test(v)};
+function convert(R){
+  const lab=R.map(r=>String(r[0]||"").trim());
+  const starts=lab.map((l,i)=>l==="作業NO."?i:-1).filter(i=>i>=0);
+  if(!starts.length)throw new Error("「作業NO.」の行が見つかりません。「業務表＆顧客管理」タブのCSVか確認してください。");
+  const cidx={};const lim=starts[0];for(const[k,l]of CF){const i=lab.findIndex((x,ix)=>ix<lim&&x===l);if(i>=0)cidx[k]=i}
+  cidx.kana=1;cidx.name=2; // 2・3行目はフリガナ・氏名
+  const blocks=starts.map((s,bi)=>{const end=bi+1<starts.length?starts[bi+1]:lab.length;const m={};let extra=[];let lastLab="";
+    for(let i=s+1;i<end;i++){const l=lab[i];if(l){lastLab=l;if(JL[l]&&m[JL[l]]==null)m[JL[l]]=i}else if(lastLab==="作業内容"&&m.work!=null)extra.push(i)}
+    return {m,extra}});
+  const ncol=Math.max(...R.map(r=>r.length));const out={};let nc=0,nj=0;const V=(i,c)=>i==null?"":String((R[i]||[])[c]??"").trim();
+  for(let c=1;c<ncol;c++){
+    const cust={};for(const[k,i]of Object.entries(cidx))cust[k]=V(i,c);
+    if(!cust.name&&!cust.kana&&!cust.tel)continue;
+    cust.no=V(0,c)||String(c);cust.jobs={};
+    blocks.forEach((b,bi)=>{const j={};for(const[k,i]of Object.entries(b.m)){const v=V(i,c);j[k]=BOOLK.has(k)?truthy(v):(/^(date|tr1Date|tr2Date|pd\d)$/.test(k)?normDate(v):(/^(amount|feePay|feeRes|tr1Amt|tr2Amt|p\d|park\d)$/.test(k)?(v?String(num(v)):""):v))}
+      j.work2=b.extra.map(i=>V(i,c)).filter(Boolean).join("、");
+      if(j.done===undefined)j.done=false;
+      if(j.date||j.work||num(j.amount)){cust.jobs["j"+(bi+1)]=j;nj++}});
+    out["k"+cust.no+"-"+c]=cust;nc++}
+  return {out,nc,nj};
+}
+let pending=null;
+async function handleFile(file){
+  try{const text=await file.text();const R=parseCSV(text);const r=convert(R);pending=r.out;
+    $("preview").innerHTML=`<div class="panel" style="display:flex;flex-direction:column;gap:10px;box-shadow:none"><div><b>${r.nc.toLocaleString()}人</b>の顧客と<b>${r.nj.toLocaleString()}件</b>の作業記録が見つかりました。</div>
+    ${all.length&&!state.sample?`<div class="confirmbar">取り込むと、前回スプレッドシートから取り込んだ顧客は置き換わります。この台帳で追加した顧客（ミツモアからの転記など ${all.filter(c=>!String(c.id).startsWith("k")).length}人）はそのまま残ります。</div>`:""}
+    <div class="actions" style="justify-content:flex-start"><button class="btn primary" id="impgo">取り込む</button><button class="btn" id="impcancel">やめる</button></div><div class="note" id="impmsg"></div></div>`}
+  catch(e){$("preview").innerHTML=`<div class="confirmbar">読み込めませんでした：${esc(e.message)}</div>`}
+}
+async function runImport(){
+  if(!db){$("impmsg").textContent="保存先に接続できていないため取り込めません。ページを開き直してください。";return}
+  const btn=$("impgo");btn.disabled=true;
+  const buckets={};for(let i=0;i<NB;i++)buckets["cust/b"+String(i).padStart(2,"0")]={c:{}};
+  for(const[id,c]of Object.entries(pending))buckets[bpath(id)].c[id]=c;
+  if(!state.sample)for(const b of Object.values(state.buckets))for(const[id,x]of Object.entries((b&&b.c)||{}))if(x&&!id.startsWith("k")&&!buckets[bpath(id)].c[id])buckets[bpath(id)].c[id]=x; // keep customers added in the app (ミツモア転記など)
+  let k=0;const keys=Object.keys(buckets);
+  try{for(let i=0;i<keys.length;i+=4){await Promise.all(keys.slice(i,i+4).map(p=>db.doc(p).set(buckets[p])));k=Math.min(keys.length,i+4);$("impmsg").textContent=`保存中… ${Math.round(k/keys.length*100)}%`}
+    await db.doc("meta/info").set({importedAt:new Date().toISOString(),count:Object.keys(pending).length});
+    state.sample=false;$("impmsg").textContent="取り込みが終わりました。";pending=null;setTimeout(()=>setView("list"),600)}
+  catch(e){$("impmsg").textContent="途中で止まりました（"+(e.code||"エラー")+"）。もう一度「取り込む」を押してください。"+(e.code==="invalid_argument"?"編集する権限（投稿者以上）が必要です。":"");btn.disabled=false}
+}
+const drop=$("drop");
+drop.addEventListener("dragover",e=>{e.preventDefault();drop.classList.add("on")});
+drop.addEventListener("dragleave",()=>drop.classList.remove("on"));
+drop.addEventListener("drop",e=>{e.preventDefault();drop.classList.remove("on");const f=e.dataTransfer.files[0];if(f)handleFile(f)});
+$("csvfile").addEventListener("change",e=>{const f=e.target.files[0];if(f)handleFile(f);e.target.value=""});
+
+/* ---------- export ---------- */
+const csvq=v=>{v=v==null?"":String(v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
+async function exportCsv(kind){
+  let rows;
+  if(kind==="c"){rows=[["No."].concat(CF.map(x=>x[1]),["作業回数","累計金額","最終作業日"])];for(const c of all)rows.push([c.no].concat(CF.map(x=>c[x[0]]),[c.cnt,c.sum,c.last]))}
+  else{const keys=Object.keys(JL);rows=[["No.","氏名"].concat(keys,["純利益"])];for(const c of all)for(const j of c.jobsArr)rows.push([c.no,c.name].concat(keys.map(l=>{const v=j[JL[l]];return typeof v==="boolean"?(v?"済":""):v}),[jobCalc(j).net]))}
+  const data="﻿"+rows.map(r=>r.map(csvq).join(",")).join("\n");
+  if(!dl){$("expmsg").textContent="この画面ではファイルの保存が使えません。";return}
+  try{await dl.save({filename:(kind==="c"?"顧客一覧_":"作業記録_")+today()+".csv",data});$("expmsg").textContent="保存しました。"}
+  catch(e){$("expmsg").textContent=e.code==="declined"?"保存をキャンセルしました。":"保存できませんでした（"+(e.code||"エラー")+"）。"}
+}
+
+/* ---------- sample (shown only until real data exists) ---------- */
+function loadSample(){
+  state.sample=true;const S=[["1","サンプル　タロウ","見本　太郎","ミツモア","アルファード","あり","気になる","気にならない","いつもの場所"],["2","サンプル　ハナコ","見本　花子","暮らしのマーケット","フリード","なし","興味なし","気になる","やってみたい"],["3","サンプル　ジロウ","見本　次郎","紹介","ステップワゴン","なし","気になる","気にならない","いつもの場所"]];
+  const d=new Date();const ds=o=>{const x=new Date(d);x.setDate(x.getDate()+o);return x.toISOString().slice(0,10)};
+  const b={};S.forEach(([no,kana,name,motive,car,change,coat,scratch,shaken],i)=>{const id="s"+no;const p=bpath(id);b[p]=b[p]||{c:{}};
+    b[p].c[id]={...(i===0?{own:"はい",soldDate:(()=>{const x=new Date(d);x.setMonth(x.getMonth()-6);x.setDate(x.getDate()-3);return x.toISOString().slice(0,10)})(),maker:"トヨタ"}:{}),no,kana,name,tel:"090-0000-000"+no,addr:["埼玉県さいたま市浦和区高砂3-15-1（見本）","埼玉県さいたま市大宮区錦町630（見本）","埼玉県川口市青木2-1-1（見本）"][i],motive,car,change,coat,scratch,shaken,line:"済み",jobs:{j1:{date:ds(-40*(i+1)),time:"9:00",work:"ドライブレコーダー前後",pay:"ミツモア",amount:"16000",feeRes:"2200",done:true,conf:true,cal:true,trOk:i>0,staff:"見本"},j2:{date:ds(i<2?1:3),time:["10:00","13:00","11:00"][i],duration:"1時間30分",work:"TVキャンセラー",pay:"現金",amount:"8000",conf:i!==1,cal:true,staff:"見本"}}}});
+  state.buckets=b;rebuild();
+}
+
+/* ---------- boot ---------- */
+try{const v=localStorage.getItem("crm-view");if(v&&["home","sched","list","rcpt","cp","io"].includes(v))view=v}catch(_){}
+let urlCp=null;try{const u=(location.search+" "+location.hash).match(/cp=(OIL-[A-Za-z0-9]+)/);if(u){urlCp=u[1].toUpperCase();view="cp"}}catch(_){}
+/* ---------- PIN lock ---------- */
+let lockCfg=null, lockReady=false, unlocked=false, lastAct=Date.now(), fails=0, waitUntil=0;
+const LKEY="crm-unlock";
+const b64=a=>btoa(String.fromCharCode(...new Uint8Array(a)));const ub64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+async function pinHash(pin,saltB64){const key=await crypto.subtle.importKey("raw",new TextEncoder().encode(pin),"PBKDF2",false,["deriveBits"]);
+  const bits=await crypto.subtle.deriveBits({name:"PBKDF2",salt:ub64(saltB64),iterations:150000,hash:"SHA-256"},key,256);return b64(bits)}
+const idleMs=()=>((lockCfg&&lockCfg.idleMin)||5)*60000;
+function saveUnlock(){try{sessionStorage.setItem(LKEY,JSON.stringify({h:lockCfg&&lockCfg.hash,t:Date.now()}))}catch(_){}}
+function showLock(mode){const ov=$("lockov");ov.hidden=false;$("lkform").hidden=mode!=="pin";
+  $("lk-title").textContent=mode==="pin"?"暗証番号を入力してください":"読み込み中…";$("lk-sub").textContent=mode==="pin"?"まちの顧客台帳はロックされています。":"";$("lk-msg").textContent="";
+  if(mode==="pin"){$("lk-pin").value="";setTimeout(()=>$("lk-pin").focus(),50)}}
+function hideLock(){$("lockov").hidden=true}
+function applyLock(){if(!lockReady){showLock("load");return}
+  if(!lockCfg||!lockCfg.hash){unlocked=true;hideLock();return}
+  if(!unlocked){try{const x=JSON.parse(sessionStorage.getItem(LKEY)||"null");if(x&&x.h===lockCfg.hash&&Date.now()-x.t<idleMs()){unlocked=true;lastAct=Date.now()}}catch(_){}}
+  if(unlocked)hideLock();else{closeSheet&&openId&&closeSheet();showLock("pin")}}
+function relock(){if(!lockCfg||!lockCfg.hash)return;unlocked=false;try{sessionStorage.removeItem(LKEY)}catch(_){}applyLock()}
+for(const ev of ["pointerdown","keydown","touchstart","scroll"])document.addEventListener(ev,()=>{if(unlocked){lastAct=Date.now();saveUnlock()}},{passive:true,capture:true});
+setInterval(()=>{if(unlocked&&lockCfg&&lockCfg.hash&&Date.now()-lastAct>idleMs())relock()},15000);
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&unlocked&&lockCfg&&lockCfg.hash&&Date.now()-lastAct>idleMs())relock()});
+$("lkform").addEventListener("submit",async e=>{e.preventDefault();const pin=$("lk-pin").value.trim();
+  if(Date.now()<waitUntil){$("lk-msg").textContent=`続けて間違えたため、${Math.ceil((waitUntil-Date.now())/1000)}秒待ってから入力してください。`;return}
+  if(!pin)return;const h=await pinHash(pin,lockCfg.salt);
+  if(h===lockCfg.hash){fails=0;unlocked=true;lastAct=Date.now();saveUnlock();hideLock()}
+  else{fails++;$("lk-pin").value="";if(fails>=5){waitUntil=Date.now()+60000;fails=0;$("lk-msg").textContent="5回間違えたため、1分間入力できません。"}else $("lk-msg").textContent=`暗証番号が違います（あと${5-fails}回で1分間ロック）。`}});
+function fillPinForm(){const on=!!(lockCfg&&lockCfg.hash);$("pl-curl").hidden=!on;$("pl-off").hidden=!on;$("pl-save").textContent=on?"暗証番号を変更する":"ロックを設定する";
+  $("pl-state").textContent=on?`ロックは有効です（${lockCfg.idleMin||5}分操作がないと自動でロック）。暗証番号はスタッフ共通です。`:"台帳を開くときと、しばらく操作しなかったときに暗証番号を求めます。暗証番号はスタッフ共通です。";
+  if(on)$("pl-idle").value=String(lockCfg.idleMin||5)}
+async function checkCur(){if(!(lockCfg&&lockCfg.hash))return true;const c=$("pl-cur").value.trim();if(!c){$("pl-msg").textContent="今の暗証番号を入力してください。";return false}
+  if(await pinHash(c,lockCfg.salt)!==lockCfg.hash){$("pl-msg").textContent="今の暗証番号が違います。";return false}return true}
+$("pinform").addEventListener("submit",async e=>{e.preventDefault();$("pl-msg").textContent="";
+  if(!db||state.sample){$("pl-msg").textContent="見本データでは設定できません。";return}
+  const n1=$("pl-new").value.trim(),n2=$("pl-new2").value.trim();
+  if(!/^\d{4,8}$/.test(n1)){$("pl-msg").textContent="新しい暗証番号は4〜8桁の数字で入力してください。";return}
+  if(n1!==n2){$("pl-msg").textContent="確認用の暗証番号が一致しません。";return}
+  if(!(await checkCur()))return;
+  const salt=b64(crypto.getRandomValues(new Uint8Array(16)));const hash=await pinHash(n1,salt);
+  try{await db.doc("meta/lock").set({salt,hash,idleMin:Number($("pl-idle").value)||5,updatedAt:new Date().toISOString()});unlocked=true;lastAct=Date.now();lockCfg={salt,hash,idleMin:Number($("pl-idle").value)||5};saveUnlock();
+    for(const id of ["pl-cur","pl-new","pl-new2"])$(id).value="";$("pl-msg").textContent="設定しました。ほかのスタッフにも新しい暗証番号を伝えてください。"}
+  catch(e2){$("pl-msg").textContent="設定できませんでした（"+(e2.code||"エラー")+"）。"}});
+$("pl-off").addEventListener("click",async()=>{$("pl-msg").textContent="";if(!(await checkCur()))return;
+  try{await db.doc("meta/lock").delete();$("pl-cur").value="";$("pl-msg").textContent="ロックを解除しました。"}catch(e2){$("pl-msg").textContent="解除できませんでした（"+(e2.code||"エラー")+"）。"}});
+setView(view);loadSample();fillIssuerForm();fillCpForm();
+try{$("cp-url").textContent="URL確認用："+location.href}catch(_){}
+(async()=>{
+  const cl=window.claude;if(!cl||!cl.use){status("この環境では保存先に接続できません。見本データを表示しています。");lockReady=true;applyLock();return}
+  cl.use("downloads").then(x=>{dl=x});
+  cl.use("mcp").then(x=>{mcp=x;if(openId&&openId.startsWith("__rc:"))renderSheet()});
+  db=await cl.use("db");
+  if(!db){status("保存先に接続できませんでした。見本データを表示しています。",true);lockReady=true;applyLock();return}
+  db.doc("meta/coupon").onSnapshot(d=>{if(d.exists){const x=d.data()||{};cpSet={...CP0,...x};delete cpSet.updatedAt}fillCpForm()},()=>{});
+  db.doc("meta/lock").onSnapshot(d=>{lockCfg=d.exists?(d.data()||null):null;lockReady=true;applyLock();fillPinForm()},()=>{lockReady=true;applyLock()});
+  db.doc("meta/numbering").onSnapshot(d=>{noBase=Number(((d.exists&&d.data())||{}).base)||0},()=>{});
+  db.doc("meta/issuer").onSnapshot(d=>{if(d.exists){const x=d.data()||{};issuer={...ISS0,...x};delete issuer.updatedAt}fillIssuerForm();if(view==="rcpt")renderRc()},()=>{});
+  db.collection("rcpt").onSnapshot(snap=>{if(state.sample&&snap.empty)return;const b={};snap.docs.forEach(d=>{b["rcpt/"+d.id]=d.data()});rcDocs=b;rebuildRc()},()=>{});
+  db.collection("travel").onSnapshot(snap=>{const t={};snap.docs.forEach(d=>{if(d.id.startsWith("legs"))Object.assign(t,(d.data()||{}).l||{});if(d.id==="queue")travelQ=d.data()||{}});travel=t;if(view==="sched")renderSched();autoQueue()},()=>{});
+  let first=true;
+  db.collection("cust").onSnapshot(snap=>{
+    if(snap.empty){if(first)status("まだ顧客データがありません。「設定・取り込み」からスプレッドシートを取り込んでください。");first=false;return}
+    const b={};snap.docs.forEach(d=>{b["cust/"+d.id]=d.data()});state.buckets=b;state.sample=false;if(first)status("");first=false;rebuild();autoQueue();
+    if(urlCp){$("cp-code").value=urlCp;urlCp=null;setView("cp");cpCheck();$("cp-result").scrollIntoView({block:"center"})}},
+    e=>status("データの読み込みが止まりました（"+e.code+"）。ページを開き直してください。",true));
+})();
+})();
+
+
+/* ---------- mobile table labels ---------- */
+function labelTables(){for(const t of document.querySelectorAll(".tablewrap table")){const hs=[...t.querySelectorAll("thead th")].map(th=>th.textContent.trim());for(const tr of t.querySelectorAll("tbody tr"))[...tr.children].forEach((td,i)=>{if(hs[i]&&!td.hasAttribute("data-l"))td.setAttribute("data-l",hs[i])})}}
+new MutationObserver(()=>labelTables()).observe(document.body,{childList:true,subtree:true});
+</script>
+
+</body></html>
