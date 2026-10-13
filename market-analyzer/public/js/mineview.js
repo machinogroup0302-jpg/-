@@ -13,7 +13,8 @@ import { fmtTime, judgedText, execText } from './sessiontime.js';
 
 const pct = (v) => (v == null ? '—' : `${Math.round(v * 100)}%`);
 // 銘柄名を押すと、その銘柄のチャートを開く
-const symLink = (symbol, name) => `<a href="#" class="sym-link" data-symbol="${esc(symbol)}" data-name="${esc(name)}">${esc(name)}</a>`;
+const codeOf = (symbol) => (/=X$|^\^/.test(symbol) ? '' : String(symbol).replace(/\.T$/, ''));
+const symLink = (symbol, name) => `<a href="#" class="sym-link" data-symbol="${esc(symbol)}" data-name="${esc(name)}">${esc(name)}</a>${codeOf(symbol) && codeOf(symbol) !== name ? ` <span class="small muted">${esc(codeOf(symbol))}</span>` : ''}`;
 // 「いつ判断して、いつ売買するか」
 const timeLine = (mode, t, extra = '') => `<div class="small time-line">🕒 判断した時刻：${esc(judgedText(mode, t, style === 'day'))}<br>　 売買する時刻：${esc(execText(mode, style === 'day'))}${extra}</div>`;
 let style = store.get('mine_style', 'swing');
@@ -136,7 +137,7 @@ async function computeLog(mode, out, force = false, st = style) {
     if (!usdjpy) { try { const u = await api('/api/chart?symbol=USDJPY&tf=1d'); usdjpy = u.candles[u.candles.length - 1].close; } catch { /* 取れなければ米国株の量は出さない */ } }
     // 練習用の取引にも、その時点までのことだけで「勝つ確率の目安」を付ける
     if (wf) for (const ts of Object.values(wf)) for (const t of ts) t.odds = signalOdds(ts, { symbol: t.symbol, side: t.side, strength: t.strength, before: t.entryDate });
-    const data = { by, wf, wfCount: fixed.size, prices, usdjpy, count: list.length, at: Date.now(), style: st, scanInfo };
+    const data = { list: day ? null : list, regime, by, wf, wfCount: fixed.size, prices, usdjpy, count: list.length, at: Date.now(), style: st, scanInfo };
     logCache[ck] = { at: Date.now(), data };
     return data;
   })();
@@ -212,6 +213,7 @@ async function showPlan(mode, force = false) {
     const r = await computeLog(mode, out, force);
     if (getModeFn() !== mode) return;
     renderPlan(r, mode);
+    updateHoldDays(mode, r);
   } catch (e) { out.innerHTML = `<p class="error">${esc(e.message)}</p>`; }
 }
 
@@ -349,6 +351,7 @@ async function showNow(mode, force = false) {
     const r = await computeLog(mode, out, force);
     if (getModeFn() !== mode) return;
     renderNow(r, mode);
+    updateHoldDays(mode, r);
   } catch (e) { out.innerHTML = `<p class="error">${esc(e.message)}</p>`; }
 }
 
@@ -358,6 +361,7 @@ async function showList(mode, force = false) {
     const r = await computeLog(mode, out, force);
     if (getModeFn() !== mode) return;
     renderLog(r, mode);
+    updateHoldDays(mode, r);
   } catch (e) { out.innerHTML = `<p class="error">${esc(e.message)}</p>`; }
 }
 
@@ -766,7 +770,9 @@ function applyMineSub() {
   $('swing-days').hidden = !showStyle || style !== 'swing';
   const sd = getProfile().swingDays || 30;
   if (document.activeElement !== $('swing-days-input')) $('swing-days-input').value = sd;
-  $('swing-days-chips').innerHTML = [3, 5, 10, 20, 30, 60].map((d) => `<button type="button" class="chip" data-d="${d}" aria-pressed="${d === sd}">${d}日</button>`).join('');
+  const rec = holdDays[getModeFn()]?.best?.d;
+  const days = [...new Set([3, 5, 10, 20, 30, 60, ...(rec ? [rec] : [])])].sort((a, b) => a - b);
+  $('swing-days-chips').innerHTML = days.map((d) => `<button type="button" class="chip" data-d="${d}" aria-pressed="${d === sd}">${d}日${d === rec ? ' ★おすすめ' : ''}</button>`).join('');
 }
 
 export function updateMine(mode, { force = false } = {}) {
@@ -776,6 +782,58 @@ export function updateMine(mode, { force = false } = {}) {
   if (mineSub === 'plan') return showPlan(mode, force);
   if (mineSub === 'now') return showNow(mode, force);
   if (mineSub === 'list') return showList(mode, force);
+}
+
+// ---------------- スイングで持つ日数：全部試して、おすすめを出す ----------------
+// 今のおすすめのやり方で、持つ日数の上限だけを変えて過去1年をやり直し、一番良かった日数を出す
+const HOLD_DAYS = [3, 5, 7, 10, 15, 20, 30, 45, 60, 90];
+const holdDays = {};
+let holdRunning = null;
+async function updateHoldDays(mode, r) {
+  const el = $('swing-days-best');
+  if (!r?.list || r.style !== 'swing') return;
+  const pf = getProfile();
+  const v = viewOf(r, mode);
+  const way = v.best.base || v.best;
+  const key = JSON.stringify([mode, r.count, Math.floor(r.at / 3600000), way.key, pf.budget, pf.marginBudget, pf.riskPct, pf.maxPos, pf.fxLots]);
+  const hit = holdDays[mode];
+  if (hit?.key === key) { renderHoldDays(mode); return; }
+  if (holdRunning === key) return;
+  holdRunning = key;
+  el.innerHTML = '<span class="spinner"></span> 持つ日数を3日〜90日で全部試しています…';
+  const kind = kindOf(mode);
+  const rows = [];
+  for (const d of HOLD_DAYS) {
+    const trades = [];
+    for (const x of r.list) {
+      const rs = runStrategy(x.candles, 'combo', { kind, pair: x.symbol.replace(/=X$/, ''), regime: r.regime, days: 250, maxHold: d, sides: way.sides });
+      for (const t of rs.trades) trades.push({ ...t, symbol: x.symbol });
+    }
+    rows.push({ d, r: replayWithBudget(trades, replayOpts(mode, way, pf, r.prices)) });
+    await new Promise((res) => setTimeout(res, 0));
+  }
+  // おすすめ：プラスで、一番減ったときが予算の35%以内のものから、一番増えたもの（ほぼ同じなら短い方）
+  const budget = v.budget;
+  const ok = rows.filter((x) => x.r.total > 0 && !x.r.broke);
+  const safe = ok.filter((x) => x.r.maxDD <= budget * 0.35);
+  let best = null;
+  for (const x of safe.length ? safe : ok) if (!best || x.r.total > best.r.total + budget * 0.02) best = x;
+  holdDays[mode] = { key, rows, best, way };
+  holdRunning = null;
+  renderHoldDays(mode);
+}
+function renderHoldDays(mode) {
+  const h = holdDays[mode], el = $('swing-days-best');
+  if (!h) return;
+  const sd = getProfile().swingDays || 30;
+  el.innerHTML = `${h.best ? `🏆 <b>おすすめは${h.best.d}日</b>（「${esc(h.way.label)}」で過去1年 ${fmtYen(h.best.r.total)}・税引き後 ${fmtYen(afterTax(h.best.r.total))}）${h.best.d !== sd ? ` <button type="button" class="chip" data-d="${h.best.d}">${h.best.d}日にする</button>` : '（今の設定です）'}` : '⚠ どの日数でもマイナスでした。今はお休みがおすすめです。'}
+    <details class="more-box"><summary>日数ごとの成績を見る</summary>
+      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>持つ日数の上限</th><th class="r">1年の損益</th><th class="r">税引き後</th><th class="r">回数・勝率</th><th class="r">一番減ったとき</th></tr></thead><tbody>
+      ${h.rows.map((x) => `<tr${x === h.best ? ' class="best"' : ''}><td class="small">${x.d}日${x === h.best ? ' ★' : ''}${x.d === sd ? '（今）' : ''}</td><td class="r small ${x.r.total >= 0 ? 'plus' : 'minus'}">${fmtYen(x.r.total)}</td><td class="r small">${fmtYen(afterTax(x.r.total))}</td><td class="r small">${x.r.trades}回・${pct(x.r.winRate)}</td><td class="r small">${fmtYen(-x.r.maxDD)}</td></tr>`).join('')}
+      </tbody></table></div>
+      <p class="small muted" style="margin:4px 0 0">今のおすすめのやり方「${esc(h.way.label)}」で、持つ日数の上限だけを変えて、あなたの予算で過去1年をやり直しました（費用・金利込み）。日数が来る前でも、損切り・利益確定・判定が変わったときは決済します。</p>
+    </details>`;
+  applyMineSub();
 }
 
 // 「成績」タブ用：サイトがやるとしたら、どのやり方が一番いいか（全銘柄・過去1年・あなたの予算）
@@ -827,5 +885,6 @@ export function initMine(getMode, openChart = () => {}) {
     updateMine(getMode());
   };
   $('swing-days-chips').addEventListener('click', (e) => { const b = e.target.closest('[data-d]'); if (b) setDays(b.dataset.d); });
+  $('swing-days-best').addEventListener('click', (e) => { const b = e.target.closest('[data-d]'); if (b) setDays(b.dataset.d); });
   $('swing-days-input').addEventListener('change', (e) => setDays(e.target.value));
 }

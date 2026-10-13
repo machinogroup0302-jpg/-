@@ -296,7 +296,7 @@ function pivotFor(candles, tf) {
 function renderQuote(candles, digits) {
   const last = candles[candles.length - 1], prev = candles[candles.length - 2] || last;
   const diff = last.close - prev.close;
-  $('q-name').textContent = state.name || state.symbol;
+  $('q-name').textContent = nameWithCode(state.symbol, state.name);
   $('q-price').textContent = fmtPrice(last.close, digits);
   $('q-change').innerHTML = `<span class="${diff >= 0 ? 'plus' : 'minus'}">${diff >= 0 ? '+' : ''}${fmtPrice(diff, digits)}（${((diff / prev.close) * 100).toFixed(2)}%）</span> <span class="small muted">前の足比</span>`;
 }
@@ -392,6 +392,13 @@ export function startAutoRefresh() {
 }
 
 // 株は会社名を日本語で表示する（上場企業の一覧から探す）
+// 銘柄名のうしろに、銘柄コード（日本株は4桁の数字、米国株はティッカー）を付ける
+export function nameWithCode(symbol, name) {
+  const code = String(symbol || '').replace(/\.T$/, '');
+  if (!symbol || /=X$|^\^/.test(symbol)) return name || symbol;
+  return name && name !== symbol && name !== code ? `${name}（${code}）` : code;
+}
+
 async function lookupStockName(symbol) {
   try {
     const code = symbol.replace(/\.T$/, '');
@@ -400,7 +407,7 @@ async function lookupStockName(symbol) {
     if (hit && state.symbol === symbol) {
       state.name = hit.name;
       store.set(`${mode}_name`, hit.name);
-      $('q-name').textContent = hit.name;
+      $('q-name').textContent = nameWithCode(symbol, hit.name);
       listeners.forEach((fn) => fn(state));
     }
   } catch { /* 名前が取れなくても表示は続ける */ }
@@ -426,7 +433,7 @@ let editingFavs = false;
 
 export function renderFavorites() {
   const favs = getFavs(mode);
-  $('fav-chips').innerHTML = favs.map((f) => `<button class="chip${editingFavs ? ' editing' : ''}" data-code="${esc(f.code)}" data-name="${esc(f.name)}">${esc(f.name)}${editingFavs ? '<span class="x" aria-label="消す">×</span>' : ''}</button>`).join('')
+  $('fav-chips').innerHTML = favs.map((f) => `<button class="chip${editingFavs ? ' editing' : ''}" data-code="${esc(f.code)}" data-name="${esc(f.name)}">${esc(f.name)}${mode !== 'fx' && /^[0-9A-Z]{1,5}$/i.test(f.code) && f.code !== f.name ? ` <span class="muted" style="font-size:11px">${esc(f.code)}</span>` : ''}${editingFavs ? '<span class="x" aria-label="消す">×</span>' : ''}</button>`).join('')
     + `<button class="chip" data-edit="1">${editingFavs ? '✓ 編集を終わる' : '✎ 編集'}</button>`;
   markFav();
 }

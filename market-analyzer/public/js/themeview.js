@@ -54,7 +54,7 @@ function stockLine(sym, name, o, dir = 1) {
   if (dir < 0 && o.r20 < -0.2) notes.push('この1か月でもう大きく下がっているので、下げすぎの反発に注意');
   if (dir < 0) notes.push('持っていたら損切りの線を確認／空売りするなら信用で');
   if (o.vr > 1.3) notes.push(`出来高がふだんの${o.vr.toFixed(1)}倍（注目が集まっている）`);
-  return `<li><div class="li-head"><span class="name"><a href="#" class="sym-link theme-sym" data-symbol="${esc(sym)}" data-name="${esc(name)}">${esc(name)}</a></span>
+  return `<li><div class="li-head"><span class="name"><a href="#" class="sym-link theme-sym" data-symbol="${esc(sym)}" data-name="${esc(name)}">${esc(name)}</a> <span class="small muted">${esc(sym.replace(/\.T$/, ''))}</span></span>
     <span class="badge ${dir > 0 ? oddsBadge(p) : p >= 0.6 ? 'sell' : p >= 0.5 ? 'neutral' : 'buy'}">${dir > 0 ? '上がる' : '下がる'}確率 ${Math.round(p * 100)}%</span></div>
     <div class="small muted">5日 ${pct(o.r5, 1)}・20日 ${pct(o.r20, 1)}・似た形${o.hits}回の10日後の平均 ${pct(o.avgRet, 1)}</div>
     ${notes.length ? `<div class="small" style="color:var(--warn)">${esc(notes.join('／'))}</div>` : ''}</li>`;
