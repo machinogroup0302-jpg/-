@@ -1,0 +1,55 @@
+# サイトの不具合の見張り
+#   毎時：サイトを使っているときに画面で起きたエラーを確かめて、あれば持ち主にメール（と通知）で知らせる
+#   毎朝 6:35（日本時間）：本物のサイトを自動で動かして、全部の画面とデータの読み込みが動くか確かめる
+# 事前準備：売買サインのメールと同じ Secrets（MAIL_USER・MAIL_PASS・SITE_PASSWORD）を使う（新しく登録するものはない）
+name: サイトの不具合の見張り
+
+on:
+  schedule:
+    - cron: '23 * * * *'
+    - cron: '35 21 * * *'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'errors＝画面のエラーだけ確かめる / smoke＝サイトを実際に動かして確かめる'
+        default: 'smoke'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: health
+  cancel-in-progress: false
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      MODE: ${{ github.event.inputs.mode || (github.event.schedule == '35 21 * * *' && 'smoke') || 'errors' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/trusting-planck-dsasvf
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: 道具を入れる
+        working-directory: market-analyzer
+        run: |
+          npm install --no-save --no-audit --no-fund --ignore-scripts nodemailer@6
+          if [ "$MODE" = "smoke" ]; then
+            npm install --no-save --no-audit --no-fund --ignore-scripts nodemailer@6 playwright@1.48.2
+            npx playwright install --with-deps chromium
+          fi
+
+      - name: 見張る
+        working-directory: market-analyzer
+        env:
+          MAIL_USER: ${{ secrets.MAIL_USER }}
+          MAIL_PASS: ${{ secrets.MAIL_PASS }}
+          MAIL_TO: ${{ secrets.MAIL_TO }}
+          SITE_PASSWORD: ${{ secrets.SITE_PASSWORD }}
+        run: node scripts/health.mjs "$MODE"

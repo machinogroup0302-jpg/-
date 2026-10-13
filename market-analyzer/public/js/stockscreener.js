@@ -3,6 +3,7 @@ import { api, $, esc, store, fmtPrice } from './util.js';
 import { term } from './glossary.js';
 import { getFavs, getProfile } from './favorites.js';
 import { lotNote } from './plan.js';
+import { errText } from './report.js';
 
 const MARKETS = ['プライム', 'スタンダード', 'グロース', '外国株'];
 const VIEWS = [['buy', '上がりそう'], ['sell', '下がりそう'], ['up', '今日の値上がり'], ['down', '今日の値下がり']];
@@ -146,7 +147,7 @@ async function renderEarnings() {
       wrap: (b) => `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>発表日</th><th>会社</th><th>決算月・種別</th></tr></thead><tbody>${b}</tbody></table></div>
         <p class="small muted">全${d.total.toLocaleString()}件。日本取引所が公開している予定を、更新のたびに自動で取り込んでいます（決算月ごとに順番に公開されるため、先の予定はまだ載っていないことがあります）。</p>` });
   } catch (e) {
-    box.innerHTML = `<p class="error">${esc(e.message)}</p>`;
+    box.innerHTML = `<p class="error">${esc(errText('候補', e))}</p>`;
   }
 }
 

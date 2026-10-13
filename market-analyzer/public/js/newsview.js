@@ -2,6 +2,7 @@
 import { api, $, esc, store, busy, signalClass } from './util.js';
 import { term } from './glossary.js';
 import { state as chartState } from './chartview.js';
+import { errText } from './report.js';
 
 let current = null;
 let crowdKey = '';
@@ -17,7 +18,7 @@ export async function updateCrowd(st, mode, { silent = false } = {}) {
   let d;
   try {
     d = await api(`/api/crowd?symbol=${encodeURIComponent(st.symbol)}&name=${encodeURIComponent(queryFor(st))}&mode=${mode}`);
-  } catch (e) { if (crowdKey === key) box.innerHTML = `<p class="error">${esc(e.message)}</p>`; return; }
+  } catch (e) { if (crowdKey === key) box.innerHTML = `<p class="error">${esc(errText('ニュース', e))}</p>`; return; }
   if (crowdKey !== key) return;
   const src = d.sources.map((x) => `${esc(x.label)}${x.ok ? `（${x.n}件）` : '（取得できませんでした）'}`).join('・');
   if (d.bullPct == null) {
@@ -76,7 +77,7 @@ export async function searchNews(q, { silent = false } = {}) {
     current = await api(`/api/news?q=${encodeURIComponent(q)}`);
     renderNews();
   } catch (e) {
-    if (!silent) $('news-list').innerHTML = `<li class="error">${esc(e.message)}</li>`;
+    if (!silent) $('news-list').innerHTML = `<li class="error">${esc(errText('ニュース', e))}</li>`;
   }
 }
 

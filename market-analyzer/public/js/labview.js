@@ -9,6 +9,7 @@ import { futureTimes } from './forecast.js';
 import { getFavs, getProfile } from './favorites.js';
 import { SIDES_TEXT, wayOf, pipsOf, pipsText, fxLotYen, afterTax } from './plan.js';
 import { adviseHolding, addOnAdvice } from './holdingadvice.js';
+import { errText } from './report.js';
 // 向きは「あなた専用」で一番良かったやり方に合わせる（まだ計算していなければ、株は買いだけ・為替は両方）
 const bestWay = (mode) => wayOf(mode, getProfile().bestWay?.[mode]);
 
@@ -236,7 +237,7 @@ async function updateSymbol(st, mode, { silent = false } = {}) {
     renderForecast();
     renderTrades();
   } catch (e) {
-    $('lab-status').innerHTML = `<span class="error">${esc(e.message)}</span>`;
+    $('lab-status').innerHTML = `<span class="error">${esc(errText('成績', e))}</span>`;
   }
 }
 
@@ -307,7 +308,7 @@ async function runPicks(mode) {
     await new Promise((r) => setTimeout(r, 30));
     renderPicks(pickAndTrade(list, { kind: kindOf(mode), regime, sides: bestWay(mode).sides }), mode);
   } catch (e) {
-    out.innerHTML = `<p class="error">${esc(e.message)}</p>`;
+    out.innerHTML = `<p class="error">${esc(errText('成績', e))}</p>`;
   } finally {
     btn.disabled = false;
   }

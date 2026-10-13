@@ -21,7 +21,7 @@ import { loadRepoData } from './lib/jpxdata.js';
 import { INDEX_NAMES } from './lib/market.js';
 import { fxName } from './public/js/fxpairs.js';
 import { startScan, scanStatus } from './lib/scanner.js';
-import { addPushSub, removePushSub, pushCount, getPrefs, putPref, loadPrefs, backupBlob, alertProfile, listUsers, addUser, removeUser, setUserPassword, checkUser, userExists, userName, ADMIN } from './lib/prefs.js';
+import { addError, getErrors, ackErrors, addPushSub, removePushSub, pushCount, getPrefs, putPref, loadPrefs, backupBlob, alertProfile, listUsers, addUser, removeUser, setUserPassword, checkUser, userExists, userName, ADMIN } from './lib/prefs.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(here, 'public');
@@ -146,12 +146,27 @@ async function handleApi(req, res, url) {
     return json(res, 200, { ok: true });
   }
   // GitHub Actions 用（サイトのパスワードを x-site-key に入れて呼ぶ）
+  // 不具合の見張り（GitHub Actions だけが使う）：画面で起きたエラーの一覧・知らせ終わったものを消す
+  if (route === 'GET /api/errors' || route === 'POST /api/errors/ack') {
+    if (!SITE_PASSWORD || !samePassword(req.headers['x-site-key'] || '')) return json(res, 401, { error: 'パスワードが違います' });
+    if (req.method === 'GET') return json(res, 200, { items: await getErrors(), version: (process.env.RENDER_GIT_COMMIT || 'local').slice(0, 7) });
+    await ackErrors(Number((await readBody(req)).upTo) || 0);
+    return json(res, 200, { ok: true });
+  }
   if (route === 'GET /api/backup/prefs' || route === 'GET /api/alerts/profile') {
     if (!SITE_PASSWORD || !samePassword(req.headers['x-site-key'] || '')) return json(res, 401, { error: 'パスワードが違います' });
     return json(res, 200, route.includes('backup') ? await backupBlob() : await alertProfile());
   }
   const uid = await currentUser(req);
   if (!uid) return json(res, 401, { error: 'ログインしてください' });
+
+  // 画面で起きたエラーを記録する（持ち主にあとでメールで知らせる）
+  if (route === 'POST /api/report') {
+    const b = await readBody(req);
+    const s = (x, n) => String(x ?? '').slice(0, n);
+    await addError({ uid, where: s(b.where, 60), message: s(b.message, 300), stack: s(b.stack, 1200), version: s(b.version, 12), page: s(b.page, 80), ua: s(b.ua, 120) });
+    return json(res, 200, { ok: true });
+  }
 
   // スマホ・パソコンへの通知
   if (route === 'GET /api/push/key') return json(res, 200, { publicKey: vapidKeys()?.publicKey || null, count: await pushCount(uid) });

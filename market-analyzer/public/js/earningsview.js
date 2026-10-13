@@ -1,5 +1,6 @@
 // チャート画面に「決算発表まであと○日」を出す（日本株）
 import { api, $, esc } from './util.js';
+import { errText } from './report.js';
 
 let lastKey = '';
 
@@ -85,6 +86,6 @@ export async function updateEarningsCard(st, mode) {
     q.hidden = !badge;
     q.onclick = () => box.scrollIntoView({ behavior: 'smooth', block: 'center' });
   } catch (e) {
-    if (key === lastKey) { box.innerHTML = `<p class="error">${esc(e.message)}</p>`; lastKey = ''; }
+    if (key === lastKey) { box.innerHTML = `<p class="error">${esc(errText('チャート・決算', e))}</p>`; lastKey = ''; }
   }
 }

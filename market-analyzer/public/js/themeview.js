@@ -1,5 +1,6 @@
 // ニュース画面「今ニュースで増えているテーマ」：話題と、その話題で上がりやすい銘柄（確率つき）
 import { api, $, esc } from './util.js';
+import { errText } from './report.js';
 
 const H = 10; // 何営業日後に上がっていたかで見る（約2週間）
 
@@ -133,7 +134,7 @@ export async function updateThemes(mode, { silent = false } = {}) {
     }
     render();
   } catch (e) {
-    if (!data) $('theme-list').innerHTML = `<p class="error">${esc(e.message)}</p>`;
+    if (!data) $('theme-list').innerHTML = `<p class="error">${esc(errText('ニュース・テーマ', e))}</p>`;
   }
 }
 

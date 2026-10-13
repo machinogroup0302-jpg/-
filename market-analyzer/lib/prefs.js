@@ -45,7 +45,8 @@ export function decrypt(b64) {
 
 const storeKey = (uid, key) => (uid === ADMIN ? key : `${uid}|${key}`);
 const splitKey = (k) => (k.includes('|') ? k.split('|') : [ADMIN, k]);
-const validKey = (k) => k === USERS || SYNC_KEY.test(splitKey(k)[1].replace(/~prev$/, ''));
+const ERRORS = '__errors';
+const validKey = (k) => k === USERS || k === ERRORS || SYNC_KEY.test(splitKey(k)[1].replace(/~prev$/, ''));
 
 function merge(other) {
   for (const [k, v] of Object.entries(other || {})) {
@@ -109,7 +110,7 @@ export function loadPrefs() {
 function itemsOf(uid) {
   const out = {};
   for (const [k, v] of Object.entries(data)) {
-    if (k === USERS) continue;
+    if (k === USERS || k === ERRORS) continue;
     const [u, key] = splitKey(k);
     if (u === uid) out[key] = v;
   }
@@ -197,6 +198,28 @@ export async function putPref(uid, key, value) {
   data[k] = { value: clean, ts };
   saveLocal();
   return { ts };
+}
+
+// ---------------- 画面で起きたエラーの記録（不具合の見張り） ----------------
+// 同じエラーは1つにまとめて回数を数える。新しいものから100件まで。GitHub Actions が読んで、持ち主にメールで知らせる
+export async function addError(e) {
+  await loadPrefs();
+  const list = data[ERRORS]?.value || [];
+  const key = `${e.where}|${e.message}`;
+  const now = Date.now();
+  const same = list.find((x) => `${x.where}|${x.message}` === key);
+  if (same) { same.count = (same.count || 1) + 1; same.last = now; same.version = e.version; }
+  else list.push({ ...e, count: 1, first: now, last: now });
+  data[ERRORS] = { value: list.sort((a, b) => b.last - a.last).slice(0, 100), ts: Math.max(now, (data[ERRORS]?.ts || 0) + 1) };
+  saveLocal();
+}
+export async function getErrors() { await loadPrefs(); return data[ERRORS]?.value || []; }
+// 知らせ終わったものを消す（upTo より前に最後に起きたもの）
+export async function ackErrors(upTo) {
+  await loadPrefs();
+  const list = (data[ERRORS]?.value || []).filter((x) => x.last > upTo);
+  data[ERRORS] = { value: list, ts: Math.max(Date.now(), (data[ERRORS]?.ts || 0) + 1) };
+  saveLocal();
 }
 
 // ---------------- 通知を送る先 ----------------

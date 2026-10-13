@@ -1,6 +1,7 @@
 // 寄り付きのくせ（日本株）：朝9時の寄り付きが、その日の一番高いところ（寄り天）か一番安いところ（寄り底）になりやすいか
 // PTS（夜間取引）などで前の日の終わりより上か下で始まりそうなときに、過去の同じような日がどうだったかを出す
 import { api, $, esc, fmtPrice } from './util.js';
+import { errText } from './report.js';
 
 const BUCKETS = [
   ['大きく上で始まる（+2%以上）', (g) => g >= 0.02],
@@ -110,6 +111,6 @@ export async function updateOpening(st, mode) {
     stats = openingStats(cs);
     render();
   } catch (e) {
-    if (lastKey === st.symbol) { box.innerHTML = `<p class="error">${esc(e.message)}</p>`; lastKey = ''; }
+    if (lastKey === st.symbol) { box.innerHTML = `<p class="error">${esc(errText('チャート・寄り付き', e))}</p>`; lastKey = ''; }
   }
 }

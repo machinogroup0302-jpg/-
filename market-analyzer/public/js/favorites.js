@@ -187,3 +187,24 @@ export function removeFav(mode, code) {
   setFavs(mode, next);
   return next;
 }
+
+// ---- 自分のデータを書き出す・読み込む（サーバーのバックアップとは別に、手元にも控えを持てるように） ----
+export function exportData() {
+  const items = {};
+  for (const key of KEYS) { const v = localValue(key); if (v != null) items[key] = v; }
+  return { app: '相場分析ノート', version: 1, exportedAt: new Date().toISOString(), items };
+}
+// 読み込んだ内容で置き換える（サーバーにも送るので、ほかの端末にも反映される）。読み込んだ項目の名前を返す
+export function importData(obj) {
+  if (!obj || obj.app !== '相場分析ノート' || typeof obj.items !== 'object') throw new Error('このサイトで書き出したファイルではありません');
+  const done = [];
+  for (const key of KEYS) {
+    const v = obj.items[key];
+    if (v == null) continue;
+    if (key === 'profile' ? typeof v !== 'object' || Array.isArray(v) : !Array.isArray(v)) continue;
+    store.set(key, v);
+    markDirty(key);
+    done.push(key);
+  }
+  return done;
+}

@@ -14,6 +14,7 @@ import { loadEcon, econWarnHtml } from './econview.js';
 import { tradeSymbol } from './tradecoach.js';
 import { parseHoldingsCsv } from './holdimport.js';
 import { decodeFile } from './trades.js';
+import { errText, report } from './report.js';
 
 const pct = (v) => (v == null ? '—' : `${Math.round(v * 100)}%`);
 // 銘柄名を押すと、その銘柄のチャートを開く
@@ -219,7 +220,7 @@ async function showPlan(mode, force = false) {
     if (getModeFn() !== mode) return;
     renderPlan(r, mode);
     updateHoldDays(mode, r);
-  } catch (e) { out.innerHTML = `<p class="error">${esc(e.message)}</p>`; }
+  } catch (e) { out.innerHTML = `<p class="error">${esc(errText('あなた専用', e))}</p>`; }
 }
 
 const yen0 = (v) => `${Math.round(v).toLocaleString()}円`;
@@ -359,7 +360,7 @@ async function showNow(mode, force = false) {
     if (getModeFn() !== mode) return;
     renderNow(r, mode);
     updateHoldDays(mode, r);
-  } catch (e) { out.innerHTML = `<p class="error">${esc(e.message)}</p>`; }
+  } catch (e) { out.innerHTML = `<p class="error">${esc(errText('あなた専用', e))}</p>`; }
 }
 
 async function showList(mode, force = false) {
@@ -369,7 +370,7 @@ async function showList(mode, force = false) {
     if (getModeFn() !== mode) return;
     renderLog(r, mode);
     updateHoldDays(mode, r);
-  } catch (e) { out.innerHTML = `<p class="error">${esc(e.message)}</p>`; }
+  } catch (e) { out.innerHTML = `<p class="error">${esc(errText('あなた専用', e))}</p>`; }
 }
 
 // あなたの設定なら「どの口座で・どれだけ」入るか（今のサイン・売買の一覧で使う）
@@ -608,7 +609,7 @@ async function adviceFor(mode, list) {
   }
   const profile = getProfile();
   return list.map((h) => {
-    try { return adviceOne(h); } catch (e) { console.error(e); return { h, adv: null }; }
+    try { return adviceOne(h); } catch (e) { report('あなた専用・持っている株（1銘柄）', e); return { h, adv: null }; }
   });
   function adviceOne(h) {
     const sym = symbolOf(mode, h.code);
@@ -683,7 +684,7 @@ export function mergeBuy(h, buy) {
 let addFormTouched = false;
 async function showHoldings(mode) {
   try { await showHoldingsInner(mode); } catch (e) {
-    console.error(e);
+    report('あなた専用・持っている株', e);
     $('hold-list').innerHTML = `<div class="card"><p class="small error">表示できませんでした（${esc(e.message)}）。</p><button class="btn block" id="hold-retry">もう一度読み込む</button></div>`;
     $('hold-retry').onclick = () => showHoldings(mode);
   }
@@ -953,7 +954,7 @@ export async function showWaysCard(el, mode) {
       ${waysHtml(v, mode)}
       <p class="small" style="margin:6px 0 0">${v.cmp.note === 'rest' ? `どのやり方もマイナスだったので、今はお休みがおすすめです。「あなた専用」では、やるなら一番損が小さい「<b>${esc(b.label)}</b>」で出しています。` : `今は「<b>${esc(b.label)}</b>」でやるのが一番いいと判断して、「あなた専用」のプラン・サイン・メールもこのやり方で出しています。`}</p>
       ${updatedNote(r)}`;
-  } catch (e) { el.innerHTML = `<p class="error">${esc(e.message)}</p>`; }
+  } catch (e) { el.innerHTML = `<p class="error">${esc(errText('あなた専用', e))}</p>`; }
 }
 
 export function initMine(getMode, openChart = () => {}) {

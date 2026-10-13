@@ -1,6 +1,7 @@
 // ファンダメンタルズ分析の表（チャート画面とニュースタブの両方に表示）
 import { api, $, esc } from './util.js';
 import { term } from './glossary.js';
+import { errText } from './report.js';
 
 let lastKey = '';
 let lastHtml = '';
@@ -39,6 +40,6 @@ export async function updateFundamentals(st) {
     const d = await api(`/api/fundamentals?symbol=${encodeURIComponent(st.symbol)}&name=${encodeURIComponent(st.name || '')}`);
     if (key === lastKey) show(renderFundamentals(d, /=X$/.test(st.symbol)));
   } catch (e) {
-    if (key === lastKey) show(`<p class="error">${esc(e.message)}</p>`);
+    if (key === lastKey) show(`<p class="error">${esc(errText('ファンダメンタルズ', e))}</p>`);
   }
 }

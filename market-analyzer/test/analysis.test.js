@@ -1055,3 +1055,18 @@ test('重要な経済指標：影響が大きいものだけ・日本語に', ()
   assert.match(list[0].title, /雇用統計/);
   assert.ok(fallbackEvents(Date.UTC(2026, 10, 1), 10).length >= 1);
 });
+
+import { addError, getErrors, ackErrors } from '../lib/prefs.js';
+test('不具合の見張り：同じエラーはまとめて数える・知らせたら消す', async () => {
+  resetP();
+  await addError({ where: 'あなた専用', message: 'CARRY is not defined', version: 'abc' });
+  await addError({ where: 'あなた専用', message: 'CARRY is not defined', version: 'abc' });
+  await addError({ where: 'ニュース', message: 'x' });
+  const list = await getErrors();
+  assert.equal(list.length, 2);
+  assert.equal(list.find((x) => x.where === 'あなた専用').count, 2);
+  await ackErrors(Date.now() + 1);
+  assert.equal((await getErrors()).length, 0);
+  const { items } = await getP('admin');
+  assert.ok(!items.__errors);
+});

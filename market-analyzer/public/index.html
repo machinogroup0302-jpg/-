@@ -463,6 +463,12 @@
         <textarea class="input" id="fav-edit" rows="4"></textarea>
         <p class="small muted">1行に「コード,表示名」。例: USDJPY,ドル円 ／ 7203,トヨタ。為替と株は別々に保存されます。</p>
         <p class="small" id="sync-status" style="margin-top:6px"></p>
+        <div class="field" style="margin-top:10px">
+          <label>自分のデータの控え（書き出す・読み込む）</label>
+          <p class="small muted" style="margin:0 0 6px">持っている株・お気に入り・取引履歴・あなたの設定を、ファイルにしてこの端末に保存できます。もしデータが消えても、このファイルを読み込めば元に戻せます。月に1回くらい書き出しておくと安心です。</p>
+          <div class="row"><button type="button" class="btn grow" id="data-export">📥 データを書き出す</button><label class="btn grow" style="text-align:center">📤 ファイルから戻す<input type="file" id="data-import" accept=".json,application/json" hidden></label></div>
+          <p class="small muted" id="data-status" style="margin:4px 0 0"></p>
+        </div>
         <p class="small muted" id="site-version" style="margin-top:6px"></p>
       </div>
       <div class="field">

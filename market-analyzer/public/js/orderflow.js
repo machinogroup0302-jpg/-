@@ -2,6 +2,7 @@
 import { api, $, esc } from './util.js';
 import { term } from './glossary.js';
 import { flowBreakdown, lastSession } from './volume.js';
+import { errText } from './report.js';
 
 let lastKey = '';
 
@@ -102,7 +103,7 @@ export async function updateOrderflow(st, mode) {
       + (code ? `<h3>${term('margin', '信用取引の残り')}</h3>${renderMargin(mg?.item, mg?.date, vol)}` : '');
     box.dataset.loaded = '1';
   } catch (e) {
-    if (key === lastKey) box.innerHTML = `<p class="error">${esc(e.message)}</p>`;
+    if (key === lastKey) box.innerHTML = `<p class="error">${esc(errText('チャート・売り買いの勢い', e))}</p>`;
   }
 }
 

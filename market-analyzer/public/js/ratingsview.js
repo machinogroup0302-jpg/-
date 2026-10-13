@@ -1,6 +1,7 @@
 // レーティング（アナリストの評価・目標株価）と PTS（夜間などの私設市場）の表示
 import { api, $, esc, fmtPrice } from './util.js';
 import { term } from './glossary.js';
+import { errText } from './report.js';
 
 let lastKey = '';
 
@@ -69,7 +70,7 @@ export async function updateRatings(st, mode) {
     const d = await api(`/api/ratings?symbol=${encodeURIComponent(st.symbol)}&name=${encodeURIComponent(st.name || '')}`);
     if (key === lastKey) render(d, mode === 'us');
   } catch (e) {
-    if (key === lastKey) box.innerHTML = `<p class="error">${esc(e.message)}</p>`;
+    if (key === lastKey) box.innerHTML = `<p class="error">${esc(errText('チャート・アナリスト', e))}</p>`;
   }
 }
 

@@ -3,7 +3,7 @@ import { api, $, esc, store, toast } from './util.js';
 import { initChartView, loadChart, renderFavorites, onSymbolChange, refreshTheme, setMode, getMode, startAutoRefresh, state as chartState } from './chartview.js';
 import { initStockScreener, showStockScreener, autoRefreshStock } from './stockscreener.js';
 import { initGlossary } from './glossary.js';
-import { getFavs, setFavs, DEFAULT_FAVS, syncFavs, onFavsSynced, syncState, getProfile, setProfile } from './favorites.js';
+import { getFavs, setFavs, DEFAULT_FAVS, syncFavs, onFavsSynced, syncState, getProfile, setProfile, exportData, importData } from './favorites.js';
 import { setTradesMode } from './tradesview.js';
 import { setScreenerMode } from './screener.js';
 import { updateRatings, updatePts, resetRatings } from './ratingsview.js';
@@ -13,6 +13,7 @@ import { initNewsView, onSymbol as newsOnSymbol, updateCrowd } from './newsview.
 import { initThemes, updateThemes } from './themeview.js';
 import { renderEconCard } from './econview.js';
 import { renderPush } from './push.js';
+import { initReport, setReportVersion, setReportPage } from './report.js';
 import { initTradesView } from './tradesview.js';
 import { updateOrderflow, resetOrderflow } from './orderflow.js';
 import { updateFundamentals, resetFundamentals } from './fundview.js';
@@ -52,6 +53,7 @@ function showTab(id) {
   }
   document.querySelectorAll('#tabbar button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === id)));
   store.set('tab', id);
+  setReportPage(`${id}・${getMode()}`);
   if (id === 'news') { newsOnSymbol(chartState); updateThemes(getMode()); updateCrowd(chartState, getMode()); renderEconCard(); }
   if (id === 'screener' && getMode() === 'stock') showStockScreener();
   if (id === 'lab') { updateLab(chartState, getMode()); showWaysCard($('lab-ways'), getMode()); }
@@ -273,6 +275,32 @@ function startApp() {
     showTab(currentTab);
   });
   $('open-settings').addEventListener('click', openSettings);
+  // 自分のデータの控え
+  $('data-export').addEventListener('click', () => {
+    const d = exportData();
+    const blob = new Blob([JSON.stringify(d, null, 1)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `market-note-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    const n = (k) => (Array.isArray(d.items[k]) ? d.items[k].length : 0);
+    $('data-status').textContent = `書き出しました（持っている株 ${['fx', 'stock', 'us'].reduce((s, m) => s + n(`holdings_${m}`), 0)}件・取引履歴 ${['fx', 'stock', 'us'].reduce((s, m) => s + n(`trades_${m}`), 0)}件・お気に入り ${['fx', 'stock', 'us'].reduce((s, m) => s + n(`favs_${m}`), 0)}件）`;
+  });
+  $('data-import').addEventListener('change', async (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    try {
+      const obj = JSON.parse(await f.text());
+      if (!confirm(`「${f.name}」の内容で、今のデータ（持っている株・お気に入り・取引履歴・あなたの設定）を置き換えますか？\n（${(obj.exportedAt || '').slice(0, 10)} に書き出したもの）`)) return;
+      const done = importData(obj);
+      $('data-status').textContent = `戻しました（${done.length}項目）。ほかの端末にも反映されます。`;
+      toast('データを戻しました');
+      renderFavorites();
+      syncFavs();
+    } catch (err) { $('data-status').textContent = `読み込めませんでした：${err.message}`; }
+    e.target.value = '';
+  });
   initAccount();
   $('pf-budget').addEventListener('input', showBudget);
   $('pf-margin-budget2').addEventListener('input', showBudget);
@@ -364,6 +392,8 @@ async function boot() {
     return;
   }
   me = st.user || { id: 'admin', name: '持ち主', admin: true };
+  initReport();
+  setReportVersion(st.version);
   // 今動いているサイトの版（直したものが届いているか確かめるため、設定のいちばん下に出す）
   const ver = document.getElementById('site-version');
   if (ver) ver.textContent = `サイトの版：${st.version || '—'}`;
