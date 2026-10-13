@@ -113,6 +113,7 @@ async function openSettings() {
   renderSyncStatus();
   renderAccount();
   renderPush();
+  renderErrors();
   $('settings').showModal();
   syncFavs().then(renderSyncStatus);
 }
@@ -381,6 +382,23 @@ function initAccount() {
     await api('/api/logout', { method: 'POST' }).catch(() => {});
     location.reload();
   };
+}
+
+// 不具合の記録（画面で起きたエラー）を見る：持ち主だけ
+async function renderErrors() {
+  const f = $('err-field');
+  if (!me?.admin) { f.hidden = true; return; }
+  f.hidden = false;
+  const box = $('err-box');
+  let d;
+  try { d = await api('/api/my/errors'); } catch (e) { box.innerHTML = `<p class="small error">${esc(e.message)}</p>`; return; }
+  const fmt = (t) => new Date(t).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  box.innerHTML = d.items.length
+    ? `<ul class="list">${d.items.map((x) => `<li class="small"><b>[${esc(x.where)}]</b> ${esc(x.message)}<div class="muted">${x.count}回・最後 ${esc(fmt(x.last))}・版 ${esc(x.version || '—')}・画面 ${esc(x.page || '—')}</div></li>`).join('')}</ul>
+      <p class="small muted" style="margin:4px 0">直してほしいときは、この内容を Claude に伝えてください（メールでも1時間ごとに届きます）。</p>
+      <button type="button" class="btn block" id="err-clear">見たので消す</button>`
+    : `<p class="small muted">今は記録されているエラーはありません ✅（サイトの版：${esc(d.version)}）</p>`;
+  $('err-clear')?.addEventListener('click', async () => { await api('/api/my/errors/clear', { method: 'POST', body: {} }).catch(() => {}); renderErrors(); });
 }
 
 async function boot() {

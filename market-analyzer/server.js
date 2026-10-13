@@ -160,6 +160,13 @@ async function handleApi(req, res, url) {
   const uid = await currentUser(req);
   if (!uid) return json(res, 401, { error: 'ログインしてください' });
 
+  // 不具合の記録を見る・消す（持ち主だけ）
+  if (route === 'GET /api/my/errors' || route === 'POST /api/my/errors/clear') {
+    if (uid !== ADMIN) return json(res, 403, { error: '持ち主だけが見られます' });
+    if (req.method === 'POST') await ackErrors(Date.now() + 1);
+    return json(res, 200, { items: await getErrors(), version: (process.env.RENDER_GIT_COMMIT || 'local').slice(0, 7) });
+  }
+
   // 画面で起きたエラーを記録する（持ち主にあとでメールで知らせる）
   if (route === 'POST /api/report') {
     const b = await readBody(req);
