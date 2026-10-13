@@ -69,8 +69,26 @@ export function regimeScore(r, kind, pair = '') {
   return { score, notes };
 }
 
+// 往復（買って売る）でかかる費用の目安：手数料＋値段のずれ（スプレッド・思った値段で売買できない分）
+// ・日本株：楽天証券の手数料0円コースでも、寄り付きの値段は少しずれるので片道0.15%
+// ・米国株：手数料（約定代金の0.495%）＋ドルに替える手数料（1ドル25銭＝約0.17%）を片道ずつ、ずれ0.05%
+// ・為替：スプレッド＋朝の売買で広がる分（往復0.04%＝ドル円で約6銭）
+export const COST = { stock: 0.003, us: 0.0143, fx: 0.0004 };
 function cost(kind) {
-  return kind === 'fx' ? 0.0003 : 0.001; // 往復の費用（スプレッド・手数料の目安）
+  return COST[kind] ?? COST.stock;
+}
+
+// 為替のスワップポイント（1年あたりの金利の目安）。高い金利の通貨を買って持つともらえ、売って持つと払う。
+// もらう側は少なめ（6割）、払う側はそのまま払う計算にする（業者の取り分があるため）
+export const RATES = { JPY: 0.0075, USD: 0.0375, EUR: 0.02, GBP: 0.0375, AUD: 0.036, NZD: 0.0275, CAD: 0.025, CHF: 0, ZAR: 0.07, MXN: 0.075, TRY: 0.4, CNH: 0.03, HKD: 0.04, SGD: 0.02, NOK: 0.04, SEK: 0.02 };
+export function swapRet(pair, side, entryTime, exitTime) {
+  const p = String(pair).replace(/=X$/, '').toUpperCase();
+  const a = RATES[p.slice(0, 3)], b = RATES[p.slice(3, 6)];
+  if (a == null || b == null || !(exitTime > entryTime)) return 0;
+  const days = Math.floor((exitTime - entryTime) / 86400);
+  if (days < 1) return 0;
+  const diff = side * (a - b);
+  return (diff > 0 ? diff * 0.6 : diff) * days / 365;
 }
 
 const TECH_MEMO = new WeakMap();
@@ -110,8 +128,16 @@ export function runStrategy(candles, id, { kind = 'stock', pair = '', regime = n
     const c = candles[i];
     const events = [];
     // 1) 前の日に決めた売買を、今日の始まりの値段で行う
+    // 日本株：1日じゅう同じ値段（ストップ高・ストップ安に張り付いた日）は、売買が成立しない
+    const locked = kind === 'stock' && !intraday && c.high === c.low && i > 0;
+    let keep = false;
     if (pending) {
-      if (pending.type === 'open' && !pos) {
+      if (pending.type === 'open' && !pos && locked) {
+        events.push('ストップ高・安に張り付いて買えず（売れず）、見送り');
+      } else if (pending.type === 'close' && pos && locked) {
+        events.push('ストップ高・安に張り付いて決済できず、次の日に持ち越し');
+        keep = true;
+      } else if (pending.type === 'open' && !pos) {
         pos = { side: pending.side, entryIdx: i, entryPrice: c.open, reason: pending.reason, why: pending.why || [], strength: pending.strength ?? null, peak: c.open, trough: c.open };
         const a = a14[i - 1] || c.open * 0.01;
         pos.stop = c.open - pos.side * a * (id === 'rebound' ? 2 : 2);
@@ -120,14 +146,14 @@ export function runStrategy(candles, id, { kind = 'stock', pair = '', regime = n
         pos.why = [...pos.why, `入った値段 ${num(c.open)}（${NEXT}）・損切りの線 ${num(pos.stop)}${pos.take ? `・利益確定の目標 ${num(pos.take)}` : ''}`];
         events.push(`${pos.side > 0 ? '買い' : '売り'}で入る（${pending.reason}）`);
       } else if (pending.type === 'close' && pos) {
-        const ret = pos.side * (c.open / pos.entryPrice - 1) - cost(kind);
+        const ret = pos.side * (c.open / pos.entryPrice - 1) - cost(kind) + (kind === 'fx' ? swapRet(pair, pos.side, candles[pos.entryIdx].time, c.time) : 0);
         const pnl = CAPITAL * ret;
         realized += pnl;
         trades.push({ side: pos.side, mae: maeOf(pos, c.open, c.open), entryDate: dayKey(candles[pos.entryIdx].time), entryTime: candles[pos.entryIdx].time, entryPrice: pos.entryPrice, exitDate: dayKey(c.time), exitTime: c.time, exitPrice: c.open, ret, pnl, stopPct: Math.abs(pos.entryPrice - pos.stop0) / pos.entryPrice, reasonIn: pos.reason, reasonOut: pending.reason, strength: pos.strength, whyIn: pos.why, whyOut: pending.why || [], days: i - pos.entryIdx });
         events.push(`決済（${pending.reason}）`);
         pos = null;
       }
-      pending = null;
+      if (!keep) pending = null;
     }
 
     // 2) 今日の終わりの値段で、次の日にどうするか決める

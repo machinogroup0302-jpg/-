@@ -4,7 +4,7 @@ import { api, $, esc, store, fmtPrice, fmtYen } from './util.js';
 import { runStrategy, signalOdds, oddsLabel, oddsText } from './strategies.js';
 import { pagedList } from './stockscreener.js';
 import { getProfile, setProfile, getHoldings, setHoldings, syncState } from './favorites.js';
-import { replayWithBudget, kindText, sizeFor, orderText, WAYS, wayOf, waySides, wayProfile, compareWays, wayNotes, replayOpts, budgets, pipsOf, pipsText, CARRY, searchCustom, walkForward } from './plan.js';
+import { replayWithBudget, kindText, sizeFor, orderText, WAYS, wayOf, waySides, wayProfile, compareWays, wayNotes, replayOpts, budgets, pipsOf, pipsText, CARRY, searchCustom, walkForward, afterTax } from './plan.js';
 import { loadRegime, loadCandles, universe, kindOf } from './labview.js';
 import { baseUniverse } from './universe.js';
 import { adviseHolding, exitTiming, longTermView, addOnAdvice } from './holdingadvice.js';
@@ -217,7 +217,7 @@ async function showPlan(mode, force = false) {
 
 const yen0 = (v) => `${Math.round(v).toLocaleString()}円`;
 
-const replayCard = (t, x) => `<div class="stat"><div class="label">${t}</div><div class="value ${x.total >= 0 ? 'plus' : 'minus'}">${fmtYen(x.total)}</div><div class="small muted">${x.trades}回・勝率${pct(x.winRate)}・一番減ったとき ${fmtYen(-x.maxDD)}${x.losscuts ? `・<b class="minus">ロスカット${x.losscuts}回</b>` : ''}${x.broke ? '・<b class="minus">途中で資金がなくなった</b>' : ''}</div></div>`;
+const replayCard = (t, x) => `<div class="stat"><div class="label">${t}</div><div class="value ${x.total >= 0 ? 'plus' : 'minus'}">${fmtYen(x.total)}</div><div class="small">税引き後 <b class="${x.total >= 0 ? 'plus' : 'minus'}">${fmtYen(afterTax(x.total))}</b></div><div class="small muted">${x.trades}回・勝率${pct(x.winRate)}・一番減ったとき ${fmtYen(-x.maxDD)}${x.losscuts ? `・<b class="minus">ロスカット${x.losscuts}回</b>` : ''}${x.broke ? '・<b class="minus">途中で資金がなくなった</b>' : ''}</div></div>`;
 
 // 為替：何pips動いたか・何ロットで入るか（「${表示中のやり方}」の過去1年）
 function fxPipNotes(v) {
@@ -238,14 +238,14 @@ function wfHtml(v, mode) {
   const rest = w.months.filter((m) => m.rest).length;
   return `<h3>📅 1年前から、先を知らずにやっていたら<span class="sub">本当の練習・${ym(w.from)}〜${ym(w.to)}</span></h3>
     <div class="grid2">
-      <div class="stat"><div class="label">1年の損益（あなたの予算）</div><div class="value ${w.total >= 0 ? 'plus' : 'minus'}">${fmtYen(w.total)}</div><div class="small muted">${w.budget ? `予算の${w.total >= 0 ? '+' : ''}${(w.total / w.budget * 100).toFixed(1)}%` : ''}</div></div>
+      <div class="stat"><div class="label">1年の損益（あなたの予算）</div><div class="value ${w.total >= 0 ? 'plus' : 'minus'}">${fmtYen(w.total)}</div><div class="small">税引き後（手取り） <b class="${w.total >= 0 ? 'plus' : 'minus'}">${fmtYen(afterTax(w.total))}</b></div><div class="small muted">${w.budget ? `予算の${w.total >= 0 ? '+' : ''}${(afterTax(w.total) / w.budget * 100).toFixed(1)}%（税引き後）` : ''}</div></div>
       <div class="stat"><div class="label">取引・勝率・一番減ったとき</div><div class="value" style="font-size:16px">${w.trades}回・${pct(w.winRate)}</div><div class="small muted">一番減ったとき ${fmtYen(-w.maxDD)}${w.losscuts ? `・ロスカット${w.losscuts}回` : ''}</div></div>
     </div>
     <details class="more-box"><summary>月ごとに見る（その月に選んだやり方・損益・残高）</summary>
       <div class="tbl-wrap"><table class="tbl"><thead><tr><th>月</th><th>その月の初めに選んだやり方</th><th class="r">回数</th><th class="r">損益</th><th class="r">月末の残高</th></tr></thead><tbody>
       ${w.months.map((m) => `<tr><td class="small">${ym(m.ym)}</td><td class="small">${esc(m.label)}</td><td class="r small">${m.n}</td><td class="r small ${m.pnl >= 0 ? 'plus' : 'minus'}">${m.n ? fmtYen(m.pnl) : '—'}</td><td class="r small">${yen0(m.balance)}</td></tr>`).join('')}
       </tbody></table></div></details>
-    <p class="small muted" style="margin:4px 0 0">毎月の初めに、<b>その時点までに結果が出ていた取引（過去半年）だけ</b>を見て、その月のやり方（現物・信用・空売り${mode === 'fx' ? '・買い売りの向き' : ''}、勝つ確率で絞るか、お休みか）を決め、その月のサインどおりに売買した結果です。後から分かったことは使っていません。${rest ? `${rest}か月は、どのやり方も過去半年マイナスだったのでお休みしました。` : ''}銘柄は、今の人気で選ぶと後から見て強かったものばかりになるので、最初から決まっている${mode === 'fx' ? '全部の通貨ペア' : `代表${v.wfCount}銘柄`}で計算しています。</p>`;
+    <p class="small muted" style="margin:4px 0 0">毎月の初めに、<b>その時点までに結果が出ていた取引（過去半年）だけ</b>を見て、その月のやり方（現物・信用・空売り${mode === 'fx' ? '・買い売りの向き' : ''}、勝つ確率で絞るか、お休みか）を決め、その月のサインどおりに売買した結果です。後から分かったことは使っていません。<br>現実に近づけるため、①手数料と値段のずれ（${mode === 'stock' ? '日本株は往復0.3%' : mode === 'us' ? '米国株は手数料・ドルへの両替を含め往復約1.4%' : '為替は往復0.04%'}）、${mode === 'stock' ? '②ストップ高・安に張り付いた日は売買できない、③信用の金利・貸株料、' : mode === 'fx' ? '②スワップポイント（金利差の目安。もらう側は6割）、' : '②信用の金利、'}④税金（利益の20.315%）を入れています。${rest ? `${rest}か月は、どのやり方も過去半年マイナスだったのでお休みしました。` : ''}銘柄は、今の人気で選ぶと後から見て強かったものばかりになるので、最初から決まっている${mode === 'fx' ? '全部の通貨ペア' : `代表${v.wfCount}銘柄`}で計算しています。</p>`;
 }
 
 // AIの特別ルール：どう見つけて、本当に良かったか（前半で見つけて後半で確かめた結果）
@@ -278,7 +278,7 @@ function waysHtml(v, mode) {
     <p class="small" style="margin:6px 0 0">${bestText(v, false)}</p>
     ${customHtml(v)}
     <ul class="why" style="font-size:13px;color:var(--text)">${[...wayNotes(v.cmp, mode, v.budget), ...(mode === 'fx' ? fxPipNotes(v) : [])].map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
-    <p class="small muted" style="margin:4px 0 0">${mode === 'fx' ? `為替はスワップポイントは入れていません。${getProfile().fxLots > 0 ? `毎回${getProfile().fxLots}ロットで計算しています。` : 'ロット数はおまかせ（損切りの幅から量を決める）で計算しています。'}` : '信用は、楽天証券の制度信用くらいの金利（買い年2.8%・空売りの貸株料 年1.1%）を差し引いています。'}持っている間に一番不利になったところで、${mode === 'fx' ? '証拠金維持率が100%' : mode === 'us' ? '保証金が取引金額の25%' : '保証金維持率が20%'}を割ったら「ロスカット（強制決済）」としています。おすすめは、<b>プラスになったやり方だけ</b>から選びます（一番減ったときが予算の35%以内のものを優先し、簡単なやり方を優先して、はっきり成績が良いときだけ手間やリスクの多いやり方を選びます）。どれもマイナスなら「お休み」をすすめます。</p>`;
+    <p class="small muted" style="margin:4px 0 0">${mode === 'fx' ? `為替はスワップポイント（金利差の目安）と往復0.04%の費用を入れています。${getProfile().fxLots > 0 ? `毎回${getProfile().fxLots}ロットで計算しています。` : 'ロット数はおまかせ（損切りの幅から量を決める）で計算しています。'}` : `手数料と値段のずれ（${mode === 'us' ? '米国株は往復約1.4%' : '日本株は往復0.3%'}）${mode === 'stock' ? '・ストップ高・安で売買できない日' : ''}と、信用の金利（楽天証券の制度信用くらい：買い年2.8%・空売りの貸株料 年1.1%）を差し引いています。`}持っている間に一番不利になったところで、${mode === 'fx' ? '証拠金維持率が100%' : mode === 'us' ? '保証金が取引金額の25%' : '保証金維持率が20%'}を割ったら「ロスカット（強制決済）」としています。おすすめは、<b>プラスになったやり方だけ</b>から選びます（一番減ったときが予算の35%以内のものを優先し、簡単なやり方を優先して、はっきり成績が良いときだけ手間やリスクの多いやり方を選びます）。どれもマイナスなら「お休み」をすすめます。</p>`;
 }
 
 function renderPlan(r0, mode) {
@@ -338,7 +338,7 @@ function renderPlan(r0, mode) {
     <div class="grid2">${replayCard('サインが出たら全部やる', all)}${replayCard('確率の目安55%以上だけやる', picky)}</div></details>
     ${waysHtml(r, mode)}
     <p class="small" style="margin:6px 0 0"><b>サインの絞り方：</b>${usePicky ? '確率の目安が55%以上のサインだけに絞る方が成績が良かったので、上の「今やるといいこと」も55%以上に絞っています。' : '絞らずにサインどおりにやる方が成績が良かったので、50%以上のサインを出しています。'}</p>
-    <p class="notice" style="margin-top:8px">過去の値動きでの計算です。日本株は100株単位、為替は1,000通貨単位で、取引のしかたは「${esc(kindText(pf, mode))}」で計算しています（為替の証拠金は国内の決まりの25倍で計算）。手数料などは差し引いていますが、実際の値段（次の日の始まりの値段）は少しずれます。最終的な判断はご自身で行ってください。</p>
+    <p class="notice" style="margin-top:8px">過去の値動きでの計算です。日本株は100株単位、為替は1,000通貨単位で、取引のしかたは「${esc(kindText(pf, mode))}」で計算しています（為替の証拠金は国内の決まりの25倍で計算）。手数料・値段のずれ・金利（スワップ）は目安で差し引き、「税引き後」も出しています。それでも、計算どおりに毎回売買できるとは限らず、実際の結果は変わります。最終的な判断はご自身で行ってください。</p>
     ${updatedNote(r0)}`;
   $('plan-settings').onclick = () => $('open-settings').click();
 }

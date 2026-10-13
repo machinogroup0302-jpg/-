@@ -983,3 +983,19 @@ test('1年前から先を知らずに：毎月その時点までのことだけ�
   assert.ok(w.months.some((m) => m.rest)); // 負けが続いたあとはお休みになる
   assert.ok(w.months[0].n > 0 && w.months[0].pnl > 0);
 });
+
+import { swapRet, COST } from '../public/js/strategies.js';
+import { afterTax } from '../public/js/plan.js';
+test('現実に近づける：費用・スワップ・税金・ストップ高', () => {
+  assert.ok(COST.us > COST.stock && COST.stock > COST.fx);
+  // ドル円を30日買い持ち：もらえる（6割）／売り持ち：払う
+  const buy = swapRet('USDJPY', 1, 0, 30 * 86400), sell = swapRet('USDJPY', -1, 0, 30 * 86400);
+  assert.ok(buy > 0 && sell < 0 && Math.abs(sell) > buy);
+  assert.equal(Math.round(afterTax(100000)), 79685);
+  assert.equal(afterTax(-5000), -5000);
+  // ストップ高に張り付いた日は買えない
+  const cs = [...Array(300)].map((_, i) => { const p = 100 + i * 0.3; return { time: 1.7e9 + i * 86400, open: p, high: p + 1, low: p - 1, close: p + 0.5, volume: 1000 }; });
+  const lockedAll = cs.map((c, i) => (i > 200 ? { ...c, high: c.open, low: c.open, close: c.open } : c));
+  const r = runS2(lockedAll, 'combo', { kind: 'stock', sides: 'long' });
+  assert.ok(r.trades.every((t) => t.entryDate <= new Date((1.7e9 + 201 * 86400) * 1000 + 9 * 3600e3).toISOString().slice(0, 10)));
+});

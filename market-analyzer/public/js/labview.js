@@ -7,7 +7,7 @@ import { baseUniverse } from './universe.js';
 import { pagedList } from './stockscreener.js';
 import { futureTimes } from './forecast.js';
 import { getFavs, getProfile } from './favorites.js';
-import { SIDES_TEXT, wayOf, pipsOf, pipsText, fxLotYen } from './plan.js';
+import { SIDES_TEXT, wayOf, pipsOf, pipsText, fxLotYen, afterTax } from './plan.js';
 import { adviseHolding, addOnAdvice } from './holdingadvice.js';
 // 向きは「あなた専用」で一番良かったやり方に合わせる（まだ計算していなければ、株は買いだけ・為替は両方）
 const bestWay = (mode) => wayOf(mode, getProfile().bestWay?.[mode]);
@@ -136,7 +136,7 @@ function renderTrades() {
   const nextTxt = r.next ? (r.next.type === 'open' ? `次の取引日に<b>${r.next.side > 0 ? '買い' : '売り'}</b>で入る予定（${esc(r.next.reason)}）` : `次の取引日に<b>決済</b>する予定（${esc(r.next.reason)}）`) : '';
   $('lab-s-stats').innerHTML = `
     <div class="grid2">
-      <div class="stat"><div class="label">合計の損益（100万円で取引）</div><div class="value ${s.total >= 0 ? 'plus' : 'minus'}">${fmtYen(s.total)}</div></div>
+      <div class="stat"><div class="label">合計の損益（100万円で取引）</div><div class="value ${s.total >= 0 ? 'plus' : 'minus'}">${fmtYen(s.total)}</div><div class="small">税引き後 ${fmtYen(afterTax(s.total))}</div></div>
       <div class="stat"><div class="label">${term('winRate', '勝率')}（${s.trades}回）</div><div class="value">${pct(s.winRate)}</div></div>
       <div class="stat"><div class="label">${term('drawdown', '一番減ったときの額')}</div><div class="value minus">${fmtYen(-s.maxDrawdown)}</div></div>
       <div class="stat"><div class="label">比較：買ってずっと持っていた場合</div><div class="value ${s.buyHold >= 0 ? 'plus' : 'minus'}">${fmtYen(s.buyHold)}</div></div>

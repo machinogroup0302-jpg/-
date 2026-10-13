@@ -461,3 +461,7 @@ export function walkForward(tradesBy, mode, pf, prices = {}, { months = 12, look
   });
   return { ...r, months: byMonth, from: first, to: last, budget };
 }
+
+// 税金：株も為替も、1年の利益に約20%（所得税・住民税で20.315%）。損した年はかからない
+export const TAX = 0.20315;
+export const afterTax = (v) => (v > 0 ? v * (1 - TAX) : v);
