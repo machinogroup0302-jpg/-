@@ -10,6 +10,10 @@ import { baseUniverse } from './universe.js';
 import { adviseHolding, exitTiming, longTermView, addOnAdvice } from './holdingadvice.js';
 import { searchFx } from './fxpairs.js';
 import { fmtTime, judgedText, execText } from './sessiontime.js';
+import { loadEcon, econWarnHtml } from './econview.js';
+import { tradeSymbol } from './tradecoach.js';
+import { parseHoldingsCsv } from './holdimport.js';
+import { decodeFile } from './trades.js';
 
 const pct = (v) => (v == null ? '—' : `${Math.round(v * 100)}%`);
 // 銘柄名を押すと、その銘柄のチャートを開く
@@ -210,6 +214,7 @@ function updatedNote(r) {
 async function showPlan(mode, force = false) {
   const out = $('lab-plan');
   try {
+    await loadEcon();
     const r = await computeLog(mode, out, force);
     if (getModeFn() !== mode) return;
     renderPlan(r, mode);
@@ -317,6 +322,7 @@ function renderPlan(r0, mode) {
       return `<li class="plan-pick">
         <div class="li-head"><span class="name">${symLink(x.symbol, x.name)}</span>${sideBadge(x.side)}</div>
         ${timeLine(mode, x.t)}
+        ${econWarnHtml(x.symbol, mode)}
         <div class="plan-order"><b>${orderText(x.side, s)}</b>（今 ${fmtPrice(x.last, d)}・${s.kindLabel} 約${yen0(s.cost)}）</div>
         ${s.over ? `<p class="small" style="color:var(--warn);margin:2px 0">⚠ ${s.lots}ロットだと、損切りまでいくと約${yen0(s.maxLoss)}減ります（1回で減ってもいい${yen0(s.riskYen)}を超えています）。ロット数を減らすか、設定でおまかせにするのがおすすめです。</p>` : ''}
         <div class="grid2 plan-grid">
@@ -348,6 +354,7 @@ function renderPlan(r0, mode) {
 async function showNow(mode, force = false) {
   const out = $('lab-now');
   try {
+    await loadEcon();
     const r = await computeLog(mode, out, force);
     if (getModeFn() !== mode) return;
     renderNow(r, mode);
@@ -391,6 +398,7 @@ function renderNow(r0, mode) {
       <div class="li-head"><span class="name">${symLink(x.symbol, x.name)}</span>${sideBadge(x.side)}</div>
       <div class="small"><b>${nextText()}${x.side > 0 ? '買う' : '売る'}</b>（今 ${fmtPrice(x.last, d)}）</div>
       ${sizeLine(r, mode, x)}
+      ${econWarnHtml(x.symbol, mode)}
       ${timeLine(mode, x.t)}
       ${oddsHtml(x.odds)}
       <details class="why-box"><summary>理由を見る</summary>${whyList(x.why)}</details></li>`).join('')}</ul>` : '<p class="small muted">今は新しく入るサインはありません。</p>'}
@@ -415,6 +423,58 @@ function renderNow(r0, mode) {
     }).join('')}</ul>` : '<p class="small muted">計算の上で持っている銘柄はありません。</p>'}
     <p class="notice" style="margin-top:8px">「勝つ確率の目安」は過去の成績からの見積もりで、当たる保証はありません。</p>
     ${updatedNote(r0)}`;
+}
+
+// ---------------- 本番の記録と、計算の比べ ----------------
+// メールでお知らせした売買（計算の結果）と、取引分析に読み込んだ実際の取引（CSV）を突き合わせる
+const normName = (x) => String(x || '').normalize('NFKC').replace(/[\s・（）()株式会社]/g, '').toUpperCase();
+async function fillRecord(mode) {
+  const el = $('real-record');
+  if (!el) return;
+  let rec;
+  try { rec = await api('/api/record'); } catch { el.innerHTML = ''; return; }
+  if (!$('real-record')) return;
+  const pf = getProfile();
+  const b = budgets(pf);
+  const per = (mode === 'fx' ? b.cash : b.cash) / (pf.maxPos || 3);
+  const log = rec.log.filter((t) => t.mode === mode).sort((a, c) => (c.exitTime || 0) - (a.exitTime || 0));
+  const head = '<h3>📒 本番の記録（メールでお知らせした売買）と、実際の取引の比べ</h3>';
+  if (!log.length) {
+    el.innerHTML = `${head}<p class="small muted">まだ決済まで終わった売買はありません。お知らせした売買が決済まで終わると、ここに「計算の結果」と「あなたが実際に取引した結果（取引分析に読み込んだCSV）」を月ごとに並べます。${rec.open.filter((t) => t.mode === mode).length ? `今、お知らせして持っている途中のものが${rec.open.filter((t) => t.mode === mode).length}件あります。` : ''}</p>`;
+    return;
+  }
+  const actual = (store.get(`trades_${mode}`, []) || []).filter((a) => a.pnl != null && a.date);
+  const used = new Set();
+  const rows = log.map((t) => {
+    const calc = t.ret * per;
+    // 同じ銘柄で、決済した日が前後4日以内の実際の取引
+    let best = null, bestGap = Infinity;
+    for (const a of actual) {
+      if (used.has(a)) continue;
+      const sameSym = tradeSymbol(a, mode) === t.symbol || (normName(a.symbol) && (normName(a.symbol).includes(normName(t.name)) || normName(t.name).includes(normName(a.symbol))));
+      if (!sameSym) continue;
+      const gap = Math.abs(Date.parse(a.date) / 1000 - (t.exitTime || 0));
+      if (gap <= 4 * 86400 && gap < bestGap) { best = a; bestGap = gap; }
+    }
+    if (best) used.add(best);
+    return { t, calc, real: best ? best.pnl : null, ym: new Date(((t.exitTime || 0) + 9 * 3600) * 1000).toISOString().slice(0, 7) };
+  });
+  const sum = (a) => a.reduce((x, y) => x + y, 0);
+  const found = rows.filter((x) => x.real != null);
+  const months = [...new Set(rows.map((x) => x.ym))].sort().reverse();
+  const diff = sum(found.map((x) => x.real)) - sum(found.map((x) => x.calc));
+  el.innerHTML = `${head}
+    <div class="grid2">
+      <div class="stat"><div class="label">お知らせした売買（計算）</div><div class="value ${sum(rows.map((x) => x.calc)) >= 0 ? 'plus' : 'minus'}">${fmtYen(sum(rows.map((x) => x.calc)))}</div><div class="small muted">${rows.length}回・勝ち${rows.filter((x) => x.t.ret > 0).length}回（1銘柄${yen0(per)}ずつ）</div></div>
+      <div class="stat"><div class="label">実際の取引（CSVで見つかった分）</div><div class="value ${sum(found.map((x) => x.real)) >= 0 ? 'plus' : 'minus'}">${found.length ? fmtYen(sum(found.map((x) => x.real))) : '—'}</div><div class="small muted">${found.length}回が見つかりました${found.length ? `・同じ回の計算は ${fmtYen(sum(found.map((x) => x.calc)))}` : ''}</div></div>
+    </div>
+    ${found.length ? `<p class="small" style="margin:6px 0 0">${diff >= 0 ? `実際の方が計算より <b class="plus">${fmtYen(diff)}</b> 良かったです。` : `実際の方が計算より <b class="minus">${fmtYen(diff)}</b> 悪かったです。入るのが遅れた・決済が遅れた・量が違った、などが考えられます（取引分析タブでくわしく見られます）。`}</p>` : '<p class="small muted" style="margin:6px 0 0">実際の取引は「取引分析」タブに証券会社のCSVを読み込むと、ここで自動で突き合わせます。</p>'}
+    <details class="more-box"><summary>月ごと・1回ずつ見る</summary>
+      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>月</th><th class="r">回数</th><th class="r">計算</th><th class="r">実際</th></tr></thead><tbody>
+      ${months.map((m) => { const g = rows.filter((x) => x.ym === m), f = g.filter((x) => x.real != null); return `<tr><td class="small">${Number(m.slice(5))}月</td><td class="r small">${g.length}</td><td class="r small">${fmtYen(sum(g.map((x) => x.calc)))}</td><td class="r small">${f.length ? `${fmtYen(sum(f.map((x) => x.real)))}（${f.length}回）` : '—'}</td></tr>`; }).join('')}
+      </tbody></table></div>
+      <ul class="list">${rows.slice(0, 30).map((x) => `<li class="small"><b>${esc(x.t.name)}</b> ${x.t.side > 0 ? '買い' : '売り'}　${x.t.entryTime ? esc(fmtTime(x.t.entryTime)) : ''} → ${x.t.exitTime ? esc(fmtTime(x.t.exitTime)) : ''}<br>計算 <span class="${x.calc >= 0 ? 'plus' : 'minus'}">${fmtYen(x.calc)}</span>（${x.t.ret >= 0 ? '+' : ''}${(x.t.ret * 100).toFixed(1)}%）／実際 ${x.real != null ? `<span class="${x.real >= 0 ? 'plus' : 'minus'}">${fmtYen(x.real)}</span>` : '<span class="muted">CSVに見つからない（取引していない？）</span>'}</li>`).join('')}</ul>
+    </details>`;
 }
 
 // 売買の一覧：あなたの設定なら、どれだけ入って、いくらの損益だったか
@@ -464,6 +524,7 @@ function renderLog(r0, mode) {
   const bands = [['60%以上', band(0.6, 2)], ['50〜60%', band(0.5, 0.6)], ['50%未満', band(0, 0.5)]];
   $('lab-log').innerHTML = `
     ${wayBar(r, mode)}
+    <div id="real-record"></div>
     <div class="grid2">
       <div class="stat"><div class="label">取引の回数（${r0.count}銘柄）</div><div class="value">${r.trades.length}回</div></div>
       <div class="stat"><div class="label">勝率</div><div class="value">${pct(r.trades.length ? wins.length / r.trades.length : null)}</div></div>
@@ -477,6 +538,7 @@ function renderLog(r0, mode) {
     <div class="seg" id="lab-log-seg" style="margin-bottom:8px">${[['all', 'すべて'], ['win', '勝ち'], ['loss', '負け'], ['buy', '買い'], ['sell', '売り']].map(([k, v]) => `<button data-f="${k}" aria-pressed="${k === logFilter}">${v}</button>`).join('')}</div>
     <div id="lab-log-list"></div>
     ${updatedNote(r0)}`;
+  fillRecord(mode);
   const draw = () => {
     const f = { all: () => true, win: (t) => t.pnl > 0, loss: (t) => t.pnl <= 0, buy: (t) => t.side > 0, sell: (t) => t.side < 0 }[logFilter];
     pagedList($('lab-log-list'), sorted.filter(f), (t) => `<li class="log-item">
@@ -555,7 +617,7 @@ async function adviceFor(mode, list) {
     const timing = adv ? exitTiming(hh, candles[sym], adv, { mode, prices, usdjpy: prices['USDJPY=X'] }) : null;
     const longView = adv ? longTermView(hh, candles[sym], adv, { mode, prices, usdjpy: prices['USDJPY=X'] }) : null;
     const addOn = adv ? addOnAdvice(hh, candles[sym], adv, { mode }) : null;
-    return { h, adv, timing, longView, addOn };
+    return { h, adv, timing, longView, addOn, earningsDate: earnings[h.code] || null, today };
   }
 }
 
@@ -586,6 +648,16 @@ function longHtml(t, d) {
     </tbody></table></div>
     <p class="small muted" style="margin:4px 0 0">長く持つときは、損切りの線を広め（${fmtPrice(t.line, d)}＝大きな流れが壊れたところ）に置いて試しています。期間が長いほど、結果のばらつき（悪いとき・良いときの差）が大きくなります。</p>
   </div>`;
+}
+
+// 決算発表が今日・明日・あさってのとき：持ち越すかどうかの目安
+function earnSoonHtml(date, today, adv) {
+  if (!date || !today) return '';
+  const days = Math.round((Date.parse(date) - Date.parse(today)) / 86400000);
+  if (days < 0 || days > 2) return '';
+  const when = days === 0 ? '今日' : days === 1 ? '明日' : 'あさって';
+  const tip = adv.plPct > 0.03 ? `今 +${(adv.plPct * 100).toFixed(1)}% の利益なので、半分くらい利益確定してから決算をまたぐと安心です。` : adv.plPct < 0 ? `今 ${(adv.plPct * 100).toFixed(1)}% の損です。決算で下がると、損切りの線より下から始まることもあるので、持ち越すか手前で売るか決めておきましょう。` : '発表の翌日は大きく動くことがあるので、持ち越すかどうか決めておきましょう。';
+  return `<p class="small" style="margin:4px 0 0;color:var(--warn)">📅 <b>${when}（${Number(date.slice(5, 7))}/${Number(date.slice(8, 10))}）決算発表</b>：${tip}</p>`;
 }
 
 // 信用で持っているとき：金利（貸株料）と、決済の期限の目安
@@ -641,7 +713,7 @@ async function showHoldingsInner(mode) {
   const unit = mode === 'fx' ? '通貨' : '株';
   box.innerHTML = `
     <div class="card"><div class="li-head"><span class="name">${list.length}銘柄の合計の損益（今の値段で）</span><b class="${totalYen >= 0 ? 'plus' : 'minus'}" style="font-size:18px">${fmtYen(totalYen)}</b></div></div>
-    ${rows.map(({ h, adv, timing, longView, addOn }) => {
+    ${rows.map(({ h, adv, timing, longView, addOn, earningsDate, today }) => {
       if (!adv) return `<div class="card hold-item"><div class="li-head"><span class="name">${symLink(symbolOf(mode, h.code), h.name)}</span><button class="icon-btn hold-del" data-id="${esc(h.id)}" aria-label="消す">✕</button></div><p class="small error">値段を取得できませんでした（データの取得先が混んでいるようです。数分おきに自動で読み直します）。</p></div>`;
       const v = adv.verdict;
       return `<div class="card hold-item">
@@ -660,6 +732,7 @@ async function showHoldingsInner(mode) {
           <div class="stat"><div class="label">利益確定の目標</div><div class="value plus" style="font-size:16px">${fmtPrice(adv.target, d)}</div><div class="small muted">${adv.wall ? `${esc(adv.wall.label)}（${esc(adv.wall.strength)}）` : '値動きの大きさから'}</div></div>
         </div>
         <p class="small" style="margin:6px 0 0">${esc(adv.reasons[0] || '')}</p>
+        ${earnSoonHtml(earningsDate, today, adv)}
         ${marginNote(mode, h, adv)}
         ${addOn ? `<p class="small" style="margin:4px 0 0">${addOn.icon} <b>${esc(addOn.title)}</b>：${esc(addOn.text)}</p>` : ''}
         ${timing ? `<p class="small" style="margin:4px 0 0">⏱ ${timing.wait ? `最大${timing.best.d}日待つのが平均で一番${timing.losing ? '損が小さい' : 'いい'}見込み` : timing.losing ? '今すぐ決済が一番損が小さい見込み' : '今のうちに利益確定が無難'}</p>` : ''}
@@ -756,6 +829,38 @@ function initHoldForm() {
     showHoldings(mode);
   });
   $('hold-add').addEventListener('click', (e) => { if (e.target.closest('summary')) addFormTouched = true; });
+  // 証券会社のCSVから読み込む
+  $('hold-import-file').addEventListener('change', async (e) => {
+    const f = e.target.files?.[0];
+    const box = $('hold-import-preview');
+    if (!f) return;
+    let found;
+    try {
+      found = parseHoldingsCsv(decodeFile(await f.arrayBuffer()), { lotSize: getProfile().fxLotSize || 10000 });
+    } catch (err) { box.innerHTML = `<p class="small error">読み込めませんでした（${esc(err.message)}）</p>`; return; }
+    const NAME = { stock: '日本株', us: '米国株', fx: '為替' };
+    const modes = Object.keys(found).filter((m) => found[m].length);
+    if (!modes.length) { box.innerHTML = '<p class="small error">持っている銘柄が見つかりませんでした。「保有商品一覧」や「建玉一覧」のCSVか確かめてください。</p>'; return; }
+    box.innerHTML = `${modes.map((m) => `<p class="small" style="margin:4px 0"><b>${NAME[m]}：${found[m].length}銘柄</b><br>${found[m].map((x) => `${esc(x.name)}${m === 'fx' ? '' : `（${esc(x.code)}）`} ${x.side < 0 ? '売り' : ''}${x.acct === 'margin' ? '信用' : ''} ${Number(x.price).toLocaleString()} × ${Number(x.qty).toLocaleString()}`).join('<br>')}</p>`).join('')}
+      <div class="row" style="margin-top:6px"><button class="btn primary grow" id="hold-import-replace">この内容に置き換える</button><button class="btn grow" id="hold-import-add">今のものに足す</button></div>
+      <p class="small muted" style="margin:4px 0 0">「置き換える」は、上に出た市場（${modes.map((m) => NAME[m]).join('・')}）の持っている株を、CSVの内容だけにします。</p>`;
+    const apply = (replace) => {
+      for (const m of modes) {
+        const now = replace ? [] : getHoldings(m);
+        for (const x of found[m]) {
+          const same = now.find((y) => String(y.code).toUpperCase() === x.code && y.side === x.side && (y.acct || 'cash') === x.acct);
+          if (same && !replace) Object.assign(same, mergeBuy(same, { price: x.price, qty: x.qty, date: x.date }));
+          else now.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), ...x, buys: [] });
+        }
+        setHoldings(m, now);
+      }
+      box.innerHTML = `<p class="small">✅ ${modes.map((m) => `${NAME[m]} ${found[m].length}銘柄`).join('・')}を入れました。</p>`;
+      e.target.value = '';
+      showHoldings(getModeFn());
+    };
+    $('hold-import-replace').onclick = () => apply(true);
+    $('hold-import-add').onclick = () => apply(false);
+  });
 }
 
 // ---------------- 切り替え ----------------

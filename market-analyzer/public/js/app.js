@@ -11,6 +11,8 @@ import { searchNews } from './newsview.js';
 import { initScreener, autoRefreshList } from './screener.js';
 import { initNewsView, onSymbol as newsOnSymbol, updateCrowd } from './newsview.js';
 import { initThemes, updateThemes } from './themeview.js';
+import { renderEconCard } from './econview.js';
+import { renderPush } from './push.js';
 import { initTradesView } from './tradesview.js';
 import { updateOrderflow, resetOrderflow } from './orderflow.js';
 import { updateFundamentals, resetFundamentals } from './fundview.js';
@@ -50,7 +52,7 @@ function showTab(id) {
   }
   document.querySelectorAll('#tabbar button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === id)));
   store.set('tab', id);
-  if (id === 'news') { newsOnSymbol(chartState); updateThemes(getMode()); updateCrowd(chartState, getMode()); }
+  if (id === 'news') { newsOnSymbol(chartState); updateThemes(getMode()); updateCrowd(chartState, getMode()); renderEconCard(); }
   if (id === 'screener' && getMode() === 'stock') showStockScreener();
   if (id === 'lab') { updateLab(chartState, getMode()); showWaysCard($('lab-ways'), getMode()); }
   if (id === 'mine') updateMine(getMode());
@@ -108,6 +110,7 @@ async function openSettings() {
   $('pf-notify').innerHTML = [['fx', '為替'], ['stock', '日本株'], ['us', '米国株']].map(([k, v]) => `<button type="button" class="chip" data-k="${k}" aria-pressed="${!!pf.notify?.[k]}">${v}のサインを通知</button>`).join('');
   renderSyncStatus();
   renderAccount();
+  renderPush();
   $('settings').showModal();
   syncFavs().then(renderSyncStatus);
 }

@@ -13,7 +13,7 @@ const BRANCH = process.env.PREFS_BRANCH || 'claude/trusting-planck-dsasvf';
 const BACKUP_PATH = 'alerts/prefs.json';
 const LOCAL = path.join(os.tmpdir(), 'ma-prefs.json');
 const SECRET = process.env.PREFS_KEY || process.env.SITE_PASSWORD || '';
-export const SYNC_KEY = /^(favs_(fx|stock|us)|holdings_(fx|stock|us)|trades_(fx|stock|us)|profile)$/;
+export const SYNC_KEY = /^(favs_(fx|stock|us)|holdings_(fx|stock|us)|trades_(fx|stock|us)|profile|push)$/;
 const USERS = '__users';
 const MAX_SIZE = 200 * 1024;
 const MAX_TRADES_SIZE = 4 * 1024 * 1024;
@@ -157,6 +157,12 @@ const numOrNull = (x) => (x == null || x === '' || !Number.isFinite(Number(x)) ?
 
 function cleanValue(key, value) {
   if (key === 'profile') return cleanProfile(value);
+  if (key === 'push') {
+    // 通知を送る先（スマホ・パソコンのブラウザ）：https の宛先と、暗号の鍵だけを保存（10台まで）
+    if (!Array.isArray(value)) throw bad('保存する内容が正しくありません');
+    return value.filter((x) => /^https:\/\/[^\s]{10,600}$/.test(x?.endpoint || '') && typeof x?.keys?.p256dh === 'string' && typeof x?.keys?.auth === 'string')
+      .slice(-10).map((x) => ({ endpoint: x.endpoint, keys: { p256dh: str(x.keys.p256dh, 200), auth: str(x.keys.auth, 100) }, at: Number(x.at) || Date.now() }));
+  }
   if (!Array.isArray(value)) throw bad('保存する内容が正しくありません');
   const size = JSON.stringify(value).length;
   if (key.startsWith('trades_')) {
@@ -191,6 +197,22 @@ export async function putPref(uid, key, value) {
   data[k] = { value: clean, ts };
   saveLocal();
   return { ts };
+}
+
+// ---------------- 通知を送る先 ----------------
+export async function addPushSub(uid, sub) {
+  await loadPrefs();
+  const now = (data[storeKey(uid, 'push')]?.value || []).filter((x) => x.endpoint !== sub?.endpoint);
+  return putPref(uid, 'push', [...now, { ...sub, at: Date.now() }]);
+}
+export async function removePushSub(uid, endpoint) {
+  await loadPrefs();
+  const now = (data[storeKey(uid, 'push')]?.value || []).filter((x) => x.endpoint !== endpoint);
+  return putPref(uid, 'push', now);
+}
+export async function pushCount(uid) {
+  await loadPrefs();
+  return (data[storeKey(uid, 'push')]?.value || []).length;
 }
 
 // ---------------- 使う人（アカウント） ----------------
@@ -274,6 +296,7 @@ export async function alertProfile() {
       profile: g('profile') || null,
       favs: { fx: g('favs_fx') || null, stock: g('favs_stock') || null, us: g('favs_us') || null },
       holdings: { fx: g('holdings_fx') || [], stock: g('holdings_stock') || [], us: g('holdings_us') || [] },
+      push: g('push') || [],
     };
   };
   const users = [one(ADMIN), ...usersList().map((u) => one(u.id))];

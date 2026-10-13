@@ -999,3 +999,59 @@ test('現実に近づける：費用・スワップ・税金・ストップ高',
   const r = runS2(lockedAll, 'combo', { kind: 'stock', sides: 'long' });
   assert.ok(r.trades.every((t) => t.entryDate <= new Date((1.7e9 + 201 * 86400) * 1000 + 9 * 3600e3).toISOString().slice(0, 10)));
 });
+
+import { parseHoldingsCsv } from '../public/js/holdimport.js';
+test('証券会社のCSVから持っている株を読む', () => {
+  const rakuten = [
+    '"■ 国内株式"',
+    '"種別","銘柄コード・ティッカー","銘柄","口座","保有数量","［単位］","平均取得価額","［単位］","現在値"',
+    '"国内株式","5803","フジクラ","特定","200","株","7,500","円","8,000"',
+    '"国内株式","5803","フジクラ","NISA成長投資枠","100","株","7,746","円","8,000"',
+    '"信用","7203","トヨタ自動車","信用買","100","株","2,800","円","2,900"',
+    '',
+    '"■ 米国株式"',
+    '"種別","銘柄コード・ティッカー","銘柄","口座","保有数量","［単位］","平均取得価額","［単位］","現在値"',
+    '"米国株式","AAPL","アップル","特定","10","株","180.5","USD","200"',
+  ].join('\n');
+  const r = parseHoldingsCsv(rakuten);
+  assert.equal(r.stock.length, 2);
+  const fj = r.stock.find((x) => x.code === '5803');
+  assert.equal(fj.qty, 300);
+  assert.equal(fj.price, 7582);
+  assert.equal(r.stock.find((x) => x.code === '7203').acct, 'margin');
+  assert.equal(r.us[0].code, 'AAPL');
+  const lion = ['通貨ペア,売買,Lot数,建値,評価損益', 'USD/JPY,買,2,150.25,1000', 'EUR/JPY,売,0.5,162.10,-300'].join('\n');
+  const f = parseHoldingsCsv(lion);
+  assert.equal(f.fx.length, 2);
+  assert.equal(f.fx[0].qty, 20000);
+  assert.equal(f.fx[1].side, -1);
+});
+
+import crypto2 from 'node:crypto';
+import { encryptPayload, vapidHeader } from '../lib/pushsend.js';
+import { vapidKeys } from '../lib/vapid.js';
+import { parseFeed, fallbackEvents } from '../lib/econ.js';
+test('通知：中身の暗号化と送り主の証明', () => {
+  const ua = crypto2.createECDH('prime256v1'); ua.generateKeys();
+  const auth = crypto2.randomBytes(16);
+  const msg = JSON.stringify({ title: 'テスト', body: '通知です' });
+  const enc = encryptPayload(msg, ua.getPublicKey().toString('base64url'), auth.toString('base64url'));
+  // 受け取る側と同じ手順で解く
+  const salt = enc.subarray(0, 16), idlen = enc[20], asPub = enc.subarray(21, 21 + idlen), ct = enc.subarray(21 + idlen);
+  const h = (k, d) => crypto2.createHmac('sha256', k).update(d).digest();
+  const ikm = h(h(auth, ua.computeSecret(asPub)), Buffer.concat([Buffer.from('WebPush: info\0'), ua.getPublicKey(), asPub, Buffer.from([1])]));
+  const prk = h(salt, ikm);
+  const d = crypto2.createDecipheriv('aes-128-gcm', h(prk, Buffer.from('Content-Encoding: aes128gcm\0\x01')).subarray(0, 16), h(prk, Buffer.from('Content-Encoding: nonce\0\x01')).subarray(0, 12));
+  d.setAuthTag(ct.subarray(ct.length - 16));
+  const plain = Buffer.concat([d.update(ct.subarray(0, ct.length - 16)), d.final()]);
+  assert.equal(plain.subarray(0, plain.length - 1).toString(), msg);
+  const k = vapidKeys('test123');
+  assert.match(vapidHeader('https://fcm.googleapis.com/fcm/send/x', k), /^vapid t=[\w-]+\.[\w-]+\.[\w-]+, k=[\w-]{87}$/);
+});
+
+test('重要な経済指標：影響が大きいものだけ・日本語に', () => {
+  const list = parseFeed([{ title: 'Non-Farm Employment Change', country: 'USD', date: '2026-11-06T08:30:00-05:00', impact: 'High', forecast: '120K', previous: '100K' }, { title: 'Bank Holiday', country: 'JPY', date: '2026-11-03T00:00:00-05:00', impact: 'Holiday' }]);
+  assert.equal(list.length, 1);
+  assert.match(list[0].title, /雇用統計/);
+  assert.ok(fallbackEvents(Date.UTC(2026, 10, 1), 10).length >= 1);
+});

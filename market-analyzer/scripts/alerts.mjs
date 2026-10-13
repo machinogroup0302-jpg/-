@@ -8,6 +8,8 @@ import fs from 'node:fs/promises';
 import { getChart } from '../lib/market.js';
 import { runStrategy, regimeLookup, signalOdds, oddsLabel } from '../public/js/strategies.js';
 import { baseUniverse } from '../public/js/universe.js';
+import { getEcon } from '../lib/econ.js';
+import { sendPush } from '../lib/pushsend.js';
 import { sizeFor, orderText, waySides, wayProfile, compareWays, budgets, searchCustom } from '../public/js/plan.js';
 import { adviseHolding, exitTiming, longTermView, addOnAdvice } from '../public/js/holdingadvice.js';
 import { US_LIST } from '../lib/usstocks.js';
@@ -22,8 +24,10 @@ let MODES = (process.argv[2] || 'stock,fx,us').split(',');
 const DAY = MODES.includes('day');
 // "morning" のときは、朝8:30の「今日のプラン」（その日の予定のまとめ）を送る
 const MORNING = MODES.includes('morning');
+// "weekly" のときは、週に1回の「今週のまとめ」を送る（土曜の朝）
+const WEEKLY = MODES.includes('weekly');
 const OPEN = DAY ? openMarkets() : [];
-if (DAY || MORNING) MODES = ['stock', 'fx', 'us'];
+if (DAY || MORNING || WEEKLY) MODES = ['stock', 'fx', 'us'];
 const NAMES = { fx: '為替', stock: '日本株', us: '米国株' };
 const dayKey = (t) => new Date((t + 9 * 3600) * 1000).toISOString().slice(0, 10);
 const md = (d) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
@@ -296,6 +300,19 @@ const ORDER = { hold: 0, open: 1, close: 2 };
 const keyOf = (s) => `${s.day ? 'day|' : ''}${s.symbol}|${s.type}|${s.type === 'hold' ? s.key : s.side || 0}|${s.day ? s.bar : s.date}`;
 const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
+// メールと、スマホ・パソコンへの通知の両方で届ける
+async function deliver(u, subject, text, html) {
+  const { MAIL_USER, MAIL_PASS } = process.env;
+  let ok = false, err = null;
+  if (u.to && (process.env.DRY_RUN || (MAIL_USER && MAIL_PASS))) { try { await sendMail(u.to, subject, text, html); ok = true; } catch (e) { err = e; } }
+  if (u.push?.length && !process.env.DRY_RUN) {
+    // 通知は短く：件名と、本文の最初の数行
+    const body = text.split('\n').filter((l) => l.trim() && l !== subject).slice(0, 4).join('\n').slice(0, 220);
+    try { const r = await sendPush(u.push, { title: subject.slice(0, 60), body, url: SITE, tag: subject.slice(0, 20) }); if (r.sent) { ok = true; console.log(`通知を送りました（${r.sent}台）`); } } catch (e) { err ||= e; }
+  }
+  if (!ok && err) throw err;
+}
+
 async function sendMail(to, subject, text, html) {
   if (process.env.DRY_RUN) { console.log(text); return; } // 試すとき：送らずに中身を表示
   const { MAIL_USER, MAIL_PASS } = process.env;
@@ -324,6 +341,37 @@ function buildMail(fresh, modes, pf, today, TEST, day = false, record = '') {
 // ・今日の寄り付きで決済する予定のもの、お知らせ済みで持っている途中のもの
 // ・持っている株の今の状態と損切りの線
 // ・決算発表が近い銘柄（持っている株・お気に入り）
+// その人に一番いいやり方を、全部のやり方で過去をやり直して選ぶ（u.wayPf などに入れて、使う向きの計算結果を返す）
+function chooseWay(u, m, dayList, list, regime, days) {
+  u.wayPf ||= {}; u.wayLabel ||= {}; u.minOdds ||= {};
+  const by = Object.fromEntries(waySides(m).map((v) => [v, dayList ? dayList[v] : signalsFor(m, list, regime, days, v)]));
+  const pf = u.profile || {};
+  const bg = budgets(pf);
+  const tb = Object.fromEntries(Object.entries(by).map(([k, g]) => [k, withOdds(g.trades)]));
+  const budget = m === 'fx' ? bg.cash : bg.total;
+  const cmp = compareWays(tb, m, pf, budget, prices);
+  // AIの特別ルール（勝つ確率○%以上だけ）：前半で見つけて後半でも良かったときだけ使う
+  const custom = searchCustom(tb, m, pf, budget, prices, cmp);
+  const best = custom?.adopted && cmp.note !== 'rest' ? custom : cmp.best;
+  u.wayPf[m] = wayProfile(pf, m, (best.base || best).key);
+  u.minOdds[m] = best.minOdds || 0;
+  u.wayLabel[m] = (best.key === 'custom' ? `AIの特別ルール「${best.label}」` : best.label) + (cmp.note === 'rest' ? '（⚠ 過去1年はどのやり方もマイナス。見送りも考えてください）' : '');
+  u.wayTotal ||= {}; u.wayTotal[m] = best.full?.total ?? best.r?.total;
+  console.log(`${NAMES[m]}：一番良いやり方は「${best.label}」`);
+  return by[best.sides];
+}
+
+// 重要な経済指標：これから hours 時間以内（為替・米国株を見ている人だけ）
+async function econLines(u, hours) {
+  if (!u.modes.some((m) => m === 'fx' || m === 'us')) return [];
+  try {
+    const now = Date.now();
+    const { items } = await getEcon();
+    return items.filter((e) => e.time > now && e.time < now + hours * 3600e3)
+      .map((e) => `${new Date(e.time).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' })} ${e.country}：${e.title}${e.rough ? '（日にちは目安）' : ''}`);
+  } catch { return []; }
+}
+
 async function earningsSoon(codes, today) {
   try {
     const d = JSON.parse(await fs.readFile(new URL('../data/earnings.json', import.meta.url), 'utf8'));
@@ -349,6 +397,12 @@ async function morning(users, state, TEST) {
     lines.push(['🟢 今日の寄り付きで入る予定', toOpen.length ? toOpen.map((t) => `${t.name}：${t.how || (t.side > 0 ? '買う' : '売る')}（${morningExec(t.mode)}・${fmtTime(t.signalTime + 6.5 * 3600)}ごろにお知らせ）`) : ['なし']]);
     lines.push(['🔴 今日の寄り付きで決済する予定', toClose.length ? toClose.map((t) => `${t.name}：決済（${morningExec(t.mode)}）`) : ['なし']]);
     if (holding.length) lines.push(['📒 お知らせ済みで持っている途中', holding.map((t) => `${t.name}：${fmtTime(t.entryTime)} に ${price(t.entryPrice, t.mode)} で${t.side > 0 ? '買い' : '売り'}`)]);
+    // 決算発表が近い銘柄（持っている株は、今日・明日なら特に注意）
+    const codes = new Set([...(u.holdings?.stock || []), ...(u.favs?.stock || [])].map((x) => String(x.code)));
+    const soon = u.modes.includes('stock') ? await earningsSoon(codes, today) : [];
+    const earnDate = Object.fromEntries(soon.map((x) => [x.code, x.date]));
+    const tomorrow = new Date(Date.parse(today) + 86400000).toISOString().slice(0, 10);
+    const earnWarn = [];
     // 持っている株
     const holds = [];
     for (const m of u.modes) {
@@ -359,12 +413,16 @@ async function morning(users, state, TEST) {
         if (!adv) continue;
         const ao = addOnAdvice({ ...h, symbol: x.symbol }, x.candles, adv, { mode: m });
         holds.push(`${h.name}：${adv.verdict.icon}${adv.verdict.label}（今 ${price(adv.now, m)}・${adv.plPct >= 0 ? '+' : ''}${(adv.plPct * 100).toFixed(1)}%）／${adv.protects ? '利益を守る線' : '損切りの線'} ${price(adv.stop, m)}${ao ? `／${ao.icon}${ao.title}` : ''}`);
+        const ed = m === 'stock' ? earnDate[String(h.code)] : null;
+        if (ed && ed <= tomorrow) {
+          earnWarn.push(`${h.name}：${ed === today ? '今日' : '明日'}決算発表。${adv.plPct > 0.03 ? `今 +${(adv.plPct * 100).toFixed(1)}% の利益なので、半分くらい利益確定してから決算をまたぐと安心です` : adv.plPct < 0 ? `今 ${(adv.plPct * 100).toFixed(1)}% の損なので、決算で下がると損切りの線（${price(adv.stop, m)}）より下で始まることもあります。持ち越すか、手前で売るかを決めておきましょう` : '発表の翌日は大きく動くことがあるので、持ち越すかどうかを決めておきましょう'}`);
+        }
       }
     }
+    if (earnWarn.length) lines.unshift(['⚠ 持っている株の決算（今日・明日）', earnWarn]);
     lines.push(['📦 持っている株', holds.length ? holds : ['入力されていません（サイトの「あなた専用」→「持っている株」で入れられます）']]);
-    // 決算発表が近い銘柄
-    const codes = new Set([...(u.holdings?.stock || []), ...(u.favs?.stock || [])].map((x) => String(x.code)));
-    const soon = u.modes.includes('stock') ? await earningsSoon(codes, today) : [];
+    const ev = await econLines(u, 30);
+    if (ev.length) lines.push(['📅 今日・明日の重要な経済指標（為替が大きく動きやすい）', [...ev, '発表の前後はロット数を減らすか、発表が終わってから入るのがおすすめです']]);
     if (soon.length) lines.push(['📅 1週間以内に決算発表', soon.map((x) => `${x.name}：${Number(x.date.slice(5, 7))}/${Number(x.date.slice(8, 10))}${x.date === today ? '（今日）' : ''}`)]);
     const subject = `【今日のプラン ${md(today)}】入る${toOpen.length}件・決済${toClose.length}件・持っている株${holds.length}件`;
     const record = recordLine(state.book || {}, u.uid, u.profile);
@@ -374,9 +432,55 @@ async function morning(users, state, TEST) {
       <p style="background:#f4f6f9;border-radius:8px;padding:8px 10px">📒 ${esc(record)}</p><p><a href="${SITE}">サイトで見る（あなた専用）</a></p>
       <p style="color:#888;font-size:12px">※ 練習用のサインと目安です。売買はご自身の判断で行ってください。</p></div>`;
     try {
-      await sendMail(u.to, subject, text, html);
+      await deliver(u, subject, text, html);
       console.log('今日のプランを送りました');
     } catch (e) { console.log('メールを送れませんでした:', e.message); }
+  }
+}
+
+// ---------------- 週に1回の「今週のまとめ」 ----------------
+async function weekly(users, state, regime) {
+  const today = dayKey(Date.now() / 1000);
+  const weekAgo = Date.now() - 7 * 86400000;
+  const lists = {};
+  for (const mode of MODES) if (users.some((u) => u.modes.includes(mode))) lists[mode] = await loadMode(mode, users);
+  for (const u of users) {
+    const lines = [];
+    const pf = u.profile || {};
+    const per = (pf.budget || 1_000_000) / (pf.maxPos || 3);
+    // 今週お知らせして、決済まで終わった売買
+    const log = (state.book?.[u.uid]?.log || []).filter((t) => Date.parse(t.closeNotifiedAt || 0) >= weekAgo);
+    const yen = log.reduce((a, t) => a + t.ret * per, 0);
+    lines.push(['📒 今週の売買（メールでお知らせしたもの）', log.length ? [...log.map((t) => `${t.name}：${t.side > 0 ? '買い' : '売り'} ${price(t.entryPrice, t.mode)} → ${price(t.exitPrice, t.mode)}（${t.ret >= 0 ? '+' : ''}${(t.ret * 100).toFixed(1)}%）`), `合計：${log.length}回・勝ち${log.filter((t) => t.ret > 0).length}回・1銘柄${Math.round(per).toLocaleString()}円ずつなら ${yen >= 0 ? '+' : '−'}${Math.abs(Math.round(yen)).toLocaleString()}円`] : ['今週、決済まで終わった売買はありませんでした']]);
+    const open = Object.values(state.book?.[u.uid]?.open || {}).filter((t) => t.entryTime && !t.closeSent);
+    if (open.length) lines.push(['📌 持っている途中（お知らせ済み）', open.map((t) => `${t.name}：${fmtTime(t.entryTime)} に ${price(t.entryPrice, t.mode)} で${t.side > 0 ? '買い' : '売り'}`)]);
+    // 持っている株
+    const holds = [];
+    for (const m of u.modes) {
+      for (const h of u.holdings?.[m] || []) {
+        const x = lists[m]?.find((y) => y.code.toUpperCase() === String(h.code).toUpperCase());
+        if (!x) continue;
+        const adv = adviseHolding({ ...h, symbol: x.symbol }, x.candles, { mode: m, prices, usdjpy: prices['USDJPY=X'], profile: pf, today });
+        if (adv) holds.push(`${h.name}：${adv.verdict.icon}${adv.verdict.label}（${adv.plPct >= 0 ? '+' : ''}${(adv.plPct * 100).toFixed(1)}%${adv.plYen != null ? `・${adv.plYen >= 0 ? '+' : '−'}${Math.abs(Math.round(adv.plYen)).toLocaleString()}円` : ''}）`);
+      }
+    }
+    if (holds.length) lines.push(['📦 持っている株', holds]);
+    // 来週の決算・重要な経済指標
+    const codes = new Set([...(u.holdings?.stock || []), ...(u.favs?.stock || [])].map((x) => String(x.code)));
+    const soon = u.modes.includes('stock') ? await earningsSoon(codes, today) : [];
+    if (soon.length) lines.push(['📅 来週の決算発表（持っている株・お気に入り）', soon.map((x) => `${x.name}：${md(x.date)}`)]);
+    const ev = await econLines(u, 9 * 24);
+    if (ev.length) lines.push(['📅 来週の重要な経済指標', ev]);
+    // 今のおすすめのやり方
+    const ways = [];
+    for (const m of u.modes) { if (!lists[m]?.length) continue; chooseWay(u, m, null, lists[m], regime, pf.swingDays || 30); ways.push(`${NAMES[m]}：${u.wayLabel[m]}${u.wayTotal?.[m] ? `（過去1年 ${u.wayTotal[m] >= 0 ? '+' : '−'}${Math.abs(Math.round(u.wayTotal[m])).toLocaleString()}円）` : ''}`); }
+    if (ways.length) lines.push(['🏆 今のおすすめのやり方', ways]);
+    const subject = `【今週のまとめ ${md(today)}】売買${log.length}回・持っている株${holds.length}件`;
+    const text = [subject, '', ...lines.flatMap(([h, ls]) => [h, ...ls.map((l) => `・${l}`), '']), `くわしくはサイトの「あなた専用」：${SITE}`, '', '※ 練習用のサインと目安です。売買はご自身の判断で行ってください。'].join('\n');
+    const html = `<div style="font-family:sans-serif;font-size:14px;line-height:1.6"><h2 style="font-size:16px">${esc(subject)}</h2>
+      ${lines.map(([h, ls]) => `<div style="border:1px solid #ddd;border-radius:10px;padding:10px 12px;margin:10px 0"><b>${esc(h)}</b><br>${ls.map((l) => `・${esc(l)}`).join('<br>')}</div>`).join('')}
+      <p><a href="${SITE}">サイトで見る（あなた専用）</a></p><p style="color:#888;font-size:12px">※ 練習用のサインと目安です。売買はご自身の判断で行ってください。</p></div>`;
+    try { await deliver(u, subject, text, html); console.log('今週のまとめを送りました'); } catch (e) { console.log('メールを送れませんでした:', e.message); }
   }
 }
 
@@ -389,14 +493,14 @@ async function main() {
   let users = site?.users || (site ? [{ uid: 'admin', ...site }] : []);
   if (!users.length && process.env.MAIL_TO) users = [{ uid: 'admin', profile: null, favs: {}, holdings: {} }];
   users = users.map((u) => ({ ...u, to: u.profile?.email || (u.uid === 'admin' ? process.env.MAIL_TO : '') }))
-    .filter((u) => u.to)
+    .filter((u) => u.to || u.push?.length)
     .map((u) => ({ ...u, modes: MODES.filter((m) => TEST || !u.profile?.notify || u.profile.notify[m]) }))
     .filter((u) => u.modes.length);
   // ログは公開されるので、メールアドレスや予算は出さない
   console.log(`メールを送る人: ${users.length}人`);
   if (!users.length) { console.log('届け先がないか、通知がオフになっています'); return; }
   const { MAIL_USER, MAIL_PASS } = process.env;
-  if ((!MAIL_USER || !MAIL_PASS) && !process.env.DRY_RUN) { console.log('MAIL_USER・MAIL_PASS が登録されていないため送れません'); return; }
+  if ((!MAIL_USER || !MAIL_PASS) && !process.env.DRY_RUN && !users.some((u) => u.push?.length)) { console.log('MAIL_USER・MAIL_PASS が登録されていないため送れません'); return; }
 
   const get = async (s) => (await candles(s)) || [];
   const [vix, tnx, nikkei] = await Promise.all([get('^VIX'), get('^TNX'), get('^N225')]);
@@ -404,6 +508,7 @@ async function main() {
   { const u = await candles('USDJPY=X'); if (u) prices['USDJPY=X'] = u[u.length - 1].close; }
   const lists = {}, dayLists = {};
   if (MORNING) return morning(users, state, TEST);
+  if (WEEKLY) return weekly(users, state, regime);
   if (DAY) {
     // デイトレ：今開いている市場だけ。デイトレの通知をオンにしている人だけ
     for (const u of users) u.modes = u.modes.filter((m) => OPEN.includes(m) && u.profile?.notifyDay !== false);
@@ -426,23 +531,7 @@ async function main() {
     const days = u.profile?.swingDays || 30;
     const groups = {};
     // やり方（現物・信用・空売り、為替の向き）は、その人の予算で過去をやり直して一番良かったものを自動で使う
-    u.wayPf = {}; u.wayLabel = {}; u.minOdds = {};
-    for (const m of u.modes) {
-      const by = Object.fromEntries(waySides(m).map((v) => [v, DAY ? dayLists[m][v] : signalsFor(m, lists[m], regime, days, v)]));
-      const pf = u.profile || {};
-      const bg = budgets(pf);
-      const tb = Object.fromEntries(Object.entries(by).map(([k, g]) => [k, withOdds(g.trades)]));
-      const budget = m === 'fx' ? bg.cash : bg.total;
-      const cmp = compareWays(tb, m, pf, budget, prices);
-      // AIの特別ルール（勝つ確率○%以上だけ）：前半で見つけて後半でも良かったときだけ使う
-      const custom = searchCustom(tb, m, pf, budget, prices, cmp);
-      const best = custom?.adopted && cmp.note !== 'rest' ? custom : cmp.best;
-      groups[m] = by[best.sides];
-      u.wayPf[m] = wayProfile(pf, m, (best.base || best).key);
-      u.minOdds[m] = best.minOdds || 0;
-      u.wayLabel[m] = (best.key === 'custom' ? `AIの特別ルール「${best.label}」` : best.label) + (cmp.note === 'rest' ? '（⚠ 過去1年はどのやり方もマイナス。見送りも考えてください）' : '');
-      console.log(`${NAMES[m]}：一番良いやり方は「${best.label}」`);
-    }
+    for (const m of u.modes) groups[m] = chooseWay(u, m, DAY ? dayLists[m] : null, lists[m], regime, days);
     const planned = planForUser(u, DAY ? 'day' : 'swing', groups, book, nowSec);
     const holds = u.modes.flatMap((m) => holdingSignals(m, lists[m], u));
     const keyU = (s) => `${u.uid}|${keyOf(s)}`;
@@ -452,7 +541,7 @@ async function main() {
     if (!fresh.length && !TEST) { console.log(`${u.uid === 'admin' ? '持ち主' : 'ほかの人'}：新しいお知らせはありません`); continue; }
     const m = buildMail(fresh, u.modes, u.profile, today, TEST, DAY, recordLine(book, u.uid, u.profile));
     try {
-      await sendMail(u.to, m.subject, m.text, m.html);
+      await deliver(u, m.subject, m.text, m.html);
       console.log(`メールを送りました（${fresh.length}件）`);
     } catch (e) { console.log('メールを送れませんでした:', e.message); continue; }
     if (TEST) continue; // テストのときは記録を残さない

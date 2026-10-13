@@ -9,6 +9,10 @@ import { getChart, getHistory } from './lib/market.js';
 import { getNews } from './lib/news.js';
 import { getThemes } from './lib/themes.js';
 import { getCrowd } from './lib/crowd.js';
+import { getEcon } from './lib/econ.js';
+import { getRecord } from './lib/record.js';
+import { vapidKeys } from './lib/vapid.js';
+import { sendPush } from './lib/pushsend.js';
 import { searchListings, listingMeta, nameFromCache, getListings } from './lib/listings.js';
 import { usName, searchUs, US_LIST, setExtraUs } from './lib/usstocks.js';
 import { getRatings } from './lib/ratings.js';
@@ -17,7 +21,7 @@ import { loadRepoData } from './lib/jpxdata.js';
 import { INDEX_NAMES } from './lib/market.js';
 import { fxName } from './public/js/fxpairs.js';
 import { startScan, scanStatus } from './lib/scanner.js';
-import { getPrefs, putPref, loadPrefs, backupBlob, alertProfile, listUsers, addUser, removeUser, setUserPassword, checkUser, userExists, userName, ADMIN } from './lib/prefs.js';
+import { addPushSub, removePushSub, pushCount, getPrefs, putPref, loadPrefs, backupBlob, alertProfile, listUsers, addUser, removeUser, setUserPassword, checkUser, userExists, userName, ADMIN } from './lib/prefs.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(here, 'public');
@@ -149,6 +153,30 @@ async function handleApi(req, res, url) {
   const uid = await currentUser(req);
   if (!uid) return json(res, 401, { error: 'ログインしてください' });
 
+  // スマホ・パソコンへの通知
+  if (route === 'GET /api/push/key') return json(res, 200, { publicKey: vapidKeys()?.publicKey || null, count: await pushCount(uid) });
+  if (route === 'POST /api/push/subscribe') {
+    const body = await readBody(req);
+    await addPushSub(uid, body.subscription);
+    return json(res, 200, { ok: true, count: await pushCount(uid) });
+  }
+  if (route === 'POST /api/push/test') {
+    try {
+      const { items } = await getPrefs(uid);
+      const r = await sendPush(items.push?.value || [], { title: '通知のテスト', body: 'この端末に、売買サインの通知が届くようになっています。', url: '/', tag: 'test' });
+      for (const ep of r.gone) await removePushSub(uid, ep);
+      return json(res, 200, { sent: r.sent });
+    } catch (e) { return json(res, 200, { sent: 0, error: e.message }); }
+  }
+  if (route === 'POST /api/push/unsubscribe') {
+    const body = await readBody(req);
+    await removePushSub(uid, String(body.endpoint || ''));
+    return json(res, 200, { ok: true, count: await pushCount(uid) });
+  }
+
+  // メールでお知らせした売買の記録（その人の分だけ）
+  if (route === 'GET /api/record') return json(res, 200, await getRecord(uid));
+
   // ---- 使う人の管理（持ち主だけ） ----
   if (url.pathname === '/api/users') {
     if (uid !== ADMIN) return json(res, 403, { error: '持ち主だけが使えます' });
@@ -277,6 +305,9 @@ async function handleApi(req, res, url) {
       maxPrice: Number(q.get('max')) || 0,
       limit: Number(q.get('limit')) || 100,
     }));
+  }
+  if (route === 'GET /api/econ') {
+    try { return json(res, 200, await getEcon()); } catch (e) { return json(res, 502, { error: e.message }); }
   }
   if (route === 'GET /api/crowd') {
     const q = url.searchParams;

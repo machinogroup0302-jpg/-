@@ -125,6 +125,10 @@
           <h2>注文・約定分析<span class="sub">今日の買いと売りの割合</span></h2>
           <div id="orderflow-box"></div>
         </div>
+        <div class="card" data-fold="econ">
+          <h2>📅 重要な経済指標（今週・来週）<span class="sub">日本時間</span></h2>
+          <div id="econ-box"><p class="small muted">読み込んでいます…</p></div>
+        </div>
         <div class="card" data-fold="crowd">
           <h2>みんなの声（個人投資家）<span class="sub" id="crowd-name"></span></h2>
           <div id="crowd-box"><p class="small muted">チャートで銘柄を選ぶと表示します</p></div>
@@ -254,6 +258,11 @@
         <div data-minepanel="hold" hidden>
           <div class="card">
             <h2>持っている株<span class="sub">入力すると、どうした方がいいか出します</span></h2>
+            <details class="more-box" id="hold-import"><summary>📄 証券会社のCSVから読み込む（自動で入れる）</summary>
+              <p class="small muted" style="margin:6px 0">楽天証券の「保有商品一覧（CSV）」やLION FXの「建玉一覧（CSV）」を選ぶと、銘柄・数量・平均取得価額を読み取って入れます。日本株・米国株・為替は自動で分けます。</p>
+              <input type="file" id="hold-import-file" accept=".csv,text/csv">
+              <div id="hold-import-preview" style="margin-top:8px"></div>
+            </details>
             <details class="more-box" id="hold-add" open><summary>＋ 持っている銘柄を追加する</summary>
             <form class="stack" id="hold-form" autocomplete="off" style="margin-top:8px">
               <div class="hold-sym">
@@ -430,6 +439,7 @@
         <div class="chips" id="pf-notify" style="margin:6px 0 4px"></div>
         <label class="row small" style="margin:2px 0 6px"><input type="checkbox" id="pf-day"> デイトレのタイミングも、取引時間中に15分ごとに調べて、そのつど知らせる</label>
         <p class="small" id="mail-status" style="margin:0 0 10px"></p>
+        <div id="push-box" style="margin:0 0 10px"></div>
         <label class="small" for="pf-budget">現物の予算（現物で買うお金・為替の証拠金もこの金額で計算）</label>
         <div class="row"><input class="input grow" id="pf-budget" type="text" inputmode="numeric" placeholder="例: 500000"><span class="small">円</span></div>
         <p class="small muted" id="pf-budget-view" style="margin:2px 0 8px"></p>
