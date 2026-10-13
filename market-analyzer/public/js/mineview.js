@@ -4,8 +4,9 @@ import { api, $, esc, store, fmtPrice, fmtYen } from './util.js';
 import { runStrategy, signalOdds, oddsLabel, oddsText } from './strategies.js';
 import { pagedList } from './stockscreener.js';
 import { getProfile, setProfile, getHoldings, setHoldings, syncState } from './favorites.js';
-import { replayWithBudget, kindText, sizeFor, orderText, WAYS, wayOf, waySides, wayProfile, compareWays, wayNotes, replayOpts, budgets, pipsOf, pipsText, CARRY, searchCustom } from './plan.js';
+import { replayWithBudget, kindText, sizeFor, orderText, WAYS, wayOf, waySides, wayProfile, compareWays, wayNotes, replayOpts, budgets, pipsOf, pipsText, CARRY, searchCustom, walkForward } from './plan.js';
 import { loadRegime, loadCandles, universe, kindOf } from './labview.js';
+import { baseUniverse } from './universe.js';
 import { adviseHolding, exitTiming, longTermView, addOnAdvice } from './holdingadvice.js';
 import { searchFx } from './fxpairs.js';
 import { fmtTime, judgedText, execText } from './sessiontime.js';
@@ -110,6 +111,10 @@ async function computeLog(mode, out, force = false, st = style) {
     const prices = {};
     // やり方ごとに向き（買いだけ・売りだけ・両方）が違うので、向きごとに全部計算しておく
     const by = Object.fromEntries(waySides(mode).map((v) => [v, { trades: [], holding: [], next: [] }]));
+    // 「1年前から先を知らずに」の練習用：最初から決まっている代表銘柄（為替は全部）で、1年より前から計算しておく
+    const bare = (c) => String(c).replace(/\.T$|=X$/i, '').toUpperCase();
+    const fixed = new Set(baseUniverse(mode).map(([c]) => bare(c)));
+    const wf = !day ? Object.fromEntries(waySides(mode).map((v) => [v, []])) : null;
     let n = 0;
     for (const x of list) {
       prices[x.symbol] = x.candles[x.candles.length - 1].close;
@@ -120,12 +125,18 @@ async function computeLog(mode, out, force = false, st = style) {
         for (const t of r.trades) g.trades.push({ ...t, name: x.name, symbol: x.symbol });
         if (r.open) g.holding.push({ ...r.open, name: x.name, symbol: x.symbol, last: last.close });
         if (r.next) g.next.push({ ...r.next, name: x.name, symbol: x.symbol, open: r.open, last: last.close, date: dayKeyOf(last.time), t: last.time });
+        if (wf && fixed.has(bare(x.symbol))) {
+          const rl = runStrategy(x.candles, 'combo', { ...opt, sides: v, days: x.candles.length - 80 });
+          for (const t of rl.trades) wf[v].push({ ...t, name: x.name, symbol: x.symbol });
+        }
       }
       if (++n % 5 === 0) { out.innerHTML = `<p class="small muted"><span class="spinner"></span> 計算しています… ${n} / ${list.length}</p>`; await new Promise((res) => setTimeout(res, 0)); }
     }
     let usdjpy = prices['USDJPY=X'] || null;
     if (!usdjpy) { try { const u = await api('/api/chart?symbol=USDJPY&tf=1d'); usdjpy = u.candles[u.candles.length - 1].close; } catch { /* 取れなければ米国株の量は出さない */ } }
-    const data = { by, prices, usdjpy, count: list.length, at: Date.now(), style: st, scanInfo };
+    // 練習用の取引にも、その時点までのことだけで「勝つ確率の目安」を付ける
+    if (wf) for (const ts of Object.values(wf)) for (const t of ts) t.odds = signalOdds(ts, { symbol: t.symbol, side: t.side, strength: t.strength, before: t.entryDate });
+    const data = { by, wf, wfCount: fixed.size, prices, usdjpy, count: list.length, at: Date.now(), style: st, scanInfo };
     logCache[ck] = { at: Date.now(), data };
     return data;
   })();
@@ -164,6 +175,8 @@ function viewOf(r, mode) {
     r.cmp = compareWays(tb, mode, pf, budget, r.prices);
     // AIの特別ルール（勝つ確率の目安で絞る）：前半で見つけて、後半で確かめる
     r.custom = searchCustom(tb, mode, pf, budget, r.prices, r.cmp);
+    // 1年前から先を知らずにやっていたら（月ごとに、その時点までのことだけでやり方を決める）
+    r.wfRes = r.wf ? walkForward(r.wf, mode, pf, r.prices) : null;
     r.cmpKey = ck;
   }
   const std = r.cmp.best || wayOf(mode);
@@ -173,7 +186,7 @@ function viewOf(r, mode) {
   const sel = wayViewOf(mode);
   const way = sel === 'custom' && r.custom ? r.custom : sel === 'auto' || !WAYS[mode].some((w) => w.key === sel) ? best : wayOf(mode, sel);
   const g = ensureOdds(r.by[way.sides]);
-  return { trades: g.trades, holding: g.holding, next: g.next, prices: r.prices, usdjpy: r.usdjpy, way, best, std, custom: r.custom, minOdds: way.minOdds || 0, cmp: r.cmp, auto: way === best && sel === 'auto', pf: wayProfile(pf, mode, (way.base || way).key), budget };
+  return { wfRes: r.wfRes, wfCount: r.wfCount, trades: g.trades, holding: g.holding, next: g.next, prices: r.prices, usdjpy: r.usdjpy, way, best, std, custom: r.custom, minOdds: way.minOdds || 0, cmp: r.cmp, auto: way === best && sel === 'auto', pf: wayProfile(pf, mode, (way.base || way).key), budget };
 }
 
 // やり方を選ぶボタン（おすすめ＝自動・ほかのやり方も見られる）
@@ -215,6 +228,24 @@ function fxPipNotes(v) {
   const pf = getProfile();
   return [`「${v.way.label}」の${ps.length}回の取引は、勝ったとき平均${pipsText(avg(w))}、負けたとき平均${pipsText(avg(l))}動きました（1回あたり平均${pipsText(avg(ps))}）。`,
     pf.fxLots > 0 ? `毎回${pf.fxLots}ロット（${(pf.fxLots * (pf.fxLotSize || 10000)).toLocaleString()}通貨）で入る計算です。ドル円なら1pipsで約${Math.round(pf.fxLots * (pf.fxLotSize || 10000) * 0.01).toLocaleString()}円動きます。` : 'ロット数はおまかせ（損切りまでで減る額が「1回で減ってもいい額」に収まる量）で入る計算です。量は「今のサイン」「売買の一覧」に、何ロット（何通貨）かを出しています。'];
+}
+
+// 1年前から、先を知らずにやっていたら（本当の練習）
+function wfHtml(v, mode) {
+  const w = v.wfRes;
+  if (!w) return style === 'day' ? '<p class="small muted">「1年前から先を知らずに」の練習は、データが1年分あるスイング（日足）だけで計算しています。</p>' : '';
+  const ym = (s) => `${s.slice(2, 4)}年${Number(s.slice(5, 7))}月`;
+  const rest = w.months.filter((m) => m.rest).length;
+  return `<h3>📅 1年前から、先を知らずにやっていたら<span class="sub">本当の練習・${ym(w.from)}〜${ym(w.to)}</span></h3>
+    <div class="grid2">
+      <div class="stat"><div class="label">1年の損益（あなたの予算）</div><div class="value ${w.total >= 0 ? 'plus' : 'minus'}">${fmtYen(w.total)}</div><div class="small muted">${w.budget ? `予算の${w.total >= 0 ? '+' : ''}${(w.total / w.budget * 100).toFixed(1)}%` : ''}</div></div>
+      <div class="stat"><div class="label">取引・勝率・一番減ったとき</div><div class="value" style="font-size:16px">${w.trades}回・${pct(w.winRate)}</div><div class="small muted">一番減ったとき ${fmtYen(-w.maxDD)}${w.losscuts ? `・ロスカット${w.losscuts}回` : ''}</div></div>
+    </div>
+    <details class="more-box"><summary>月ごとに見る（その月に選んだやり方・損益・残高）</summary>
+      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>月</th><th>その月の初めに選んだやり方</th><th class="r">回数</th><th class="r">損益</th><th class="r">月末の残高</th></tr></thead><tbody>
+      ${w.months.map((m) => `<tr><td class="small">${ym(m.ym)}</td><td class="small">${esc(m.label)}</td><td class="r small">${m.n}</td><td class="r small ${m.pnl >= 0 ? 'plus' : 'minus'}">${m.n ? fmtYen(m.pnl) : '—'}</td><td class="r small">${yen0(m.balance)}</td></tr>`).join('')}
+      </tbody></table></div></details>
+    <p class="small muted" style="margin:4px 0 0">毎月の初めに、<b>その時点までに結果が出ていた取引（過去半年）だけ</b>を見て、その月のやり方（現物・信用・空売り${mode === 'fx' ? '・買い売りの向き' : ''}、勝つ確率で絞るか、お休みか）を決め、その月のサインどおりに売買した結果です。後から分かったことは使っていません。${rest ? `${rest}か月は、どのやり方も過去半年マイナスだったのでお休みしました。` : ''}銘柄は、今の人気で選ぶと後から見て強かったものばかりになるので、最初から決まっている${mode === 'fx' ? '全部の通貨ペア' : `代表${v.wfCount}銘柄`}で計算しています。</p>`;
 }
 
 // AIの特別ルール：どう見つけて、本当に良かったか（前半で見つけて後半で確かめた結果）
@@ -301,8 +332,10 @@ function renderPlan(r0, mode) {
     ${rest.length ? `<details class="why-box" style="margin-top:10px"><summary>見送ったサイン（${rest.length}件）</summary><ul class="list">${rest.map((x) => `<li class="small"><b>${esc(x.name)}</b> ${sideBadge(x.side)} 確率${x.odds ? Math.round(x.odds.p * 100) + '%' : '—'}　<span class="muted">${
       !x.odds || x.odds.p < minOdds ? `勝つ確率の目安が${Math.round(minOdds * 100)}%未満` : x.odds.expect <= 0 ? '勝っても負けても平均するとマイナス' : x.size && x.size.qty === 0 ? esc(x.size.why) : !x.size ? '量を計算できませんでした' : `同時に持つ数（${pf.maxPos}つ）を超えるため`}</span></li>`).join('')}</ul></details>` : ''}
 
-    <h3>📊 あなたの予算で、このやり方を1年続けていたら</h3>
-    <div class="grid2">${replayCard('サインが出たら全部やる', all)}${replayCard('確率の目安55%以上だけやる', picky)}</div>
+    ${wfHtml(r, mode)}
+    <details class="more-box"><summary>📊 後から見た計算（今のやり方を1年前から使っていたら）</summary>
+    <p class="small muted" style="margin:4px 0">こちらは「今いちばん良かったやり方」を1年前から使っていた場合です。今の時点で分かったことを使っているので、上の「本当の練習」より良く見えやすいです。</p>
+    <div class="grid2">${replayCard('サインが出たら全部やる', all)}${replayCard('確率の目安55%以上だけやる', picky)}</div></details>
     ${waysHtml(r, mode)}
     <p class="small" style="margin:6px 0 0"><b>サインの絞り方：</b>${usePicky ? '確率の目安が55%以上のサインだけに絞る方が成績が良かったので、上の「今やるといいこと」も55%以上に絞っています。' : '絞らずにサインどおりにやる方が成績が良かったので、50%以上のサインを出しています。'}</p>
     <p class="notice" style="margin-top:8px">過去の値動きでの計算です。日本株は100株単位、為替は1,000通貨単位で、取引のしかたは「${esc(kindText(pf, mode))}」で計算しています（為替の証拠金は国内の決まりの25倍で計算）。手数料などは差し引いていますが、実際の値段（次の日の始まりの値段）は少しずれます。最終的な判断はご自身で行ってください。</p>
@@ -753,6 +786,7 @@ export async function showWaysCard(el, mode) {
     const v = viewOf(r, mode);
     const b = v.best;
     el.innerHTML = `<p class="small" style="margin:0 0 6px">${r.count}銘柄を、全部のやり方（${WAYS[mode].map((w) => w.label).join('・')}）で過去1年やり直して比べました。</p>
+      ${wfHtml(v, mode)}
       ${waysHtml(v, mode)}
       <p class="small" style="margin:6px 0 0">${v.cmp.note === 'rest' ? `どのやり方もマイナスだったので、今はお休みがおすすめです。「あなた専用」では、やるなら一番損が小さい「<b>${esc(b.label)}</b>」で出しています。` : `今は「<b>${esc(b.label)}</b>」でやるのが一番いいと判断して、「あなた専用」のプラン・サイン・メールもこのやり方で出しています。`}</p>
       ${updatedNote(r)}`;

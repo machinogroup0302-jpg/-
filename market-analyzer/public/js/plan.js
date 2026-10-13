@@ -178,11 +178,15 @@ export function replayWithBudget(trades, { budget, riskPct, maxPos, minOdds = 0,
       if (budget + equity <= 0) broke = true;
     }
   };
+  const base = { leverage, maint, notionalOf, capLev, carry, acct };
+  const log = [];
   for (const t of list) {
     settle(t.entryDate);
     if (broke) break;
     if (open.length >= maxPos) { skipped++; continue; }
     const alloc = budget / maxPos;
+    // 取引ごとに条件が違うとき（月ごとにやり方を変える練習など）は、その取引の条件を使う
+    const { leverage, maint, notionalOf, capLev, carry, acct } = t.__o ? { ...base, ...t.__o } : base;
     let yen;
     if (leverage || notionalOf) {
       // notionalOf があれば、その取引の金額（為替で毎回同じロット数など）
@@ -213,12 +217,13 @@ export function replayWithBudget(trades, { budget, riskPct, maxPos, minOdds = 0,
       if (carry && t.exitTime && t.entryTime) yen -= size * (t.side < 0 ? carry.short : carry.long) * Math.max(1, (t.exitTime - t.entryTime) / 86400) / 365;
     }
     open.push({ ...t, yen });
+    log.push({ t, yen });
     taken++;
     if (yen > 0) wins++;
     if (t.side < 0) { shortYen += yen; shortN++; } else { longYen += yen; longN++; }
   }
   settle(null);
-  return { total: equity, pct: budget ? equity / budget : 0, trades: taken, winRate: taken ? wins / taken : null, maxDD, skipped, losscuts, broke, longYen, shortYen, longN, shortN };
+  return { total: equity, pct: budget ? equity / budget : 0, trades: taken, winRate: taken ? wins / taken : null, maxDD, skipped, losscuts, broke, longYen, shortYen, longN, shortN, log };
 }
 
 // 候補の一覧（日本株）：値段だけから「現物なら・信用なら・空売りなら」をひとことで
@@ -403,4 +408,56 @@ export function searchCustom(tradesBy, mode, pf, budget, prices = {}, std = null
     label: `${c.w.label}・勝つ確率${Math.round(c.minOdds * 100)}%以上のサインだけ`,
     train: c.train, test, full, stdTest, adopted, mid, tried: cands.length,
   };
+}
+
+// ---------------- 1年前から「先を知らずに」やっていたら（本当の練習） ----------------
+// 毎月の初めに、その時点までに終わった取引（過去半年）だけを見て「今月のやり方」を決める。
+// 決めたやり方で、その月に出たサインどおりに売買する。これを12か月くり返す（後から分かったことは使わない）。
+// tradesBy：向きごとの取引（1年より前から計算しておく。勝つ確率の目安は、その取引より前のことだけで計算済み）
+const addMonths = (ym, n) => { const [y, m] = ym.split('-').map(Number); const d = new Date(Date.UTC(y, m - 1 + n, 1)); return d.toISOString().slice(0, 7); };
+export function walkForward(tradesBy, mode, pf, prices = {}, { months = 12, lookback = 6, odds = [0, 0.55, 0.6, 0.7] } = {}) {
+  const all = Object.values(tradesBy).flat();
+  if (!all.length) return null;
+  const b = budgets(pf);
+  const budget = mode === 'fx' ? b.cash : b.total;
+  const last = all.reduce((a, t) => (t.exitDate > a ? t.exitDate : a), '').slice(0, 7);
+  const first = addMonths(last, -(months - 1));
+  const p = pf.budget ? pf : { ...pf, budget };
+  const pickOpts = (w) => { const o = replayOpts(mode, w, p, prices); return { leverage: o.leverage, maint: o.maint, notionalOf: o.notionalOf, capLev: o.capLev, carry: o.carry, acct: o.acct }; };
+  const plan = [];
+  const chosen = [];
+  for (let i = 0; i < months; i++) {
+    const ym = addMonths(first, i);
+    const start = `${ym}-01`, end = `${addMonths(ym, 1)}-01`, from = `${addMonths(ym, -lookback)}-01`;
+    // その月の初めの時点で、もう結果が分かっている取引だけで比べる
+    const cands = [];
+    for (const w of WAYS[mode]) {
+      const past = (tradesBy[w.sides] || []).filter((t) => t.exitDate < start && t.entryDate >= from);
+      for (const m of odds) {
+        const r = replayWithBudget(past, { ...replayOpts(mode, w, p, prices), minOdds: m });
+        if (r.trades >= 5 && r.total > 0 && !r.broke) cands.push({ w, m, r });
+      }
+    }
+    // 簡単なやり方・絞らないものから順に見て、はっきり良いときだけ切り替える（ふだんのおすすめと同じ考え方）
+    let best = null;
+    const safe = cands.filter((c) => c.r.maxDD <= budget * 0.35);
+    for (const c of safe.length ? safe : cands) if (!best || c.r.total > best.r.total + Math.max(budget * 0.02, Math.abs(best.r.total) * 0.1)) best = c;
+    const label = best ? `${best.w.label}${best.m ? `・確率${Math.round(best.m * 100)}%以上` : ''}` : 'お休み（過去半年はどのやり方もマイナス）';
+    plan.push({ ym, label, rest: !best });
+    if (!best) continue;
+    const o = pickOpts(best.w);
+    for (const t of tradesBy[best.w.sides] || []) {
+      if (t.entryDate >= start && t.entryDate < end && (!best.m || (t.odds && t.odds.p >= best.m))) chosen.push({ ...t, __o: o, __ym: ym });
+    }
+  }
+  const r = replayWithBudget(chosen, { ...replayOpts(mode, WAYS[mode][0], p, prices), minOdds: 0 });
+  // 月ごとの成績と、月末の残高
+  let bal = budget;
+  const byMonth = plan.map((x) => {
+    const items = r.log.filter((l) => l.t.__ym === x.ym);
+    const pnl = items.reduce((a, l) => a + l.yen, 0);
+    bal += pnl;
+    return { ...x, n: items.length, wins: items.filter((l) => l.yen > 0).length, pnl, balance: bal };
+  });
+  return { ...r, months: byMonth, from: first, to: last, budget };
 }

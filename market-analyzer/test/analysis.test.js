@@ -965,3 +965,21 @@ test('AIの特別ルール：前半で見つけて後半で確かめる', () => 
   assert.ok(c.test.total > 0);
   assert.equal(c.adopted, true);
 });
+
+import { walkForward } from '../public/js/plan.js';
+test('1年前から先を知らずに：毎月その時点までのことだけでやり方を決める', () => {
+  // 1年目は買いが勝ち、後半6か月は買いが負け始める（先を知らないので、負け始めてしばらくは買い続ける）
+  const trades = [];
+  for (let mo = 0; mo < 20; mo++) {
+    for (let k = 0; k < 4; k++) {
+      const y = 2025 + Math.floor((mo) / 12), m = (mo % 12) + 1;
+      const d = String(3 + k * 6).padStart(2, '0');
+      const ed = `${y}-${String(m).padStart(2, '0')}-${d}`, xd = `${y}-${String(m).padStart(2, '0')}-${String(5 + k * 6).padStart(2, '0')}`;
+      trades.push({ side: 1, ret: mo < 14 ? 0.02 : -0.02, stopPct: 0.03, mae: -0.01, odds: { p: 0.6 }, entryDate: ed, exitDate: xd, entryTime: 0, exitTime: 0, entryPrice: 100, symbol: '7203.T' });
+    }
+  }
+  const w = walkForward({ long: trades, both: trades }, 'stock', { budget: 1000000, riskPct: 2, maxPos: 3 }, {});
+  assert.equal(w.months.length, 12);
+  assert.ok(w.months.some((m) => m.rest)); // 負けが続いたあとはお休みになる
+  assert.ok(w.months[0].n > 0 && w.months[0].pnl > 0);
+});
