@@ -26,7 +26,63 @@
  },
  "book": {
   "admin": {
-   "open": {},
+   "open": {
+    "swing|8084.T": {
+     "kind": "swing",
+     "mode": "stock",
+     "symbol": "8084.T",
+     "name": "RYODEN",
+     "side": 1,
+     "signalTime": 1791849600,
+     "signalPrice": 2502,
+     "sentAt": "2026-10-13T07:58:42.655Z",
+     "how": "現物で買う：100株＋信用で買う：400株（合計500株）"
+    },
+    "swing|7203.T": {
+     "kind": "swing",
+     "mode": "stock",
+     "symbol": "7203.T",
+     "name": "トヨタ自動車",
+     "side": 1,
+     "signalTime": 1791849600,
+     "signalPrice": 2984,
+     "sentAt": "2026-10-13T07:58:42.655Z",
+     "how": "現物で買う：100株＋信用で買う：300株（合計400株）"
+    },
+    "swing|4894.T": {
+     "kind": "swing",
+     "mode": "stock",
+     "symbol": "4894.T",
+     "name": "クオリプス",
+     "side": 1,
+     "signalTime": 1791849600,
+     "signalPrice": 6280,
+     "sentAt": "2026-10-13T07:58:42.655Z",
+     "how": "信用で買う：100株"
+    },
+    "swing|5537.T": {
+     "kind": "swing",
+     "mode": "stock",
+     "symbol": "5537.T",
+     "name": "AlbaLink",
+     "side": 1,
+     "signalTime": 1791849600,
+     "signalPrice": 4140,
+     "sentAt": "2026-10-13T07:58:42.655Z",
+     "how": "現物で買う：100株＋信用で買う：100株（合計200株）"
+    },
+    "swing|6080.T": {
+     "kind": "swing",
+     "mode": "stock",
+     "symbol": "6080.T",
+     "name": "M&Aキャピタルパートナーズ",
+     "side": 1,
+     "signalTime": 1791849600,
+     "signalPrice": 4430,
+     "sentAt": "2026-10-13T07:58:42.655Z",
+     "how": "現物で買う：100株＋信用で買う：200株（合計300株）"
+    }
+   },
    "log": []
   }
  }
