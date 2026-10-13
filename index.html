@@ -333,6 +333,86 @@
     .trust-item .v { font-size: 22px; }
     .company-table th { width: 34%; }
   }
+
+  /* Conversion */
+  .topbar { background: var(--yellow); color: var(--navy); font-size: 13px; font-weight: 700; text-align: center; padding: 8px 12px; }
+  .topbar a { text-decoration: underline; }
+  .btn-line { background: #06c755; color: #fff; box-shadow: 0 6px 20px rgba(6,199,85,.3); }
+  .btn-line:hover { background: #05a948; transform: translateY(-2px); }
+  .btn-tel { background: #fff; color: var(--navy); }
+  .btn-tel:hover { transform: translateY(-2px); }
+  .hero-cta-box { background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.15); border-radius: 18px; padding: 20px; margin-bottom: 8px; }
+  .hero-cta-box .lead { font-size: 14px; font-weight: 700; margin-bottom: 12px; color: #fff; }
+  .hero-cta-box .lead b { color: var(--yellow); }
+  .cta-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+  .cta-row .btn { padding: 14px 10px; font-size: 14px; flex-direction: column; gap: 2px; border-radius: 12px; line-height: 1.3; }
+  .cta-row .btn small { font-size: 11px; font-weight: 500; opacity: .85; }
+  .status-pill { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; color: #fff; margin-top: 14px; }
+  .status-pill::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: #3ddc84; box-shadow: 0 0 0 4px rgba(61,220,132,.25); }
+
+  .cta-band { background: var(--navy); color: #fff; padding: 48px 0; }
+  .cta-band-inner { display: grid; grid-template-columns: 1.2fr 1fr; gap: 32px; align-items: center; }
+  .cta-band h2 { font-size: clamp(20px, 2.8vw, 28px); font-weight: 900; line-height: 1.5; }
+  .cta-band h2 em { font-style: normal; color: var(--yellow); }
+  .cta-band p { color: rgba(255,255,255,.75); font-size: 14px; margin-top: 6px; }
+  .cta-band .btns { display: grid; gap: 10px; }
+  .cta-band .btn { width: 100%; }
+
+  .campaign { max-width: 860px; margin: 0 auto; border: 3px dashed var(--yellow-dark); border-radius: 20px; padding: 28px; background: #fffbea; text-align: center; position: relative; }
+  .campaign .ribbon { position: absolute; top: -16px; left: 50%; transform: translateX(-50%); background: #e53935; color: #fff; font-weight: 900; font-size: 14px; padding: 4px 20px; border-radius: 999px; white-space: nowrap; }
+  .campaign h3 { font-size: clamp(20px, 3vw, 30px); font-weight: 900; line-height: 1.4; }
+  .campaign h3 em { font-style: normal; color: #e53935; font-size: 1.3em; }
+  .campaign p { color: var(--muted); font-size: 14px; margin-top: 8px; }
+
+  .review-head { display: flex; align-items: center; justify-content: center; gap: 16px; flex-wrap: wrap; margin-top: 24px; }
+  .review-score { font-size: 48px; font-weight: 900; line-height: 1; }
+  .review-stars { color: var(--yellow-dark); font-size: 22px; letter-spacing: 2px; }
+  .review-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 40px; text-align: left; }
+  .review { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 24px; display: flex; flex-direction: column; gap: 10px; }
+  .review .stars { color: var(--yellow-dark); letter-spacing: 1px; }
+  .review h3 { font-size: 16px; line-height: 1.5; }
+  .review p { font-size: 14px; color: var(--muted); flex: 1; }
+  .review .who { font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 10px; }
+  .more-link { display: inline-block; margin-top: 28px; font-weight: 700; color: var(--navy); border-bottom: 2px solid var(--yellow); }
+
+  .cases { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 40px; text-align: left; }
+  .case { border-radius: var(--radius); overflow: hidden; border: 1px solid var(--line); background: #fff; }
+  .case .ph { aspect-ratio: 4/3; background: repeating-linear-gradient(45deg, #eef2f6 0 12px, #f6f8fa 12px 24px); display: grid; place-items: center; color: #9aa6b2; font-size: 13px; font-weight: 700; text-align: center; padding: 12px; }
+  .case .body { padding: 16px 18px; }
+  .case .body b { display: block; font-size: 15px; }
+  .case .body span { font-size: 13px; color: var(--muted); }
+
+  .compare { width: 100%; max-width: 860px; margin: 40px auto 0; border-collapse: separate; border-spacing: 0; text-align: center; font-size: 15px; }
+  .compare th, .compare td { padding: 16px 12px; border-bottom: 1px solid var(--line); }
+  .compare thead th { font-size: 14px; }
+  .compare thead th.us { background: var(--yellow); color: var(--navy); border-radius: 12px 12px 0 0; font-weight: 900; }
+  .compare td.us { background: #fffbea; font-weight: 700; }
+  .compare td.us b { color: #e53935; font-size: 18px; }
+  .compare th[scope=row] { text-align: left; font-weight: 700; color: var(--text); }
+  .compare td.other { color: var(--muted); }
+
+  .line-box { display: grid; grid-template-columns: auto 1fr auto; gap: 28px; align-items: center; background: #effcf3; border: 2px solid #06c755; border-radius: 20px; padding: 28px 32px; text-align: left; max-width: 900px; margin: 0 auto; }
+  .line-box .logo-l { width: 72px; height: 72px; border-radius: 18px; background: #06c755; color: #fff; display: grid; place-items: center; font-weight: 900; font-size: 18px; }
+  .line-box h3 { font-size: clamp(18px, 2.4vw, 24px); font-weight: 900; line-height: 1.5; }
+  .line-box p { font-size: 14px; color: var(--muted); }
+  .line-steps { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .line-steps span { background: #fff; border: 1px solid #b7ecc9; border-radius: 999px; padding: 2px 12px; font-size: 12px; font-weight: 700; color: #058a3c; }
+
+  .sp-cta .sp-row { display: grid; grid-template-columns: 1fr 1fr 1.4fr; gap: 8px; }
+  .sp-cta .btn { font-size: 13px; padding: 12px 6px; border-radius: 10px; }
+
+  @media (max-width: 900px) {
+    .cta-band-inner, .line-box { grid-template-columns: 1fr; }
+    .line-box { text-align: center; justify-items: center; }
+    .line-steps { justify-content: center; }
+    .review-grid, .cases { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 520px) {
+    .cta-row { grid-template-columns: 1fr; }
+    .cta-row .btn { flex-direction: row; gap: 8px; }
+    .compare { font-size: 13px; }
+    .compare th, .compare td { padding: 12px 6px; }
+  }
 </style>
 </head>
 <body>
@@ -340,6 +420,8 @@
   情報の出典: 合同会社まちのグループの掲載情報（ミツモア等）を検索結果から引用。
   class="todo" の箇所は未確認・未入力です。公開前に必ず実際の情報へ差し替えてください。
 -->
+
+<div class="topbar">📞 お見積り無料・ご相談だけでもOK ｜ 今月の出張受付：<span class="todo">受付中（空き状況を入力）</span> ｜ <a href="#contact">今すぐ見積りを依頼 →</a></div>
 
 <header>
   <div class="container header-inner">
@@ -353,12 +435,13 @@
       <ul>
         <li><a href="#promise">安心の約束</a></li>
         <li><a href="#reasons">選ばれる理由</a></li>
+        <li><a href="#reviews">お客さまの声</a></li>
         <li><a href="#price">料金</a></li>
         <li><a href="#flow">施工の流れ</a></li>
-        <li><a href="#company">会社概要</a></li>
+        
       </ul>
     </nav>
-    <a href="#contact" class="btn btn-primary header-cta">無料見積り</a>
+    <a href="tel:000-0000-0000" class="btn btn-tel header-cta" style="margin-right:8px">📞 電話</a><a href="#contact" class="btn btn-primary header-cta">無料見積り</a>
   </div>
 </header>
 
@@ -369,10 +452,15 @@
       <span class="hero-badge">タクシー・ハイヤー事業者さまへ ／ 埼玉県を中心に出張対応</span>
       <h1>ドラレコの取り付け、<br><em>営業所まで伺います。</em></h1>
       <p>認証工場で整備に携わってきたスタッフが、自社で責任をもって施工。<br>車両を工場へ運ぶ手間なく、営業への影響を抑えて取り付けます。</p>
-      <div class="hero-actions">
-        <a href="#contact" class="btn btn-primary">無料で見積りを依頼</a>
-        <a href="#price" class="btn btn-ghost">料金を見る</a>
+      <div class="hero-cta-box">
+        <p class="lead">＼ 台数・車種を伝えるだけ！<b>お見積りは無料</b>です ／</p>
+        <div class="cta-row">
+          <a href="tel:000-0000-0000" class="btn btn-tel">📞 電話で相談<small>その場で概算</small></a>
+          <a href="#line" class="btn btn-line">LINEで見積り<small>写真を送るだけ</small></a>
+          <a href="#contact" class="btn btn-primary">フォーム<small>24時間受付</small></a>
+        </div>
       </div>
+      <span class="status-pill">ただいまお見積り受付中 ・ <span class="todo" style="color:var(--navy)">最短○日</span>で伺います</span>
       <div class="hero-points">
         <span>作業の外注なし</span>
         <span>本体の持ち込みOK</span>
@@ -427,8 +515,19 @@
   </div>
 </section>
 
+<!-- Campaign -->
+<section style="padding:72px 0 0">
+  <div class="container">
+    <div class="campaign">
+      <span class="ribbon">タクシー・ハイヤー事業者さま限定</span>
+      <h3><span class="todo">○台以上</span>のご依頼で 工賃 <em class="todo">○%OFF</em></h3>
+      <p>お見積り時に「LPを見た」とお伝えください。<span class="todo">キャンペーン期間・条件を入力（実施しない場合はこの枠ごと削除）</span></p>
+    </div>
+  </div>
+</section>
+
 <!-- Problems -->
-<section class="problems" style="margin-top:72px">
+<section class="problems" style="margin-top:72px" id="problems">
   <div class="container center">
     <span class="section-label">PROBLEMS</span>
     <h2 class="section-title">ドラレコの取り付けで、<br>こんな不安はありませんか？</h2>
@@ -490,6 +589,64 @@
         <h3>施工後も気軽に相談できる<br>「まちの車屋さん」</h3>
         <p>取り付け後の不具合やご質問にも対応します。洗車・コーティング・車検・整備まで、車のことはまとめてご相談ください。</p>
       </div>
+    </div>
+  </div>
+</section>
+
+<!-- Reviews -->
+<section id="reviews" class="flow">
+  <div class="container center">
+    <span class="section-label">REVIEWS</span>
+    <h2 class="section-title">ご依頼いただいたお客さまの声</h2>
+    <div class="review-head">
+      <span class="review-score">4.9</span>
+      <div style="text-align:left"><div class="review-stars">★★★★★</div><small style="color:var(--muted)">ミツモアの口コミ 785件 ※</small></div>
+    </div>
+    <div class="review-grid">
+      <div class="review">
+        <div class="stars">★★★★★</div>
+        <h3 class="todo">口コミのタイトル</h3>
+        <p class="todo">ミツモア等に寄せられた実際の口コミ本文を、掲載許可の範囲で貼り付けてください。</p>
+        <div class="who">ご依頼内容：ドラレコ取り付け ／ <span class="todo">地域・時期</span></div>
+      </div>
+      <div class="review">
+        <div class="stars">★★★★★</div>
+        <h3 class="todo">口コミのタイトル</h3>
+        <p class="todo">実際の口コミ本文を貼り付けてください。作り話の口コミは掲載しないでください（景品表示法の規制対象になります）。</p>
+        <div class="who">ご依頼内容：ドラレコ取り付け ／ <span class="todo">地域・時期</span></div>
+      </div>
+      <div class="review">
+        <div class="stars">★★★★★</div>
+        <h3 class="todo">口コミのタイトル</h3>
+        <p class="todo">実際の口コミ本文を貼り付けてください。</p>
+        <div class="who">ご依頼内容：<span class="todo">コーティング・整備など</span></div>
+      </div>
+    </div>
+    <a class="more-link todo" href="#">ミツモアですべての口コミを見る →（URLを入力）</a>
+    <p class="note">※ 評価・件数は公開前に最新の数値をご確認ください。</p>
+  </div>
+</section>
+
+<!-- Cases -->
+<section id="cases">
+  <div class="container center">
+    <span class="section-label">WORKS</span>
+    <h2 class="section-title">施工事例</h2>
+    <p class="section-lead">配線を内装の内側に隠し、すっきりと仕上げます。</p>
+    <div class="cases">
+      <div class="case"><div class="ph">施工写真をここに<br>（前方カメラ取り付け後）</div><div class="body"><b class="todo">車種名</b><span>前後2カメラ取り付け ／ 本体持ち込み</span></div></div>
+      <div class="case"><div class="ph">施工写真をここに<br>（配線の処理）</div><div class="body"><b class="todo">車種名</b><span>3カメラ取り付け（車内カメラ含む）</span></div></div>
+      <div class="case"><div class="ph">施工写真をここに<br>（後方カメラ取り付け後）</div><div class="body"><b class="todo">車種名</b><span>輸入車へのドラレコ取り付け</span></div></div>
+    </div>
+  </div>
+</section>
+
+<section class="cta-band">
+  <div class="container cta-band-inner">
+    <div><h2>台数が決まっていなくても大丈夫。<br><em>まずは無料見積り</em>からどうぞ</h2><p>ご相談だけでも歓迎です。無理な営業はいたしません。</p></div>
+    <div class="btns">
+      <a href="#contact" class="btn btn-primary">無料で見積りを依頼する</a>
+      <a href="#line" class="btn btn-line">LINEで写真を送って見積り</a>
     </div>
   </div>
 </section>
@@ -582,6 +739,34 @@
   </div>
 </section>
 
+<!-- Compare -->
+<section id="compare" class="flow">
+  <div class="container center">
+    <span class="section-label">COMPARE</span>
+    <h2 class="section-title">店舗に持ち込む場合との違い</h2>
+    <table class="compare">
+      <thead><tr><th></th><th class="us">まちのグループ<br>（出張取り付け）</th><th>一般的な店舗<br>持ち込み</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">車両の移動</th><td class="us"><b>不要</b><br>営業所へ伺います</td><td class="other">店舗まで運転が必要</td></tr>
+        <tr><th scope="row">待ち時間</th><td class="us"><b>なし</b><br>普段の業務を続けられます</td><td class="other">作業中は店舗で待機</td></tr>
+        <tr><th scope="row">作業する人</th><td class="us"><b>自社スタッフ</b><br>外注なし</td><td class="other">店舗による</td></tr>
+        <tr><th scope="row">日程</th><td class="us"><b>運行に合わせて調整</b></td><td class="other">店舗の予約枠に合わせる</td></tr>
+        <tr><th scope="row">前後2カメラ工賃</th><td class="us"><b>¥14,000</b><br>本体持ち込み</td><td class="other">店舗により異なる</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="cta-band">
+  <div class="container cta-band-inner">
+    <div><h2>その場で概算をお伝えします。<br><em>お電話・LINE・フォーム</em>からお気軽に</h2><p>法人さまの複数台のご依頼もまとめてお見積りします。</p></div>
+    <div class="btns">
+      <a href="#contact" class="btn btn-primary">無料で見積りを依頼する</a>
+      <a href="#line" class="btn btn-line">LINEで写真を送って見積り</a>
+    </div>
+  </div>
+</section>
+
 <!-- Price -->
 <section id="price">
   <div class="container center">
@@ -658,6 +843,21 @@
   </div>
 </section>
 
+<!-- LINE -->
+<section id="line">
+  <div class="container">
+    <div class="line-box">
+      <div class="logo-l">LINE</div>
+      <div>
+        <h3>写真を送るだけでかんたん見積り</h3>
+        <p>車種・ドラレコの箱やカメラの写真を送っていただくだけで、概算をお伝えします。</p>
+        <div class="line-steps"><span>① 友だち追加</span><span>② 写真を送信</span><span>③ お見積りが届く</span></div>
+      </div>
+      <a href="#" class="btn btn-line">友だち追加する<span class="todo" style="font-size:11px;color:var(--navy)">URL要入力</span></a>
+    </div>
+  </div>
+</section>
+
 <!-- FAQ -->
 <section id="faq">
   <div class="container">
@@ -694,6 +894,17 @@
   </div>
 </section>
 
+
+<section class="cta-band">
+  <div class="container cta-band-inner">
+    <div><h2>ご相談・お見積りは無料です。<br><em>まずはお気軽に</em>お問い合わせください</h2><p>お見積り後にお断りいただいても大丈夫です。</p></div>
+    <div class="btns">
+      <a href="#contact" class="btn btn-primary">無料で見積りを依頼する</a>
+      <a href="#line" class="btn btn-line">LINEで写真を送って見積り</a>
+    </div>
+  </div>
+</section>
+
 <!-- Company -->
 <section id="company" class="flow">
   <div class="container center">
@@ -717,7 +928,7 @@
     <div>
       <span class="section-label">CONTACT</span>
       <h2 class="section-title">お見積り・ご相談は<br>無料です</h2>
-      <p class="section-lead">台数や車種が決まっていなくても大丈夫です。お見積りだけのご相談でも、無理な営業はいたしません。</p>
+      <p class="section-lead"><b style="color:var(--yellow)">入力は約1分。</b>台数や車種が決まっていなくても大丈夫です。お見積りだけのご相談でも、無理な営業はいたしません。</p>
       <div class="tel-box">
         <small>お電話でのお問い合わせ</small>
         <div class="tel"><span class="todo" style="color:var(--navy)">000-0000-0000</span></div>
@@ -764,7 +975,11 @@
   </div>
 </footer>
 
-<div class="sp-cta"><a href="#contact" class="btn btn-primary">無料で見積りを依頼</a></div>
+<div class="sp-cta"><div class="sp-row">
+  <a href="tel:000-0000-0000" class="btn btn-tel">📞 電話</a>
+  <a href="#line" class="btn btn-line">LINE</a>
+  <a href="#contact" class="btn btn-primary">無料見積り</a>
+</div></div>
 
 <script>
   document.getElementById('contact-form').addEventListener('submit', function (e) {
