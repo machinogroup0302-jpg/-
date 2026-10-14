@@ -359,7 +359,7 @@ function renderPlan(r0, mode) {
   const closeOf = (h) => allCloses.find((c) => c.symbol.toUpperCase() === symbolOf(mode, h.code).toUpperCase() && (!c.open || c.open.side === h.side));
   $('lab-plan').innerHTML = `
     ${wayBar(r, mode)}
-    ${pf.budget ? '' : '<p class="notice" style="margin:0 0 8px">予算がまだ入っていないので、100万円で計算しています。右上の⚙（設定）の「あなたの設定」で入れてください。</p>'}
+    ${pf.budget ? '' : `<p class="notice" style="margin:0 0 8px">${mode === 'fx' ? '<b>為替の予算</b>' : mode === 'us' ? '<b>米国株の予算</b>' : '予算'}がまだ入っていないので、仮に100万円で計算しています。右上の⚙（設定）で${mode === 'fx' ? '「為替の予算」（FXの口座に入れているお金）' : mode === 'us' ? '「米国株の予算」' : '「日本株：現物の予算」'}を入れてください。${mode !== 'stock' ? '日本株の予算とは別です。' : ''}</p>`}
     <div class="plan-rule small">${mode === 'fx' ? `予算 <b>${yen0(budget)}</b>` : budgets(pf).sep ? `現物の予算 <b>${yen0(budgets(pf).cash)}</b>・信用・空売りの予算 <b>${yen0(budgets(pf).margin)}</b>` : `予算 <b>${yen0(budget)}</b>（現物・信用で共通）`}　／　1回で減ってもいい額 <b>${yen0(budget * pf.riskPct / 100)}</b>（${pf.riskPct}%）　／　同時に <b>${pf.maxPos}銘柄</b>まで（1銘柄 ${mode === 'fx' ? '' : '現物で'}${yen0(cashB / pf.maxPos)}まで）　／　取引のしかた <b>${esc(kindText(pf, mode))}</b></div>
     <button class="btn block" id="plan-settings" style="margin:8px 0 4px">予算・ルールを変える</button>
 
@@ -1185,7 +1185,7 @@ function initHoldForm() {
         const st = setupFromCsv(getHoldings('stock'), { rate, cashDeposit: num('imp-dep'), cashFree: num('imp-free') || 0 });
         const p0 = getProfile();
         // 為替・米国株の予算が別になっていなければ、今までの予算をそちらに残しておく
-        const next = { ...p0, budget: st.budget, fxBudget: p0.fxBudget || p0.budget || 0, usBudget: p0.usBudget || p0.budget || 0 };
+        const next = { ...p0, budget: st.budget };
         if (st.marginBudget != null) next.marginBudget = st.marginBudget;
         if (st.cal) next.marginCal = { ...(p0.marginCal || {}), stock: { date: todayJst(), ...st.cal } };
         setProfile(next);
