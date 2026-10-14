@@ -4,7 +4,7 @@ import { term } from './glossary.js';
 import { saveSynced, getProfile } from './favorites.js';
 import { wayOf, forMode } from './plan.js';
 import { coach, fmtDuration, tradeSymbol, pickInterval, excursion, excursionAdvice } from './tradecoach.js';
-import { parseCsv, findHeader, guessMapping, rowsToTrades, decodeFile, computeStats, FIELD_LABELS, detectFormat, fileId } from './trades.js';
+import { parseCsv, findHeader, guessMapping, rowsToTrades, decodeFile, computeStats, FIELD_LABELS, detectFormat, fileId, execToTrades } from './trades.js';
 
 // 為替と株の取引は別々に保存する
 const isFxTrade = (sym) => /[A-Z]{3}\s*\/?\s*[A-Z]{3}/i.test(sym || '') || /円|ドル|ユーロ|ポンド|ランド|ペソ|リラ|フラン/.test(sym || '');
@@ -172,11 +172,14 @@ function renderMonths() {
   const period = (ym) => `${ym.replace('-', '/')}/01〜${ym.replace('-', '/')}/${last(ym)}`;
   const prev = months[1];
   const any = Object.keys(count).length;
-  el.innerHTML = `${any && !count[prev] ? `<p class="notice" style="margin:8px 0">📅 <b>${label(prev)}分がまだです。</b>証券会社の取引履歴で、期間を <b>${period(prev)}</b> にしてCSVを保存し、下の「${label(prev)}」の行から入れてください。</p>` : ''}
+  // 入れたCSVの期間の中で取引がなかった月は「取引なし」（入れ忘れではない）
+  const ks = Object.keys(count).sort();
+  const covered = (ym) => any && ym > ks[0] && ym < ks[ks.length - 1];
+  el.innerHTML = `${any && !count[prev] && !covered(prev) ? `<p class="notice" style="margin:8px 0">📅 <b>${label(prev)}分がまだです。</b>証券会社の取引履歴で、期間を <b>${period(prev)}</b> にしてCSVを保存し、下の「${label(prev)}」の行から入れてください。</p>` : ''}
     <details class="more-box"${any ? '' : ' open'}><summary>📅 月ごとの一覧（月に1回、先月の分を入れる）</summary>
     <ul class="list" style="margin-top:6px">${months.map((ym, i) => `<li class="row" style="justify-content:space-between;align-items:center;gap:8px">
       <span><b>${label(ym)}</b>${i === 0 ? '<span class="small muted">（今月・月末に入れる）</span>' : ''}<br><span class="small muted">期間 ${period(ym)}</span></span>
-      <span class="row" style="gap:8px;align-items:center">${count[ym] ? `<span class="small plus">✅ ${count[ym]}件</span>` : `<span class="small muted">${i === 0 ? '—' : '⬜ まだ'}</span>`}
+      <span class="row" style="gap:8px;align-items:center">${count[ym] ? `<span class="small plus">✅ ${count[ym]}件</span>` : covered(ym) ? '<span class="small muted">✅ 取引なし</span>' : `<span class="small muted">${i === 0 ? '—' : '⬜ まだ'}</span>`}
         <label class="btn small">${count[ym] ? '入れ直す' : 'CSVを入れる'}<input type="file" class="month-file" accept=".csv,.txt,text/csv" hidden></label></span></li>`).join('')}</ul>
     <p class="small muted" style="margin:4px 0 0">同じ取引を2回入れても、重ならないようにしています。何か月分かまとめたCSVでもOKです。</p></details>`;
   el.querySelectorAll('.month-file').forEach((inp) => inp.addEventListener('change', (e) => {
@@ -306,6 +309,14 @@ async function onCsv(file) {
   const map = guessMapping(rows[h]);
   const format = detectFormat(rows[h]);
   const fileKey = fileId(text);
+  // 楽天証券の「取引履歴」：買いと売りを組み合わせて損益を出す
+  if (format.id === 'rakutenExec') {
+    const list = execToTrades(rows, h);
+    if (!list.length) { toast('決済した取引が見つかりませんでした（買っただけの取引は、売るまで数えません）'); return; }
+    $('map-box').innerHTML = '';
+    addTrades(list, fileKey, format, file.name);
+    return;
+  }
   if (map.pnl != null && map.date != null) {
     const list = rowsToTrades(rows, h, map);
     if (!list.length) { showMapping(rows, h, map, fileKey, format, file.name, true); return; }

@@ -69,6 +69,7 @@ export function detectFormat(header) {
   const h = header.join('|');
   if (/ポジション番号|pip損益|新規約定値/.test(h)) return { id: 'lion', name: 'LION FX（ヒロセ通商）の決済履歴' };
   if (/実現損益/.test(h)) return { id: 'rakuten', name: '楽天証券の実現損益' };
+  if (/取引区分/.test(h) && /売買区分/.test(h) && /建単価/.test(h)) return { id: 'rakutenExec', name: '楽天証券の取引履歴' };
   return { id: 'generic', name: '取引履歴' };
 }
 
@@ -234,5 +235,52 @@ export function insights(s) {
   }
   const hours = s.byHour.filter((g) => g.count >= 3).sort((a, b) => a.pnl - b.pnl);
   if (hours.length >= 3 && hours[0].pnl < 0) out.push(`${hours[0].key}時台の取引は負けやすい傾向です（${yen(hours[0].pnl)}）。`);
+  return out;
+}
+
+// 楽天証券の「取引履歴」（約定ごと・損益の列なし）から、決済した取引と損益を作る
+// ・信用：「信用返済」の行に建単価があるので、(返済の値段 − 建単価) × 数量 − 費用（手数料・金利・貸株料など）
+// ・現物：銘柄ごとに買った値段を平均して（楽天証券の特定口座と同じ考え方）、売ったときに損益を出す
+//   （この期間より前に買った株を売った分は、買った値段が分からないので数えない）
+export function execToTrades(rows, headerIndex) {
+  const h = rows[headerIndex].map((c) => String(c || '').normalize('NFKC').trim());
+  const col = (re) => h.findIndex((c) => re.test(c));
+  const C = { date: col(/^約定日/), code: col(/^銘柄コード/), name: col(/^銘柄名/), kind: col(/^取引区分/), side: col(/^売買区分/), qty: col(/^数量/), price: col(/^単価/),
+    openDate: col(/^建約定日/), entry: col(/^建単価/) };
+  const costCols = h.map((c, i) => [c, i]).filter(([c]) => /^(手数料|諸費用|建手数料|建手数料消費税|金利\(支払\)|逆日歩.*\(支払\)|貸株料|事務管理費|名義書換料)/.test(c)).map(([, i]) => i);
+  const gainCols = h.map((c, i) => [c, i]).filter(([c]) => /^(金利\(受取\)|逆日歩\(受取\))/.test(c)).map(([, i]) => i);
+  const num = (x) => { const v = toNumber(x); return Number.isNaN(v) ? 0 : v; };
+  const list = rows.slice(headerIndex + 1).filter((r) => r && parseDate(r[C.date]))
+    .map((r, i) => ({ r, i, d: parseDate(r[C.date]), buy: /現物/.test(r[C.kind] || '') && /買/.test(r[C.side] || '') }))
+    // 同じ日の中では、現物の買いを先に（現物は買う前に売れないので）
+    .sort((a, b) => a.d - b.d || b.buy - a.buy || a.i - b.i);
+  const lots = new Map(); // 現物：銘柄ごとの { qty, cost }
+  const out = [];
+  for (const { r, d } of list) {
+    const kind = String(r[C.kind] || ''), side = String(r[C.side] || '');
+    const code = String(r[C.code] || '').normalize('NFKC').trim();
+    const name = String(r[C.name] || '').normalize('NFKC').trim();
+    const qty = num(r[C.qty]), price = num(r[C.price]);
+    if (!(qty > 0) || !(price > 0)) continue;
+    const cost = costCols.reduce((a, i) => a + Math.abs(num(r[i])), 0) - gainCols.reduce((a, i) => a + Math.abs(num(r[i])), 0);
+    if (/信用返済/.test(kind)) {
+      const entry = num(r[C.entry]);
+      if (!(entry > 0)) continue;
+      const long = /売埋|返済売/.test(side);
+      out.push({ kind: long ? 'margin' : 'short', date: d.toISOString(), symbol: name || code, code, side: long ? '買' : '売', qty, price, entry,
+        openDate: parseDate(r[C.openDate])?.toISOString() || null, pnl: Math.round((long ? 1 : -1) * (price - entry) * qty - cost) });
+    } else if (/現物/.test(kind)) {
+      const lot = lots.get(code) || { qty: 0, cost: 0, first: null };
+      if (/買/.test(side)) { lot.qty += qty; lot.cost += price * qty + cost; lot.first ||= d; lots.set(code, lot); continue; }
+      if (!/売/.test(side)) continue;
+      const q = Math.min(qty, lot.qty);
+      if (!(q > 0)) continue;
+      const avg = lot.cost / lot.qty;
+      out.push({ kind: 'cash', date: d.toISOString(), symbol: name || code, code, side: '買', qty: q, price, entry: Math.round(avg * 100) / 100,
+        openDate: lot.first ? lot.first.toISOString() : null, pnl: Math.round((price - avg) * q - cost * (q / qty)) });
+      lot.qty -= q; lot.cost -= avg * q;
+      if (lot.qty <= 0) lots.delete(code); else lots.set(code, lot);
+    }
+  }
   return out;
 }
