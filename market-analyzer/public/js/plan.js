@@ -541,3 +541,46 @@ export function keepDays(rows, best, lock, month = monthKey()) {
   if (!w || !(w.r.total > 0) || w.r.broke) return { best, kept: false };
   return { best: w, kept: true };
 }
+
+// ---------------- 信用の保証金を、値動きに合わせて自動で計算する（日本株・米国株） ----------------
+// 本当の保証金 ＝ 入れている現金の保証金 ＋ 代用（現物の株の評価 × 8割・日本株） ＋ 信用の含み損（含み益は足さない）
+// 保証金率 ＝ 本当の保証金 ÷ 信用で建てている金額（建てたときの値段で）
+// 「入れている現金の保証金」は、楽天証券の保証金率を1回入れてもらえば逆算できる。入れていなければ設定の「信用・空売りの予算」を使う
+export const SUBST = 0.8;
+export function marginBook(pf, holdings, mode, { usdjpy = null, nowOf = null } = {}) {
+  if (mode === 'fx') return null;
+  const k = mode === 'us' ? usdjpy || 150 : 1;
+  let N = 0, pl = 0, V = 0, longNow = 0;
+  for (const h of holdings || []) {
+    const qty = Number(h.qty) || 0, price = Number(h.price) || 0;
+    if (!(qty > 0 && price > 0)) continue;
+    const now = (nowOf && Number(nowOf(h))) || price;
+    if (h.side < 0 || h.acct === 'margin') {
+      N += qty * price * k;
+      pl += (h.side < 0 ? -1 : 1) * (now - price) * qty * k;
+      if (h.side > 0) longNow += qty * now * k;
+    } else if (mode === 'stock') V += qty * now * k;
+  }
+  const subst = SUBST * V;
+  const plAdj = Math.min(0, pl);
+  const cal = pf?.marginCal?.[mode];
+  const b = budgets(pf);
+  const base = cal?.base ?? (b.sep ? b.margin : null);
+  if (base == null) return { N, pl, plAdj, subst, V, base: null };
+  const E = base + subst + plAdj;
+  const ratio = N > 0 ? E / N : null;
+  const maint = MAINT[mode];
+  const NEW = 0.3;
+  // 新しく建てるのに使える保証金（建てている金額の30%を残した分。サイトの量の計算は「保証金 × 約3.3倍」まで建てる）
+  const room = ratio != null && ratio < NEW ? 0 : Math.max(0, E - N * NEW);
+  const topUp = ratio != null && ratio < maint ? Math.ceil(maint * N - E) : 0;
+  // 追証まで：あといくら損が増えてよいか、信用で買っている株と代用の株がそろって何%下がるとそうなるか
+  const buffer = E - maint * N;
+  const dropPct = buffer > 0 && longNow + subst > 0 ? buffer / (longNow + subst) : null;
+  return { N, pl, plAdj, subst, V, base, cal, E, ratio, maint, NEW, room, topUp, buffer, dropPct };
+}
+// 楽天証券の保証金率（%）から「入れている現金の保証金」を逆算する
+export function calibrateMargin(ratePct, book) {
+  if (!(book?.N > 0) || !Number.isFinite(ratePct)) return null;
+  return Math.round((ratePct / 100) * book.N - book.subst - book.plAdj);
+}
