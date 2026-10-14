@@ -151,11 +151,18 @@ function cleanProfile(v) {
     wayView: wayMap(v.wayView),
     // 今月はこのやり方・この日数に決めている（ころころ変えないため。毎月1日に見直す）
     planLock: lockMap(v.planLock),
+    // 証券会社の画面の「余力・保証金率」をそのまま入れた数字（入れた日つき）
+    marginLive: liveOf(v.marginLive),
   };
 }
 
 const str = (x, n) => String(x ?? '').slice(0, n);
 const wayMap = (o) => Object.fromEntries(['fx', 'stock', 'us'].filter((k) => /^[a-zA-Z]{1,12}$/.test(o?.[k] || '')).map((k) => [k, o[k]]));
+const liveOf = (o) => {
+  if (!o || typeof o !== 'object' || !/^\d{4}-\d{2}-\d{2}$/.test(o.date || '')) return null;
+  const n = (x, lo, hi) => (x === '' || x == null || !Number.isFinite(Number(x)) ? null : Math.min(hi, Math.max(lo, Number(x))));
+  return { date: o.date, cash: n(o.cash, 0, 1e11), yoryoku: n(o.yoryoku, -1e11, 1e11), newRate: n(o.newRate, -1000, 10000), rate: n(o.rate, -1000, 10000) };
+};
 const lockMap = (o) => Object.fromEntries(['fx', 'stock', 'us'].filter((k) => o?.[k] && typeof o[k] === 'object').map((k) => {
   const x = o[k], ym = (m) => (/^\d{4}-\d{2}$/.test(m || '') ? m : '');
   const d = Math.round(Number(x.days));

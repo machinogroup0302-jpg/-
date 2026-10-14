@@ -4,7 +4,7 @@ import { api, $, esc, store, fmtPrice, fmtYen } from './util.js';
 import { runStrategy, signalOdds, oddsLabel, oddsText } from './strategies.js';
 import { pagedList } from './stockscreener.js';
 import { getProfile, setProfile, getHoldings, setHoldings, syncState } from './favorites.js';
-import { replayWithBudget, kindText, sizeFor, orderText, WAYS, wayOf, waySides, wayProfile, compareWays, wayNotes, replayOpts, budgets, pipsOf, pipsText, CARRY, searchCustom, walkForward, afterTax, heldUse, leftBudget, marginHealth, keepWay, keepDays, monthKey } from './plan.js';
+import { replayWithBudget, kindText, sizeFor, orderText, WAYS, wayOf, waySides, wayProfile, compareWays, wayNotes, replayOpts, budgets, pipsOf, pipsText, CARRY, searchCustom, walkForward, afterTax, heldUse, leftBudget, marginHealth, LEV_LIMIT, keepWay, keepDays, monthKey } from './plan.js';
 import { loadRegime, loadCandles, universe, kindOf } from './labview.js';
 import { baseUniverse } from './universe.js';
 import { adviseHolding, exitTiming, longTermView, addOnAdvice } from './holdingadvice.js';
@@ -330,7 +330,16 @@ function renderPlan(r0, mode) {
   const left = leftBudget(pf, use);
   // 信用が追証になっているときは、まず現物のお金から保証金に移す分を取っておく（その残りで買う）
   const mh0 = mode !== 'fx' && budgets(pf).sep ? marginHealth(pf, use, mode) : null;
-  const topUp = mh0 && mh0.ratio < mh0.maint ? Math.ceil(mh0.maint * use.notional - mh0.equity) : 0;
+  // 楽天証券の画面の数字が入っていれば、そちらを使う（代用の株・楽天銀行のお金・諸経費まで入った本当の数字）
+  const live = mode === 'stock' ? liveOf(pf) : null;
+  let topUp = mh0 && mh0.ratio < mh0.maint ? Math.ceil(mh0.maint * use.notional - mh0.equity) : 0;
+  if (live) {
+    if (live.cash != null) left.cash = live.cash;
+    // 信用新規建余力は「建てられる金額」なので、保証金に直す（÷ 約3.3倍）
+    if (live.yoryoku != null) left.margin = Math.max(0, live.yoryoku) / LEV_LIMIT.stock;
+    if ((live.newRate ?? live.rate) != null && (live.newRate ?? live.rate) < 30) left.margin = 0;
+    topUp = live.rate != null && live.rate < 20 && use.notional > 0 ? Math.ceil((0.2 - live.rate / 100) * use.notional) : 0;
+  }
   if (topUp) left.cash = Math.max(0, left.cash - topUp);
   const bg = budgets(pf);
   const cashB = left.cash;
@@ -353,7 +362,7 @@ function renderPlan(r0, mode) {
     <button class="btn block" id="plan-settings" style="margin:8px 0 4px">予算・ルールを変える</button>
 
     ${heldHtml(mode, r, held, closeOf, opens, d)}
-    ${budgetHtml(mode, r, held, use, left, picks, d, topUp)}
+    ${budgetHtml(mode, r, held, use, left, picks, d, topUp, live)}
 
     <h3>✅ 今やるといいこと<span class="sub">${nextText()}・残りの予算で</span></h3>
     ${picks.length ? `<p class="small muted" style="margin:-4px 0 6px">1件ずつのくわしい内容です。買ったら、上の「🛒 残りのお金で買うもの」でチェックして、持っている株に入れてください。</p><ul class="list">${picks.map((x) => {
@@ -417,6 +426,14 @@ function renderPlan(r0, mode) {
     setHoldings(mode, getHoldings(mode).filter((h) => h.id !== b.dataset.id));
     renderPlan(r0, mode);
   }; });
+  const ls = $('live-save');
+  if (ls) ls.onclick = () => {
+    const num = (k) => { const t = String(box.querySelector(`[data-live="${k}"]`).value).normalize('NFKC').replace(/[,，円%％\s]/g, '').replace(/^[−ー–]/, '-'); return t === '' || !Number.isFinite(Number(t)) ? null : Number(t); };
+    setProfile({ ...getProfile(), marginLive: { date: todayJst(), cash: num('cash'), yoryoku: num('yoryoku'), newRate: num('newRate'), rate: num('rate') } });
+    renderPlan(r0, mode);
+  };
+  const lc = $('live-clear');
+  if (lc) lc.onclick = () => { setProfile({ ...getProfile(), marginLive: null }); renderPlan(r0, mode); };
   box.querySelectorAll('.plan-go-hold').forEach((b) => { b.onclick = () => { mineSub = 'hold'; store.set('mine_sub', mineSub); updateMine(mode); }; });
 }
 
@@ -463,8 +480,44 @@ function useText(mode, h, r) {
   return `約${yen0(u.yen)}（${mode === 'fx' ? '証拠金' : u.margin ? '信用の保証金' : '現物'}）`;
 }
 
+// 楽天証券の「余力・保証金率」の画面の数字（日本株）
+const todayJst = () => new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
+function liveOf(pf) {
+  const x = pf.marginLive;
+  if (!x?.date) return null;
+  return { ...x, stale: x.date !== todayJst() };
+}
+function liveHtml(x, topUp) {
+  if (x.rate == null && x.newRate == null) return '';
+  const r = x.rate, nr = x.newRate ?? r;
+  const lines = [];
+  if (r != null) {
+    if (r < 20) lines.push(`🚨 <b>保証金率 ${r}%</b>：追証のライン（20%）を下回っています。${topUp ? `約<b>${yen0(topUp)}</b>を入れると20%に戻る見込みです（上の表で、現物のお金から先に取っておいています）。` : 'お金を入れるか、建玉を減らしてください。'}`);
+    else {
+      // 信用で買っている株がそろって下がったとき：(r − d) ÷ (1 − d) が20%になる下がり幅 d
+      const drop = ((r / 100 - 0.2) / 0.8) * 100;
+      lines.push(`${r < 25 ? '⚠' : '🛡'} <b>保証金率 ${r}%</b>：追証（20%）まであと${(r - 20).toFixed(2)}ポイント。信用で買っている株がそろって<b>あと約${drop.toFixed(1)}%</b>下がると追証になる目安です。`);
+    }
+  }
+  if (nr != null) lines.push(nr < 30 ? `⛔ <b>保証金率（新規建）${nr}%</b>：30%より低いので、<b>信用で新しく買う・空売りすることはできません</b>。プランでも、信用の分は0で計算しています。現物なら買えます。` : `✅ 保証金率（新規建）${nr}%：30%以上なので、信用で新しく建てられます（信用新規建余力の範囲で）。`);
+  return `<div class="small" style="margin:4px 0 0">${lines.map((l) => `<p style="margin:2px 0">${l}</p>`).join('')}</div>`;
+}
+function liveForm(pf) {
+  const x = pf.marginLive || {};
+  const v = (k) => (x[k] ?? '') === '' ? '' : esc(x[k]);
+  return `<details class="more-box" id="live-box"><summary>📲 楽天証券の「余力・保証金率」の数字を入れる（もっと正確になります）</summary>
+    <p class="small muted" style="margin:4px 0">楽天証券アプリの「資産・照会 → 余力・保証金率（国内株式）」の数字をそのまま入れてください。代用の株・楽天銀行のお金・金利まで入った本当の数字で計算します。入れなければ、設定の予算と、ここに入っている持っている株から計算します。</p>
+    <div class="stack">
+      <div class="row"><label class="small muted" style="min-width:9em">現物買付可能額</label><input class="input grow" data-live="cash" inputmode="numeric" value="${v('cash')}" placeholder="例 1456715"><span class="small muted">円</span></div>
+      <div class="row"><label class="small muted" style="min-width:9em">信用新規建余力</label><input class="input grow" data-live="yoryoku" inputmode="text" value="${v('yoryoku')}" placeholder="例 -414356"><span class="small muted">円</span></div>
+      <div class="row"><label class="small muted" style="min-width:9em">保証金率(新規建)</label><input class="input grow" data-live="newRate" inputmode="decimal" value="${v('newRate')}" placeholder="例 27.16"><span class="small muted">%</span></div>
+      <div class="row"><label class="small muted" style="min-width:9em">保証金率</label><input class="input grow" data-live="rate" inputmode="decimal" value="${v('rate')}" placeholder="例 26.44"><span class="small muted">%</span></div>
+      <div class="row"><button type="button" class="btn primary grow" id="live-save">この数字で計算する</button>${x.date ? '<button type="button" class="btn" id="live-clear">消す</button>' : ''}</div>
+    </div></details>`;
+}
+
 // 💰 予算から持っている株を引いた残りと、🛒 その残りで買うもの（チェックしたものを持っている株に入れる）
-function budgetHtml(mode, r, held, use, left, picks, d, topUp = 0) {
+function budgetHtml(mode, r, held, use, left, picks, d, topUp = 0, live = null) {
   const pf = r.pf;
   const bg = budgets(pf);
   const unit = mode === 'fx' ? '通貨' : '株';
@@ -479,14 +532,14 @@ function budgetHtml(mode, r, held, use, left, picks, d, topUp = 0) {
     ${plRows}
     ${list.map((h) => row(`− ${esc(h.name)}（${mode === 'fx' ? '必要な証拠金 ' : isMargin(h) ? '信用・必要な保証金 ' : '現物 '}${Number(h.qty).toLocaleString()}${unit}）`, `−${yen0(useOne(mode, h, r).yen)}`)).join('')}
     ${extra}
-    ${row('<b>＝ 残り（新しく使えるお金）</b>', `<b>${yen0(rest)}</b>`)}`;
+    ${row(live ? '<b>＝ 残り（楽天証券の数字）</b>' : '<b>＝ 残り（新しく使えるお金）</b>', `<b>${yen0(rest)}</b>`)}`;
   };
   const tables = mode === 'fx' ? block('予算（証拠金に入れたお金）', bg.cash, held, left.cash, true)
-    : bg.sep ? block('現物の予算', bg.cash, held.filter((h) => !isMargin(h)), left.cash, false, topUp ? row('<b class="minus">− 追証を解消するため、信用の口座へ移すお金</b>', `<b class="minus">−${yen0(topUp)}</b>`) : '') + block('信用・空売りの予算（入れた保証金）', bg.margin, held.filter(isMargin), left.margin, true)
+    : bg.sep ? block('現物の予算', bg.cash, held.filter((h) => !isMargin(h)), left.cash, false, topUp ? row('<b class="minus">− 追証を解消するため、信用の口座へ移すお金</b>', `<b class="minus">−${yen0(topUp)}</b>`) : '') + (live && live.yoryoku != null ? `<tr class="best"><td class="small"><b>信用新規建余力（楽天証券の数字）</b></td><td class="r small"><b>${fmtYen(live.yoryoku)}</b></td></tr>${row('<b>＝ 信用で新しく使える保証金</b>', `<b>${yen0(left.margin)}</b>`)}` : block('信用・空売りの予算（入れた保証金）', bg.margin, held.filter(isMargin), left.margin, true))
     : block('予算（現物・信用で共通）', bg.cash, held, left.cash, true);
   // 保証金維持率と、あといくら損が増えると追証（為替はロスカット）か
   const mh = marginHealth(pf, use, mode);
-  const healthHtml = !mh ? '' : (() => {
+  const healthHtml = live ? liveHtml(live, topUp) : !mh ? '' : (() => {
     const ratio = mode === 'fx' ? mh.equity / mh.need : mh.ratio;
     const line = mode === 'fx' ? 1 : mh.maint;
     const danger = ratio < line, near = !danger && mh.buffer < mh.equity * 0.3;
@@ -515,8 +568,10 @@ function budgetHtml(mode, r, held, use, left, picks, d, topUp = 0) {
       </div></li>`;
   }).join('');
   return `<h3>💰 予算の計算<span class="sub">予算 − 持っている株 ＝ 残り</span></h3>
+    ${live ? `<p class="small" style="margin:0 0 4px">📲 <b>${esc(live.date.slice(5).replace('-', '/'))}に入れた楽天証券の数字</b>で計算しています：現物買付可能額 ${live.cash != null ? yen0(live.cash) : '—'}・信用新規建余力 ${live.yoryoku != null ? fmtYen(live.yoryoku) : '—'}${live.stale ? '　<b class="minus">（前の日の数字です。今日の数字に入れ直してください）</b>' : ''}</p>` : ''}
     <div class="tbl-wrap"><table class="tbl"><tbody>${tables}</tbody></table></div>
     ${healthHtml}
+    ${mode === 'stock' ? liveForm(r.pf) : ''}
     <h3>🛒 残りのお金で買うもの<span class="sub">${nextText()}</span></h3>
     ${left.slots <= 0 ? `<p class="small">同時に持つ数（${pf.maxPos}銘柄）まで、もう持っています。今は新しく買わずに、持っている株の決済のサインを待ちましょう。</p>`
     : picks.length ? `<p class="small" style="margin:0 0 6px">残りの <b>${leftNow}</b> で、あと${left.slots}銘柄まで持てます。<b>これを買ってください</b>（${picks.length}件・合計 約${yen0(spend.cash + spend.margin)} → 買ったあと ${after}）。</p>
