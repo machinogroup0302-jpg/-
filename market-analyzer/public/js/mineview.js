@@ -342,7 +342,6 @@ function renderPlan(r0, mode) {
   const allCloses = r.next.filter((x) => x.type === 'close');
   // 決済のサインのうち、あなたが実際に持っているもの
   const closeOf = (h) => allCloses.find((c) => c.symbol.toUpperCase() === symbolOf(mode, h.code).toUpperCase() && (!c.open || c.open.side === h.side));
-  const closes = allCloses.filter((c) => !held.some((h) => closeOf(h) === c));
   $('lab-plan').innerHTML = `
     ${wayBar(r, mode)}
     ${pf.budget ? '' : '<p class="notice" style="margin:0 0 8px">予算がまだ入っていないので、100万円で計算しています。右上の⚙（設定）の「あなたの設定」で入れてください。</p>'}
@@ -370,10 +369,6 @@ function renderPlan(r0, mode) {
         <details class="why-box"><summary>理由を見る</summary>${whyList(x.why)}</details>
         </li>`;
     }).join('')}</ul>` : left.slots <= 0 ? `<p class="small muted">同時に持つ数（${pf.maxPos}銘柄）まで、もう持っているので、新しくは入りません。上の「持っている株」の決済のサインを待ちましょう。</p>` : `<p class="small muted">今は、あなたのルールに合うサインがありません（勝つ確率の目安${Math.round(minOdds * 100)}%以上・残りの予算で買える量があるもの）。お休みも大事なトレードです。</p>`}
-
-    <h3>🔴 ほかの決済のサイン<span class="sub">持っていなければ関係ありません</span></h3>
-    ${closes.length ? `<ul class="list">${closes.map((x) => `<li><div class="li-head"><span class="name">${symLink(x.symbol, x.name)}</span>${x.open ? sideBadge(x.open.side) : ''}</div>
-      <div class="small"><b>${nextText()}決済</b>：${esc(x.reason)}</div>${x.open ? moveLine(r, mode, x.open.side, x.symbol, x.open.entryPrice, x.last, Math.abs(x.open.entryPrice - (x.open.stop ?? x.open.entryPrice * 0.97)) / x.open.entryPrice, 'を決済（今の値段なら）') : ''}${timeLine(mode, x.t)}</li>`).join('')}</ul>` : '<p class="small muted">今はありません。</p>'}
 
     ${rest.length ? `<details class="why-box" style="margin-top:10px"><summary>見送ったサイン（${rest.length}件）</summary><ul class="list">${rest.map((x) => `<li class="small"><b>${esc(x.name)}</b> ${sideBadge(x.side)} 確率${x.odds ? Math.round(x.odds.p * 100) + '%' : '—'}　<span class="muted">${
       !x.odds || x.odds.p < minOdds ? `勝つ確率の目安が${Math.round(minOdds * 100)}%未満` : x.odds.expect <= 0 ? '勝っても負けても平均するとマイナス' : x.mine.length ? 'もう持っています（上の「持っている株」で見ています）' : x.size && x.size.qty === 0 ? esc(x.size.why) : !x.size ? '量を計算できませんでした' : `同時に持つ数（${pf.maxPos}つ）を超えるため`}</span></li>`).join('')}</ul></details>` : ''}
@@ -542,7 +537,9 @@ function renderNow(r0, mode) {
   const r = viewOf(r0, mode);
   const d = digitsOf(mode);
   const opens = r.next.filter((x) => x.type === 'open').sort((a, b) => (b.odds?.p || 0) - (a.odds?.p || 0));
-  const closes = r.next.filter((x) => x.type === 'close');
+  // 決済のサインは、あなたが実際に持っている株のものだけ出す
+  const held = getHoldings(mode);
+  const closes = r.next.filter((x) => x.type === 'close' && held.some((h) => symbolOf(mode, h.code).toUpperCase() === x.symbol.toUpperCase() && (!x.open || x.open.side === h.side)));
   const judged = style === 'day' ? '最新の15分足で判断' : r.next[0]?.date ? `${ymd(r.next[0].date)}の終わりの値段で判断` : '';
   $('lab-now').innerHTML = `
     ${wayBar(r, mode)}
@@ -555,16 +552,16 @@ function renderNow(r0, mode) {
       ${timeLine(mode, x.t)}
       ${oddsHtml(x.odds)}
       <details class="why-box"><summary>理由を見る</summary>${whyList(x.why)}</details></li>`).join('')}</ul>` : '<p class="small muted">今は新しく入るサインはありません。</p>'}
-    <h3>🔴 決済するサイン<span class="sub">${closes.length}件</span></h3>
+    <h3>🔴 決済するサイン<span class="sub">持っている株だけ・${closes.length}件</span></h3>
     ${closes.length ? `<ul class="list">${closes.map((x) => {
       const g = x.open ? x.open.side * (x.last / x.open.entryPrice - 1) : 0;
       return `<li><div class="li-head"><span class="name">${symLink(x.symbol, x.name)}</span>${x.open ? sideBadge(x.open.side) : ''}<b class="${g >= 0 ? 'plus' : 'minus'}">${g >= 0 ? '+' : ''}${(g * 100).toFixed(1)}%</b></div>
       <div class="small"><b>${nextText()}決済</b>：${esc(x.reason)}</div>${timeLine(mode, x.t)}
       ${x.open ? `<div class="small muted">${when(x.open.entryDate, x.open.entryTime)}に${fmtPrice(x.open.entryPrice, d)}で${x.open.side > 0 ? '買い' : '売り'} → 今 ${fmtPrice(x.last, d)}</div>${moveLine(r, mode, x.open.side, x.symbol, x.open.entryPrice, x.last, Math.abs(x.open.entryPrice - (x.open.stop ?? x.open.entryPrice * 0.97)) / x.open.entryPrice, 'を決済（今の値段なら）')}` : ''}
       <details class="why-box"><summary>理由を見る</summary>${whyList(x.why)}</details></li>`;
-    }).join('')}</ul>` : '<p class="small muted">今は決済するサインはありません。</p>'}
-    <h3>📦 計算の上で持っている銘柄<span class="sub">${r.holding.length}件</span></h3>
-    <p class="small muted" style="margin:-4px 0 6px">このやり方が仮想のお金で持っているものです。あなたが実際に持っている株は「持っている株」のタブにあります。</p>
+    }).join('')}</ul>` : `<p class="small muted">${held.length ? '今は、持っている株に決済のサインは出ていません。' : '持っている株が入っていないので、決済のサインは出していません（「持っている株」のタブで入れると、ここに出ます）。'}</p>`}
+    <details class="more-box"><summary>参考：計算の上で持っている銘柄（${r.holding.length}件・あなたの持ち株ではありません）</summary>
+    <p class="small muted" style="margin:4px 0 6px">このやり方が仮想のお金で持っているものです。あなたが実際に持っている株は「持っている株」のタブにあります。</p>
     ${r.holding.length ? `<ul class="list">${r.holding.map((x) => {
       const g = x.side * (x.last / x.entryPrice - 1);
       return `<li><div class="li-head"><span class="name">${symLink(x.symbol, x.name)}</span>${sideBadge(x.side)}<b class="${g >= 0 ? 'plus' : 'minus'}">${g >= 0 ? '+' : ''}${(g * 100).toFixed(1)}%</b></div>
@@ -573,7 +570,7 @@ function renderNow(r0, mode) {
       <div class="small muted">損切りの線 ${fmtPrice(x.stop, d)}${x.take ? `・利益確定の目標 ${fmtPrice(x.take, d)}` : ''}</div>
       ${oddsHtml(x.odds, { compact: true })}
       <details class="why-box"><summary>入った理由を見る</summary>${whyList(x.why)}</details></li>`;
-    }).join('')}</ul>` : '<p class="small muted">計算の上で持っている銘柄はありません。</p>'}
+    }).join('')}</ul>` : '<p class="small muted">計算の上で持っている銘柄はありません。</p>'}</details>
     <p class="notice" style="margin-top:8px">「勝つ確率の目安」は過去の成績からの見積もりで、当たる保証はありません。</p>
     ${updatedNote(r0)}`;
 }
