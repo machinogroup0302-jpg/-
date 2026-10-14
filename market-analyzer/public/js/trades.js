@@ -69,7 +69,8 @@ export function detectFormat(header) {
   const h = header.join('|');
   if (/ポジション番号|pip損益|新規約定値/.test(h)) return { id: 'lion', name: 'LION FX（ヒロセ通商）の決済履歴' };
   if (/実現損益/.test(h)) return { id: 'rakuten', name: '楽天証券の実現損益' };
-  if (/取引区分/.test(h) && /売買区分/.test(h) && /約定日/.test(h) && /単価/.test(h)) return { id: 'rakutenExec', name: '楽天証券の取引履歴' };
+  // 約定ごとの取引履歴（損益の列なし）：日本株・米国株（「国内約定日」「現地約定日」「ティッカー」「単価［USドル］」など）
+  if (!/損益/.test(h) && /売買/.test(h) && /約定日/.test(h) && /単価|約定価格/.test(h) && /数量/.test(h)) return { id: 'rakutenExec', name: '楽天証券の取引履歴' };
   return { id: 'generic', name: '取引履歴' };
 }
 
@@ -244,8 +245,9 @@ export function insights(s) {
 //   （この期間より前に買った株を売った分は、買った値段が分からないので数えない）
 export function execToTrades(rows, headerIndex) {
   const h = rows[headerIndex].map((c) => String(c || '').normalize('NFKC').trim());
-  const col = (re) => h.findIndex((c) => re.test(c));
-  const C = { date: col(/^約定日/), code: col(/^(銘柄コード|ティッカー)/), name: col(/^銘柄名?$|^銘柄名/), fx: col(/^為替レート/), kind: col(/^取引区分/), side: col(/^売買区分/), qty: col(/^数量/), price: col(/^単価/),
+  const col = (...res) => { for (const re of res) { const i = h.findIndex((c) => re.test(c)); if (i >= 0) return i; } return -1; };
+  const C = { date: col(/^約定日/, /^国内約定日/, /^現地約定日/, /^(?!建).*約定日/), code: col(/^銘柄コード/, /^ティッカー/, /^コード/, /シンボル/), name: col(/^銘柄名/, /^銘柄$/),
+    fx: col(/^為替レート/, /^約定為替/, /為替/), kind: col(/^取引区分/, /^取引種別/, /^取引$/), side: col(/^売買区分/, /^売買$/, /売買/), qty: col(/^数量/, /約定数量/, /数量/), price: col(/^単価/, /^約定単価/, /^約定価格/, /単価/),
     openDate: col(/^建約定日/), entry: col(/^建単価/) };
   const costCols = h.map((c, i) => [c, i]).filter(([c]) => /^(手数料|諸費用|建手数料|建手数料消費税|金利\(支払\)|逆日歩.*\(支払\)|貸株料|事務管理費|名義書換料)/.test(c)).map(([, i]) => i);
   const gainCols = h.map((c, i) => [c, i]).filter(([c]) => /^(金利\(受取\)|逆日歩\(受取\))/.test(c)).map(([, i]) => i);
@@ -257,7 +259,9 @@ export function execToTrades(rows, headerIndex) {
   const lots = new Map(); // 現物：銘柄ごとの { qty, cost }
   const out = [];
   for (const { r, d } of list) {
-    const kind = String(r[C.kind] || ''), side = String(r[C.side] || '');
+    const side = String(r[C.side] || '');
+    // 「取引区分」の列がないときは、売買の書き方から（買埋・売埋・買建・売建があれば信用、なければ現物）
+    const kind = String(r[C.kind] || '') || (/埋/.test(side) ? '信用返済' : /建/.test(side) ? '信用新規' : '現物');
     const code = String(r[C.code] || '').normalize('NFKC').trim();
     const name = String(r[C.name] || '').normalize('NFKC').trim();
     const qty = num(r[C.qty]), price = num(r[C.price]);
