@@ -1,0 +1,506 @@
+<title>業務表＆顧客管理 ER図</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700&family=Noto+Sans+JP:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: 方眼紙の作図面に、業務領域ごとの帯でテーブルを5列配置。線はJSで実測して描画 */
+:root {
+  --bg: #eef1f2;
+  --paper: #f8fafa;
+  --grid: #dfe5e7;
+  --fg: #1b252c;
+  --muted: #5d6b74;
+  --line: #3d4c56;
+  --card: #ffffff;
+  --border: #c6d0d4;
+  --g-cust: #2f62a8;
+  --g-pay: #2b8463;
+  --g-acct: #b06d16;
+  --g-car: #7a4aa0;
+  --g-out: #1f7f8c;
+  --hl: #d2462f;
+  --f-display: "Zen Kaku Gothic New", "Hiragino Sans", "Noto Sans JP", sans-serif;
+  --f-body: "Noto Sans JP", "Hiragino Sans", "Yu Gothic", sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12181c; --paper: #161d22; --grid: #1f292f; --fg: #e3e9ec; --muted: #94a3ac;
+    --line: #a9b8c1; --card: #1c252b; --border: #33424b;
+    --g-cust: #6f9ee0; --g-pay: #5cc29a; --g-acct: #e0a14f; --g-car: #b48ad6; --g-out: #58bccb; --hl: #ff7a5f;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12181c; --paper: #161d22; --grid: #1f292f; --fg: #e3e9ec; --muted: #94a3ac;
+  --line: #a9b8c1; --card: #1c252b; --border: #33424b;
+  --g-cust: #6f9ee0; --g-pay: #5cc29a; --g-acct: #e0a14f; --g-car: #b48ad6; --g-out: #58bccb; --hl: #ff7a5f;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--f-body); font-size: 14px; line-height: 1.6;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 48px;
+}
+.wrap { max-width: 1720px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+h1 { font-family: var(--f-display); font-size: 1.75rem; margin: 0; text-wrap: balance; letter-spacing: .02em; }
+h2 { font-family: var(--f-display); font-size: 1.1rem; margin: 0 0 8px; }
+.lead { color: var(--muted); margin: 4px 0 0; max-width: 70ch; }
+.lead code, .notes code { font-family: var(--f-mono); font-size: .9em; background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; font-size: 12.5px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+.legend svg { overflow: visible; }
+
+.scroller { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; background-color: var(--paper);
+  background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 24px 24px; }
+.canvas { position: relative; width: max-content; padding: 26px 110px 40px 40px; }
+#wires { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+.band + .band { margin-top: 64px; }
+.band-label { font-family: var(--f-display); font-size: 12px; letter-spacing: .12em; color: var(--muted); margin-bottom: 12px; text-transform: uppercase; }
+.cols { display: grid; grid-template-columns: repeat(5, 252px); column-gap: 96px; align-items: start; }
+.col { display: flex; flex-direction: column; gap: 30px; }
+
+.ent { position: relative; z-index: 1; background: var(--card); border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; transition: border-color .15s, box-shadow .15s; }
+.ent header { padding: 7px 10px 6px; border-bottom: 1px solid var(--border); border-top: 4px solid var(--gc); border-radius: 6px 6px 0 0; }
+.ent .tbl { font-family: var(--f-display); font-weight: 700; font-size: 14px; display: block; }
+.ent .src { color: var(--muted); font-size: 11px; display: block; line-height: 1.4; }
+.ent ul { list-style: none; margin: 0; padding: 4px 0; }
+.ent li { display: grid; grid-template-columns: 30px 1fr; gap: 2px; padding: 2px 10px 2px 6px; line-height: 1.45; }
+.ent li b { font-family: var(--f-mono); font-size: 10px; font-weight: 600; color: var(--gc); align-self: start; padding-top: 2px; }
+.ent li em { grid-column: 2; font-style: normal; color: var(--muted); font-size: 11px; font-family: var(--f-mono); }
+.ent li.k { background: color-mix(in srgb, var(--gc) 9%, transparent); }
+.ent .foot { border-top: 1px dashed var(--border); padding: 5px 10px 7px; color: var(--muted); font-size: 11px; line-height: 1.45; }
+.g-cust { --gc: var(--g-cust); } .g-pay { --gc: var(--g-pay); } .g-acct { --gc: var(--g-acct); } .g-car { --gc: var(--g-car); } .g-out { --gc: var(--g-out); }
+.ent:hover, .ent.on { border-color: var(--gc); box-shadow: 0 0 0 2px color-mix(in srgb, var(--gc) 35%, transparent); }
+
+.wire { fill: none; stroke: var(--line); stroke-width: 1.4; opacity: .75; transition: opacity .15s, stroke .15s; }
+.wire.agg { stroke-dasharray: 5 4; opacity: .5; }
+.mk { fill: none; stroke: var(--line); stroke-width: 1.4; opacity: .75; }
+.mk.dot { fill: var(--card); }
+.mk.tri { fill: var(--line); stroke: none; }
+.wl { font-family: var(--f-body); font-size: 10.5px; fill: var(--muted); paint-order: stroke; stroke: var(--paper); stroke-width: 4px; stroke-linejoin: round; }
+svg.dim .wire, svg.dim .mk, svg.dim .wl { opacity: .12; }
+svg.dim .hot { opacity: 1 !important; stroke: var(--hl); }
+svg.dim .mk.tri.hot { fill: var(--hl); }
+svg.dim .wl.hot { fill: var(--hl); }
+
+.notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; }
+.notes section { min-width: 0; background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; }
+.notes ul { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: 4px; }
+.notes li { max-width: 65ch; }
+table.keys { border-collapse: collapse; width: 100%; font-size: 13px; }
+table.keys td { padding: 4px 6px; border-top: 1px solid var(--border); vertical-align: top; }
+table.keys td:first-child { font-family: var(--f-mono); white-space: nowrap; color: var(--g-cust); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <div>
+    <h1>新業務表＆顧客管理 ER図</h1>
+    <p class="lead">Googleドライブのスプレッドシート「新業務表＆顧客管理 のコピー」（全32シート）を読み取り、シート同士のつながりをテーブル単位で整理した図です。テーブルにカーソルを合わせると、そのテーブルの関連線だけが強調されます。</p>
+  </div>
+
+  <div class="legend" aria-label="凡例">
+    <span><i class="sw" style="background:var(--g-cust)"></i>顧客・作業</span>
+    <span><i class="sw" style="background:var(--g-pay)"></i>決済サービス</span>
+    <span><i class="sw" style="background:var(--g-acct)"></i>経理・集計</span>
+    <span><i class="sw" style="background:var(--g-car)"></i>車両販売</span>
+    <span><i class="sw" style="background:var(--g-out)"></i>外注施工</span>
+    <span><svg width="44" height="14"><path class="wire" d="M0 7H44"/></svg>キーで参照</span>
+    <span><svg width="44" height="14"><path class="wire agg" d="M0 7H44"/></svg>集計して反映</span>
+    <span><svg width="30" height="16"><path class="mk" d="M4 7H26M8 0V14M13 0V14"/></svg>1</span>
+    <span><svg width="30" height="16"><path class="mk" d="M4 7H26M8 0V14"/><circle class="mk dot" cx="16" cy="7" r="4"/></svg>0か1</span>
+    <span><svg width="30" height="16"><path class="mk" d="M6 7H28M2 0L16 7L2 14M20 0V14"/></svg>1以上</span>
+    <span><svg width="30" height="16"><path class="mk" d="M6 7H28M2 0L16 7L2 14"/><circle class="mk dot" cx="22" cy="7" r="4"/></svg>0以上</span>
+    <span><b style="font-family:var(--f-mono);font-size:11px">PK</b> 主キー　<b style="font-family:var(--f-mono);font-size:11px">FK</b> 参照キー</span>
+  </div>
+
+  <div class="scroller">
+    <div class="canvas" id="canvas">
+      <svg id="wires" aria-hidden="true"></svg>
+
+      <div class="band">
+        <div class="band-label">出張洗車・作業と経理</div>
+        <div class="cols">
+          <div class="col">
+            <div class="ent g-cust" id="staff">
+              <header><span class="tbl">担当者</span><span class="src">シートなし（値として入力）</span></header>
+              <ul>
+                <li class="k" data-r="staff.name"><b>PK</b>担当者名<em>望月 / 山川</em></li>
+              </ul>
+            </div>
+            <div class="ent g-cust" id="customer">
+              <header><span class="tbl">顧客</span><span class="src">業務表＆顧客管理　1〜19行目（1列 = 1顧客）</span></header>
+              <ul>
+                <li class="k" data-r="customer.id"><b>PK</b>顧客番号<em>列番号 1, 2, 3 …</em></li>
+                <li><b></b>氏名 / フリガナ</li>
+                <li><b></b>誕生日</li>
+                <li><b></b>郵便番号 / 住所</li>
+                <li><b></b>電話番号 / メールアドレス</li>
+                <li><b></b>SNS / LINE追加状況 / LINE名</li>
+                <li><b></b>来店動機</li>
+                <li><b></b>関心：車の買い替え・出張車検・コーティング・キズ直し・保険加入</li>
+                <li><b></b>理想サービス / 備考</li>
+              </ul>
+            </div>
+            <div class="ent g-cust" id="vehicle">
+              <header><span class="tbl">顧客車両</span><span class="src">業務表＆顧客管理　20〜31行目</span></header>
+              <ul>
+                <li class="k" data-r="vehicle.cid"><b>FK</b>顧客番号</li>
+                <li><b></b>メーカー / 車名 / 色</li>
+                <li><b></b>走行距離 / 車検日 / 初年度登録</li>
+                <li><b></b>車体番号 / 型式 / 原動機の型式</li>
+                <li><b></b>型式指定番号 / 類別区分番号</li>
+                <li><b></b>ナビ型番</li>
+              </ul>
+              <div class="foot">現状は1顧客につき1台分の欄のみ</div>
+            </div>
+          </div>
+
+          <div class="col">
+            <div class="ent g-cust" id="work">
+              <header><span class="tbl">作業</span><span class="src">業務表＆顧客管理　34行目以降（約52行の作業ブロックを繰り返し）</span></header>
+              <ul>
+                <li class="k" data-r="work.id"><b>PK</b>作業行<em>顧客番号-作業NO　例 11-1</em></li>
+                <li class="k" data-r="work.cid"><b>FK</b>顧客番号</li>
+                <li><b></b>作業NO.</li>
+                <li class="k" data-r="work.staff"><b>FK</b>担当者名</li>
+                <li><b></b>作業日 / 作業開始時間 / カレンダー入力</li>
+                <li><b></b>作業内容 / 作業時間</li>
+                <li><b></b>支払方法 / 作業金額</li>
+                <li><b></b>決済手数料 / 予約手数料</li>
+                <li><b></b>予約確定 / 物の確認・用意・購入 / 事前準備</li>
+                <li><b></b>施工状況 / 領収書</li>
+                <li><b></b>利益</li>
+                <li data-r="work.pay"><b></b>振込金額①② / 振込日①② / 振込確認</li>
+                <li><b></b>駐車場代①② / 駐車場合計</li>
+                <li><b></b>スタッフ支払額 / 純利益 / 備考</li>
+              </ul>
+            </div>
+            <div class="ent g-cust" id="part">
+              <header><span class="tbl">部品代</span><span class="src">作業ブロック内　最大5件</span></header>
+              <ul>
+                <li class="k"><b>PK</b>部品行<em>作業行-連番　例 1-1-3</em></li>
+                <li class="k" data-r="part.wid"><b>FK</b>作業行</li>
+                <li><b></b>部品代 / 部品購入日</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="col">
+            <div class="ent g-pay" id="kurashi">
+              <header><span class="tbl">くらし決済</span><span class="src">くらし</span></header>
+              <ul>
+                <li class="k" data-r="kurashi.wid"><b>FK</b>顧客番号<em>実体は作業行（11-1）</em></li>
+                <li><b></b>名前 / 日付</li>
+                <li><b></b>予約金額 / 予約手数料 / Stripe手数料 / 合計手数料</li>
+                <li><b></b>利益 / 振込日 / 引落日</li>
+                <li><b></b>freee反映</li>
+              </ul>
+            </div>
+            <div class="ent g-pay" id="mitsumore">
+              <header><span class="tbl">ミツモア決済</span><span class="src">ミツモア</span></header>
+              <ul>
+                <li class="k" data-r="mitsumore.wid"><b>FK</b>顧客番号<em>実体は作業行（8-1）</em></li>
+                <li><b></b>名前 / 日付 / 決済方法</li>
+                <li><b></b>予約金額 / 予約手数料 / 振込手数料 / 合計手数料</li>
+                <li><b></b>利益 / 振込日 / 引落日</li>
+                <li><b></b>freee反映</li>
+              </ul>
+            </div>
+            <div class="ent g-pay" id="airpay">
+              <header><span class="tbl">AIRペイ決済</span><span class="src">AIRペイ</span></header>
+              <ul>
+                <li class="k" data-r="airpay.wid"><b>FK</b>顧客番号<em>実体は作業行（3-1）</em></li>
+                <li><b></b>種類 / 名前 / 日付</li>
+                <li><b></b>決済金額 / 手数料 / 入金金額 / 入金日</li>
+                <li><b></b>freee反映</li>
+              </ul>
+            </div>
+            <div class="ent g-pay" id="cash">
+              <header><span class="tbl">まちの現金決済</span><span class="src">まちの現金</span></header>
+              <ul>
+                <li class="k" data-r="cash.wid"><b>FK</b>顧客番号<em>実体は作業行（295-1）</em></li>
+                <li><b></b>名前 / 作業日 / 決済金額</li>
+                <li><b></b>振込日 / freee反映</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="col">
+            <div class="ent g-acct" id="expense">
+              <header><span class="tbl">支出</span><span class="src">支出表</span></header>
+              <ul>
+                <li><b></b>日付 / 項目</li>
+                <li class="k" data-r="expense.wid"><b>FK</b>関連顧客番号<em>作業行・任意</em></li>
+                <li><b></b>金額 / 領収書種別 / 購入サイト</li>
+                <li><b></b>freee反映</li>
+              </ul>
+              <div class="foot">右側に月別の科目集計（ガソリン・カフェ・事務・道具 ほか）と、作業行-連番で引く駐車場・部品代の明細</div>
+            </div>
+            <div class="ent g-acct" id="fixed">
+              <header><span class="tbl">固定費</span><span class="src">固定費（1行 = 1か月）</span></header>
+              <ul>
+                <li class="k" data-r="fixed.ym"><b>PK</b>年月<em>2023/3 …</em></li>
+                <li><b></b>アイオイ / サンワフィナンシャル / タイヘイ</li>
+                <li><b></b>エナジール / チェンジ / シャープファイナンス</li>
+                <li><b></b>コウコク / カーセンサー / サクラサーバー</li>
+                <li><b></b>税理士 / その他 / 合計</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="col">
+            <div class="ent g-acct" id="daily">
+              <header><span class="tbl">日別売上</span><span class="src">YYYY/M売上管理（月ごとに1シート、2023/2〜2024/5）</span></header>
+              <ul>
+                <li class="k" data-r="daily.date"><b>PK</b>日付</li>
+                <li data-r="daily.work"><b></b>作業売上 / 売上備考<em>作業行の一覧</em></li>
+                <li><b></b>作業支払（手数料・経費）/ 作業利益</li>
+                <li data-r="daily.out"><b></b>博栄会売上 / GT売上</li>
+                <li data-r="daily.car"><b></b>車両売上 / 車両経費 / 車両総利益</li>
+                <li data-r="daily.exp"><b></b>支出表（作業支払以外）</li>
+                <li><b></b>売上合計 / 経費合計 / 利益合計</li>
+              </ul>
+              <div class="foot">シート単位で前月繰越・次月繰越を持つ</div>
+            </div>
+            <div class="ent g-acct" id="monthly">
+              <header><span class="tbl">月別売上</span><span class="src">23年決算売上</span></header>
+              <ul>
+                <li class="k" data-r="monthly.ym"><b>PK</b>年月</li>
+                <li data-r="monthly.sales"><b></b>作業売上 / 作業支払 / 作業利益</li>
+                <li><b></b>博栄会売上 / GT売上</li>
+                <li><b></b>車両販売売上 / 車両販売経費</li>
+                <li data-r="monthly.fixed"><b></b>固定費 / 支出表</li>
+                <li><b></b>売上合計 / 経費合計 / 利益合計</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="band">
+        <div class="band-label">車両販売・外注施工</div>
+        <div class="cols">
+          <div class="col">
+            <div class="ent g-car" id="carsale">
+              <header><span class="tbl">車両販売</span><span class="src">車両販売（1列ブロック = 1台）</span></header>
+              <ul>
+                <li class="k" data-r="carsale.id"><b>PK</b>車両NO<em>S1, S2 …</em></li>
+                <li><b></b>メーカー / 車種 / 年式 / 型式</li>
+                <li><b></b>車体番号 / 色 / 走行距離</li>
+                <li><b></b>落札日 / 振込日 / 書類・車両到着日</li>
+                <li><b></b>車庫証明提出日 / 名義変更日</li>
+                <li><b></b>書類チェック（計算書・車検証コピー・販売書類 ほか）</li>
+                <li data-r="carsale.sold"><b></b>売買金額 / 売れた日</li>
+                <li><b></b>経費合計 / 利益</li>
+                <li><b></b>山川経費 / 望月経費 / 山川利益 / 山川に渡す分</li>
+                <li><b></b>総経費 / 総利益</li>
+              </ul>
+            </div>
+          </div>
+          <div class="col">
+            <div class="ent g-car" id="carexp">
+              <header><span class="tbl">車両販売経費</span><span class="src">車両販売　経費欄（1台あたり最大45件）</span></header>
+              <ul>
+                <li class="k" data-r="carexp.id"><b>PK</b>車両NO + 経費NO<em>日別売上では S2-30 の形で参照</em></li>
+                <li><b></b>経費名 / 日付 / 金額（税込）</li>
+                <li class="k" data-r="carexp.staff"><b>FK</b>支払者<em>望月 / 山川</em></li>
+                <li><b></b>日別反映 / freee反映</li>
+              </ul>
+            </div>
+          </div>
+          <div class="col">
+            <div class="ent g-car" id="consign">
+              <header><span class="tbl">委託販売</span><span class="src">委託販売（1列ブロック = 1台）</span></header>
+              <ul>
+                <li class="k" data-r="consign.id"><b>PK</b>委託NO<em>H1, H2 …</em></li>
+                <li><b></b>メーカー / 車種 / 年式 / 型式</li>
+                <li><b></b>車体番号 / 色 / 走行距離</li>
+                <li><b></b>出品開始日 / 売却日 / 入金日</li>
+                <li><b></b>お客様へ振込日</li>
+                <li><b></b>書類チェック（計算書・車検証コピー・売買契約書）</li>
+                <li><b></b>売買金額 / お客様に振込金額 / 利益</li>
+                <li><b></b>山川振込日 / 山川振込金額 / 総利益</li>
+              </ul>
+            </div>
+          </div>
+          <div class="col">
+            <div class="ent g-car" id="conexp">
+              <header><span class="tbl">委託販売経費</span><span class="src">委託販売　経費欄</span></header>
+              <ul>
+                <li class="k" data-r="conexp.id"><b>PK</b>委託NO + 経費NO</li>
+                <li><b></b>経費名<em>成約車両代金・出品手数料 ほか</em></li>
+                <li><b></b>金額</li>
+              </ul>
+            </div>
+          </div>
+          <div class="col">
+            <div class="ent g-out" id="gtnet">
+              <header><span class="tbl">GTNET施工</span><span class="src">GTNET管理表</span></header>
+              <ul>
+                <li class="k"><b>PK</b>NO<em>①, ② …</em></li>
+                <li><b></b>施工日 / 車種 / 色 / 車体番号</li>
+                <li><b></b>施工状況 / 金額 / 施工時間</li>
+                <li><b></b>納品書送付 / 請求書送付 / 振込</li>
+                <li><b></b>freee反映</li>
+              </ul>
+            </div>
+            <div class="ent g-out" id="hakuei">
+              <header><span class="tbl">博栄会施工</span><span class="src">博栄会管理表</span></header>
+              <ul>
+                <li class="k"><b>PK</b>NO<em>①, ② …</em></li>
+                <li><b></b>施工日 / 車種（ナンバー）</li>
+                <li><b></b>施工状況 / 施工メニュー / 料金 / 施工時間</li>
+                <li><b></b>駐車場代 / 駐車場代受取</li>
+                <li><b></b>領収書作成・提出 / 金額受取 / 振込</li>
+                <li><b></b>freee反映</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="notes">
+    <section>
+      <h2>キーの付け方</h2>
+      <table class="keys">
+        <tr><td>11</td><td>顧客番号。業務表＆顧客管理の列番号（1行目）</td></tr>
+        <tr><td>11-1</td><td>作業行。顧客11の1回目の作業。決済シートの「顧客番号」列もこの値</td></tr>
+        <tr><td>11-1-2</td><td>部品・駐車場の明細行。作業行に連番を付けたもの</td></tr>
+        <tr><td>S1 / S2-30</td><td>車両販売の車両NO / 車両S2の経費30番</td></tr>
+        <tr><td>H1</td><td>委託販売の委託NO</td></tr>
+      </table>
+    </section>
+    <section>
+      <h2>読み取って気づいた点</h2>
+      <ul>
+        <li>顧客・車両・作業が1枚のシートに縦持ちで同居しています（1列 = 1顧客、作業は行ブロックの繰り返し）。列数は1,690列あります。</li>
+        <li>決済4シートの「顧客番号」列には実際には作業行（例 <code>11-1</code>）が入っているため、図では作業テーブルに結んでいます。</li>
+        <li>担当者はシートになっておらず、作業の担当者名と車両販売経費の支払者に「望月」「山川」が直接入力されています。</li>
+        <li>顧客車両は1顧客1台分の欄しかありません。2台目以降を持つ顧客がいれば、別テーブル化が必要です。</li>
+      </ul>
+    </section>
+    <section>
+      <h2>図に含めていないシート</h2>
+      <ul>
+        <li><b>作業ｼｰﾄ</b>・<b>重複チェックシート</b>：決済4シートと支出表を並べ直して、振込の重複や日別集計を計算する作業用の表。独自のデータは持たないため省略しました。</li>
+        <li><b>やること</b>：タスクと事業メモの一覧。</li>
+        <li><b>メーカー一覧</b>：中身が空です。</li>
+      </ul>
+    </section>
+  </div>
+</div>
+
+<script>
+(function () {
+  // [from, to, fromCard, toCard, kind, label]
+  // card: one | zone(0か1) | many(1以上) | zmany(0以上) ; kind: fk | agg
+  var RELS = [
+    ['customer.id', 'work.cid', 'one', 'zmany', 'fk'],
+    ['customer.id', 'vehicle.cid', 'one', 'zone', 'fk'],
+    ['staff.name', 'work.staff', 'one', 'zmany', 'fk'],
+    ['work.id', 'part.wid', 'one', 'zmany', 'fk'],
+    ['work.id', 'kurashi.wid', 'one', 'zone', 'fk'],
+    ['work.id', 'mitsumore.wid', 'one', 'zone', 'fk'],
+    ['work.id', 'airpay.wid', 'one', 'zone', 'fk'],
+    ['work.id', 'cash.wid', 'one', 'zone', 'fk'],
+    ['work.id', 'expense.wid', 'zone', 'zmany', 'fk'],
+    ['work.pay', 'daily.work', null, null, 'agg', '作業日で集計'],
+    ['expense', 'daily.exp', null, null, 'agg'],
+    ['daily', 'monthly.sales', null, null, 'agg', '月で集計'],
+    ['fixed.ym', 'monthly.fixed', null, null, 'agg'],
+    ['carsale.id', 'carexp.id', 'one', 'zmany', 'fk'],
+    ['staff.name', 'carexp.staff', 'one', 'zmany', 'fk'],
+    ['consign.id', 'conexp.id', 'one', 'zmany', 'fk'],
+    ['carsale.sold', 'daily.car', null, null, 'agg', '売れた日'],
+    ['gtnet', 'daily.out', null, null, 'agg'],
+    ['hakuei', 'daily.out', null, null, 'agg']
+  ];
+  var NS = 'http://www.w3.org/2000/svg';
+  var canvas = document.getElementById('canvas');
+  var svg = document.getElementById('wires');
+
+  function anchor(ref) {
+    var ent = document.getElementById(ref.split('.')[0]);
+    var row = ref.indexOf('.') > 0 ? ent.querySelector('[data-r="' + ref + '"]') : ent.querySelector('header');
+    var c = canvas.getBoundingClientRect(), e = ent.getBoundingClientRect(), r = row.getBoundingClientRect();
+    return { id: ent.id, left: e.left - c.left, right: e.right - c.left, y: r.top - c.top + Math.min(r.height / 2, 11) };
+  }
+  function el(tag, attrs, cls) {
+    var n = document.createElementNS(NS, tag);
+    for (var k in attrs) n.setAttribute(k, attrs[k]);
+    n.setAttribute('class', cls);
+    return n;
+  }
+  function marker(g, x, y, o, card, tag) {
+    // o: 外向き方向 (+1 = 右へ伸びる)
+    var at = function (t) { return x + o * t; };
+    var d = '';
+    if (card === 'one') d = 'M' + at(7) + ' ' + (y - 7) + 'V' + (y + 7) + 'M' + at(12) + ' ' + (y - 7) + 'V' + (y + 7);
+    if (card === 'zone') d = 'M' + at(7) + ' ' + (y - 7) + 'V' + (y + 7);
+    if (card === 'many' || card === 'zmany') d = 'M' + x + ' ' + (y - 7) + 'L' + at(13) + ' ' + y + 'L' + x + ' ' + (y + 7);
+    if (card === 'many') d += 'M' + at(17) + ' ' + (y - 7) + 'V' + (y + 7);
+    g.appendChild(el('path', { d: d }, 'mk ' + tag));
+    if (card === 'zone') g.appendChild(el('circle', { cx: at(16), cy: y, r: 4 }, 'mk dot ' + tag));
+    if (card === 'zmany') g.appendChild(el('circle', { cx: at(19), cy: y, r: 4 }, 'mk dot ' + tag));
+  }
+  function draw() {
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    svg.setAttribute('width', canvas.scrollWidth);
+    svg.setAttribute('height', canvas.scrollHeight);
+    RELS.forEach(function (r) {
+      var a = anchor(r[0]), b = anchor(r[1]);
+      var tag = 'r-' + a.id + ' r-' + b.id;
+      var x1, x2, o1, o2;
+      if (b.left > a.right) { x1 = a.right; o1 = 1; x2 = b.left; o2 = -1; }
+      else if (b.right < a.left) { x1 = a.left; o1 = -1; x2 = b.right; o2 = 1; }
+      else { x1 = a.right; o1 = 1; x2 = b.right; o2 = 1; }
+      var s = 22, y1 = a.y, y2 = b.y;
+      var k = o1 === o2 ? 44 + Math.abs(y2 - y1) * 0.08 : Math.max(36, Math.abs(x2 - x1) / 2.4);
+      var d = 'M' + x1 + ' ' + y1 + 'H' + (x1 + o1 * s) +
+        'C' + (x1 + o1 * (s + k)) + ' ' + y1 + ',' + (x2 + o2 * (s + k)) + ' ' + y2 + ',' + (x2 + o2 * s) + ' ' + y2 +
+        'H' + x2;
+      var g = el('g', {}, '');
+      g.appendChild(el('path', { d: d }, 'wire ' + (r[4] === 'agg' ? 'agg ' : '') + tag));
+      if (r[4] === 'agg') {
+        var t = x2 + o2 * 9;
+        g.appendChild(el('path', { d: 'M' + x2 + ' ' + y2 + 'L' + t + ' ' + (y2 - 4.5) + 'L' + t + ' ' + (y2 + 4.5) + 'Z' }, 'mk tri ' + tag));
+      } else {
+        marker(g, x1, y1, o1, r[2], tag);
+        marker(g, x2, y2, o2, r[3], tag);
+      }
+      if (r[5]) {
+        var lx = x2 + o2 * (s + 6), ly = y2 - 6;
+        var tx = el('text', { x: lx, y: ly, 'text-anchor': o2 < 0 ? 'end' : 'start' }, 'wl ' + tag);
+        tx.textContent = r[5];
+        g.appendChild(tx);
+      }
+      svg.appendChild(g);
+    });
+  }
+  function focus(id) {
+    svg.classList.toggle('dim', !!id);
+    svg.querySelectorAll('.hot').forEach(function (n) { n.classList.remove('hot'); });
+    document.querySelectorAll('.ent.on').forEach(function (n) { n.classList.remove('on'); });
+    if (!id) return;
+    svg.querySelectorAll('.r-' + id).forEach(function (n) { n.classList.add('hot'); });
+  }
+  document.querySelectorAll('.ent').forEach(function (n) {
+    n.addEventListener('mouseenter', function () { focus(n.id); });
+    n.addEventListener('mouseleave', function () { focus(null); });
+    n.addEventListener('click', function () { var on = n.classList.contains('on'); focus(on ? null : n.id); if (!on) n.classList.add('on'); });
+  });
+  draw();
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(draw);
+  window.addEventListener('resize', draw);
+  if (window.ResizeObserver) new ResizeObserver(draw).observe(canvas);
+})();
+</script>
