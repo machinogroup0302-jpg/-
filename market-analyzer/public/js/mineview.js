@@ -4,7 +4,7 @@ import { api, $, esc, store, fmtPrice, fmtYen } from './util.js';
 import { runStrategy, signalOdds, oddsLabel, oddsText } from './strategies.js';
 import { pagedList } from './stockscreener.js';
 import { getProfile, setProfile, getHoldings, setHoldings, syncState } from './favorites.js';
-import { replayWithBudget, kindText, sizeFor, orderText, WAYS, wayOf, waySides, wayProfile, compareWays, wayNotes, replayOpts, budgets, pipsOf, pipsText, CARRY, searchCustom, walkForward, afterTax, heldUse, leftBudget, marginHealth, marginBook, calibrateMargin, SUBST, keepWay, keepDays, monthKey } from './plan.js';
+import { replayWithBudget, kindText, sizeFor, orderText, WAYS, wayOf, waySides, wayProfile, compareWays, wayNotes, replayOpts, budgets, pipsOf, pipsText, CARRY, searchCustom, walkForward, afterTax, setupFromCsv, heldUse, leftBudget, marginHealth, marginBook, calibrateMargin, SUBST, keepWay, keepDays, monthKey } from './plan.js';
 import { loadRegime, loadCandles, universe, kindOf } from './labview.js';
 import { baseUniverse } from './universe.js';
 import { adviseHolding, exitTiming, longTermView, addOnAdvice } from './holdingadvice.js';
@@ -98,12 +98,14 @@ function oddsHtml(o, { compact = false } = {}) {
 }
 
 const logCache = {};
+// 計算をとっておく目印：市場・スイングかデイトレか・持つ日数・持っている銘柄（銘柄が変わったら計算し直す）
+const ckOf = (mode, st = style) => `${mode}|${st}|${st === 'swing' ? getProfile().swingDays || 30 : ''}|${[...new Set(getHoldings(mode).map((h) => String(h.code).toUpperCase()))].sort().join(',')}`;
 let logRunning = null;
 
 // 全銘柄を「総合判断」で計算する（「今のサイン」と「売買の一覧」で共通）
 async function computeLog(mode, out, force = false, st = style) {
   const swingDays = getProfile().swingDays || 30;
-  const ck = `${mode}|${st}|${st === 'swing' ? swingDays : ''}`;
+  const ck = ckOf(mode, st);
   const hit = logCache[ck];
   if (hit && !force && Date.now() - hit.at < 30 * 60 * 1000) return hit.data;
   if (logRunning?.ck === ck) return logRunning.p;
@@ -507,6 +509,37 @@ function calForm(mode, b) {
     <p class="small muted" style="margin:0">※ 信用で持っている株・現物の株が「持っている株」に全部入っていると、正確になります（NISAの株は担保にならないので入れなくてOK）。</p></details>`;
 }
 
+// 💰 今使えるお金：むずかしい計算は裏でやって、わかりやすい数字だけ出す
+function moneySummary(mode, r, use, left, book, topUp) {
+  const big = (label, value, note = '', cls = '') => `<div class="stat"><div class="label">${label}</div><div class="value ${cls}" style="font-size:18px;word-break:keep-all">${value}</div>${note ? `<div class="small muted">${note}</div>` : ''}</div>`;
+  const cards = [];
+  if (mode === 'fx') {
+    cards.push(big('新しく使える証拠金', yen0(left.cash), '持っているポジションの証拠金と含み損益を引いた残り'));
+    return `<div class="grid2">${cards.join('')}</div>`;
+  }
+  cards.push(big('現物で買えるお金', yen0(left.cash), topUp ? `追証のために約${yen0(topUp)}を先に取っておいた残り` : ''));
+  const L = mode === 'us' ? 2 : 3.3;
+  if (book && book.N > 0 && book.ratio < book.NEW) cards.push(big('信用で新しく買えるお金', '0円', '保証金が足りないので、今は信用で新しく買えません（持っている信用の株の損が減るか、決済すると使えるようになります）', 'minus'));
+  else if (left.margin > 0 && (book || budgets(r.pf).sep)) cards.push(big('信用で新しく買えるお金', `約${yen0(left.margin * L)}`, `保証金 約${yen0(left.margin)} × ${L}倍まで`));
+  // 追証まで：信用の株が1銘柄なら「○円まで下がると追証」、いくつかなら「そろって○%下がると」
+  if (book && book.N > 0) {
+    const ms = use.rows.filter((x) => x.h.side < 0 || x.h.acct === 'margin');
+    const codes = [...new Set(ms.map((x) => x.h.code))];
+    let line;
+    if (book.buffer <= 0) line = big('追証', '🚨 追証になっています', `約${yen0(topUp || book.topUp)}を信用の口座に入れる必要があります`, 'minus');
+    else if (codes.length === 1 && ms[0].now) {
+      const qty = ms.reduce((a, x) => a + Number(x.h.qty), 0) * (mode === 'us' ? r.usdjpy || 150 : 1);
+      const side = ms[0].h.side;
+      const at = ms[0].now - side * (book.buffer / qty);
+      line = big(`追証になる値段（${esc(ms[0].h.name)}）`, `約${fmtPrice(Math.max(0, at), mode === 'stock' ? 0 : digitsOf(mode))}円`, `${side > 0 ? 'ここまで下がる' : 'ここまで上がる'}と追証（今 ${fmtPrice(ms[0].now, mode === 'stock' ? 0 : digitsOf(mode))}円）`, at > 0 && Math.abs(ms[0].now - at) / ms[0].now < 0.1 ? 'minus' : '');
+    } else line = big('追証まで', book.dropPct ? `そろって約${(book.dropPct * 100).toFixed(1)}%下がると` : `あと約${yen0(book.buffer)}`, '信用の株と担保の株が一緒に下がった場合');
+    cards.push(line);
+  }
+  if (book) cards.push(big('全部のお金（信用を今ぜんぶ決済したら）', `約${yen0(book.total + left.cash + topUp)}`, '現金＋現物の株の今の値段'));
+  return `<div class="grid2">${cards.join('')}</div>
+    <p class="small muted" style="margin:4px 0 0">毎日の値段で、自動で計算し直しています。予算を入れ直したいときは、「持っている株」で証券会社のCSVを読み込むと、予算も自動で決まります。</p>`;
+}
+
 // 💰 予算から持っている株を引いた残りと、🛒 その残りで買うもの（チェックしたものを持っている株に入れる）
 function budgetHtml(mode, r, held, use, left, picks, d, topUp = 0, book = null) {
   const pf = r.pf;
@@ -530,7 +563,7 @@ function budgetHtml(mode, r, held, use, left, picks, d, topUp = 0, book = null) 
     const pls = use.rows.filter((x) => x.now && x.pl);
     return `<tr class="best"><td class="small"><b>信用の保証金（毎日自動で計算）</b></td><td class="r small"></td></tr>
       ${row(`入れている現金の保証金<span class="muted">（${book.cal ? `${esc(book.cal.date.slice(5).replace('-', '/'))}の保証金率 ${book.cal.rate}%から逆算` : '設定の「信用・空売りの予算」'}）</span>`, yen0(book.base))}
-      ${book.subst ? row(`＋ 代用（現物の株 ${yen0(book.V)} × ${SUBST * 10}割）`, `+${yen0(book.subst)}`) : ''}
+      ${book.subst ? row(`＋ 代用（現物の株 ${yen0(book.V)} × ${Math.round((book.sr ?? SUBST) * 100)}%）`, `+${yen0(book.subst)}`) : ''}
       ${pls.map((x) => row(`<span class="muted">${x.pl < 0 ? '含み損' : '含み益'}：${esc(x.h.name)}（今 ${fmtPrice(x.now, d)}）</span>`, `<span class="${x.pl < 0 ? 'minus' : 'plus'}">${fmtYen(x.pl)}</span>`)).join('')}
       ${pls.length ? row(`含み損益の合計${book.pl > 0 ? '<span class="muted">（含み益は足されません）</span>' : ''}`, fmtYen(book.plAdj)) : ''}
       ${row('<b>＝ 本当の保証金</b>', `<b>${yen0(book.E)}</b>`)}
@@ -571,10 +604,13 @@ function budgetHtml(mode, r, held, use, left, picks, d, topUp = 0, book = null) 
         <div class="row"><label class="small muted">日付</label><input class="input grow" data-f="date" type="date" value="${todayStr()}"></div>
       </div></li>`;
   }).join('');
-  return `<h3>💰 予算の計算<span class="sub">予算 − 持っている株 ＝ 残り</span></h3>
+  return `<h3>💰 今使えるお金<span class="sub">持っている株・含み損まで自動で計算</span></h3>
+    ${moneySummary(mode, r, use, left, book, topUp)}
+    <details class="more-box"><summary>くわしい計算を見る・保証金率を合わせる</summary>
     <div class="tbl-wrap"><table class="tbl"><tbody>${tables}</tbody></table></div>
     ${healthHtml}
     ${mode !== 'fx' ? calForm(mode, book || marginBook({ ...pf, marginBudget: pf.marginBudget || 1 }, held, mode, { usdjpy: r.usdjpy, nowOf: (h) => priceOf(r, mode, h) })) : ''}
+    </details>
     <h3>🛒 残りのお金で買うもの<span class="sub">${nextText()}</span></h3>
     ${left.slots <= 0 ? `<p class="small">同時に持つ数（${pf.maxPos}銘柄）まで、もう持っています。今は新しく買わずに、持っている株の決済のサインを待ちましょう。</p>`
     : picks.length ? `<p class="small" style="margin:0 0 6px">残りの <b>${leftNow}</b> で、あと${left.slots}銘柄まで持てます。<b>これを買ってください</b>（${picks.length}件・合計 約${yen0(spend.cash + spend.margin)} → 買ったあと ${after}）。</p>
@@ -932,7 +968,7 @@ function addHolding(mode, x, { merge = true } = {}) {
 // 「持っている株」のタブにも、あなたのプランの判断を出す（プランの計算が済んでいれば。まだなら裏で計算しておく）
 let planWarm = null;
 function planLine(mode, h) {
-  const ck = `${mode}|${style}|${style === 'swing' ? getProfile().swingDays || 30 : ''}`;
+  const ck = ckOf(mode);
   const hit = logCache[ck];
   if (!hit) {
     if (planWarm !== ck) {
@@ -1110,16 +1146,26 @@ function initHoldForm() {
     if (!files.length) return;
     // 「保有商品一覧（現物）」と「信用建玉一覧」のように、いくつかのCSVをまとめて読める
     const found = { stock: [], us: [], fx: [] };
+    let rate = null;
     try {
       for (const f of files) {
         const one = parseHoldingsCsv(decodeFile(await f.arrayBuffer()), { lotSize: getProfile().fxLotSize || 10000 });
         for (const m of Object.keys(found)) found[m].push(...(one[m] || []));
+        if (one.marginRate != null) rate = one.marginRate;
       }
     } catch (err) { box.innerHTML = `<p class="small error">読み込めませんでした（${esc(err.message)}）</p>`; return; }
     const NAME = { stock: '日本株', us: '米国株', fx: '為替' };
     const modes = Object.keys(found).filter((m) => found[m].length);
     if (!modes.length) { box.innerHTML = '<p class="small error">持っている銘柄が見つかりませんでした。「保有商品一覧」や「建玉一覧」のCSVか確かめてください。</p>'; return; }
     box.innerHTML = `${modes.map((m) => `<p class="small" style="margin:4px 0"><b>${NAME[m]}：${found[m].length}銘柄</b><br>${found[m].map((x) => `${esc(x.name)}${m === 'fx' ? '' : `（${esc(x.code)}）`} ${x.side < 0 ? '売り' : ''}${x.acct === 'margin' ? '信用' : ''} ${Number(x.price).toLocaleString()} × ${Number(x.qty).toLocaleString()}`).join('<br>')}</p>`).join('')}
+      ${found.stock.length ? `<div class="stat" style="margin-top:8px">
+        <label class="plan-buy-check"><input type="checkbox" id="imp-budget" checked><span><b>予算も、このCSVに合わせて自動で決める</b>（日本株）${rate != null ? `<br><span class="small muted">保証金率 ${rate}% も読み取りました。信用の保証金は、これから毎日自動で計算します。</span>` : ''}</span></label>
+        <div class="stack" style="margin-top:6px">
+          <div class="row"><label class="small muted" style="min-width:10em">現物で使える現金</label><input class="input grow" id="imp-free" inputmode="numeric" value="0"><span class="small muted">円</span></div>
+          <p class="small muted" style="margin:0">楽天証券の「預り金」と「楽天銀行利用可能額」の合計。全部保証金に入れているなら0のままでOK。</p>
+          ${rate != null ? `<div class="row"><label class="small muted" style="min-width:10em">保証金現金（わかれば）</label><input class="input grow" id="imp-dep" inputmode="numeric" placeholder="例 2190784"><span class="small muted">円</span></div>
+          <p class="small muted" style="margin:0">「余力・保証金率」の画面の「保証金現金」。入れるとピッタリ合います。空でもだいたい合います。</p>` : ''}
+        </div></div>` : ''}
       <div class="row" style="margin-top:6px"><button class="btn primary grow" id="hold-import-replace">この内容に置き換える</button><button class="btn grow" id="hold-import-add">今のものに足す</button></div>
       <p class="small muted" style="margin:4px 0 0">「置き換える」は、上に出た市場（${modes.map((m) => NAME[m]).join('・')}）の持っている株を、CSVの内容だけにします。</p>`;
     const apply = (replace) => {
@@ -1132,7 +1178,20 @@ function initHoldForm() {
         }
         setHoldings(m, now);
       }
-      box.innerHTML = `<p class="small">✅ ${modes.map((m) => `${NAME[m]} ${found[m].length}銘柄`).join('・')}を入れました。</p>`;
+      // 予算も自動で決める（日本株）
+      let msg = '';
+      if (found.stock.length && $('imp-budget')?.checked) {
+        const num = (id) => { const t = String($(id)?.value ?? '').normalize('NFKC').replace(/[,，円\s]/g, ''); return t === '' || !Number.isFinite(Number(t)) ? null : Number(t); };
+        const st = setupFromCsv(getHoldings('stock'), { rate, cashDeposit: num('imp-dep'), cashFree: num('imp-free') || 0 });
+        const p0 = getProfile();
+        const next = { ...p0, budget: st.budget };
+        if (st.marginBudget != null) next.marginBudget = st.marginBudget;
+        if (st.cal) next.marginCal = { ...(p0.marginCal || {}), stock: { date: todayJst(), ...st.cal } };
+        setProfile(next);
+        msg = `<br>予算を<b>現物 ${yen0(st.budget)}</b>${st.marginBudget != null ? `・<b>信用・空売り ${yen0(st.marginBudget)}</b>` : ''}にしました。「あなたのプラン」で、今使えるお金を見られます。`;
+      }
+      setHoldings('stock', getHoldings('stock').map(({ now, ...x }) => x));
+      box.innerHTML = `<p class="small">✅ ${modes.map((m) => `${NAME[m]} ${found[m].length}銘柄`).join('・')}を入れました。${msg}</p>`;
       e.target.value = '';
       showHoldings(getModeFn());
     };

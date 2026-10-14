@@ -48,6 +48,7 @@ export function parseHoldingsCsv(text, { lotSize = 10000 } = {}) {
     const mi = findCol(h, /信用区分|弁済期限/);
     const isMarginTable = mi >= 0 || h.some((c) => /建玉数量|建単価/.test(c));
     const isFx = h.some((c) => /通貨ペア/.test(c));
+    const nowi = h.findIndex((c) => /^現在値(［円］|\[円\]|（円）|\(円\))?$/.test(c));
     const isLot = /Lot|ロット/i.test(h[qi]);
     for (let j = i + 1; j < rows.length; j++) {
       const r = rows[j];
@@ -66,7 +67,8 @@ export function parseHoldingsCsv(text, { lotSize = 10000 } = {}) {
       const side = /売/.test(sideText) || /売建|信用売|空売/.test(kindText) ? -1 : 1;
       const acct = mode === 'fx' ? 'cash' : (isMarginTable || /信用|制度|買建|売建/.test(kindText + sideText) || side < 0 ? 'margin' : 'cash');
       const d = di >= 0 ? parseDate(r[di]) : null;
-      out[mode].push({ code, name: mode === 'fx' ? `${code.slice(0, 3)}/${code.slice(3)}` : name.replace(/^\d{3}[0-9A-Z]\s*/, '') || code, side, price, qty, acct, date: d ? d.toISOString().slice(0, 10) : '' });
+      const now = nowi >= 0 ? toNumber(r[nowi]) : null;
+      out[mode].push({ ...(now > 0 ? { now } : {}), code, name: mode === 'fx' ? `${code.slice(0, 3)}/${code.slice(3)}` : name.replace(/^\d{3}[0-9A-Z]\s*/, '') || code, side, price, qty, acct, date: d ? d.toISOString().slice(0, 10) : '' });
     }
   }
   // 同じ銘柄・向き・口座は、平均の値段と合計の数量にまとめる
@@ -82,6 +84,12 @@ export function parseHoldingsCsv(text, { lotSize = 10000 } = {}) {
       if (x.date && (!y.date || x.date < y.date)) y.date = x.date;
     }
     out[m] = [...map.values()];
+  }
+  // 楽天証券の信用建玉一覧の上の方にある「保証金率［％］,"37.09"」
+  for (const row of rows) {
+    const cells = row.map((c) => String(c || '').trim());
+    const i = cells.findIndex((c) => /^保証金率(［％］|\[％\]|\[%\]|（％）)?$/.test(c));
+    if (i >= 0 && Number.isFinite(toNumber(cells[i + 1]))) { out.marginRate = toNumber(cells[i + 1]); break; }
   }
   return out;
 }

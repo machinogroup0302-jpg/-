@@ -561,9 +561,11 @@ export function marginBook(pf, holdings, mode, { usdjpy = null, nowOf = null } =
       if (h.side > 0) longNow += qty * now * k;
     } else if (mode === 'stock') V += qty * now * k;
   }
-  const subst = SUBST * V;
-  const plAdj = Math.min(0, pl);
   const cal = pf?.marginCal?.[mode];
+  // 代用の掛け目：楽天証券の数字から分かっていればそれ（担保にしていない株があると8割より小さくなる）
+  const sr = cal?.substRate ?? SUBST;
+  const subst = sr * V;
+  const plAdj = Math.min(0, pl);
   const b = budgets(pf);
   const base = cal?.base ?? (b.sep ? b.margin : null);
   if (base == null) return { N, pl, plAdj, subst, V, base: null };
@@ -577,10 +579,35 @@ export function marginBook(pf, holdings, mode, { usdjpy = null, nowOf = null } =
   // 追証まで：あといくら損が増えてよいか、信用で買っている株と代用の株がそろって何%下がるとそうなるか
   const buffer = E - maint * N;
   const dropPct = buffer > 0 && longNow + subst > 0 ? buffer / (longNow + subst) : null;
-  return { N, pl, plAdj, subst, V, base, cal, E, ratio, maint, NEW, room, topUp, buffer, dropPct };
+  // 信用を全部いま決済したら残るお金（保証金の現金 − 含み損）＋ 現物の株の今の評価
+  const total = base + plAdj + V;
+  return { N, pl, plAdj, subst, sr, V, base, cal, E, ratio, maint, NEW, room, topUp, buffer, dropPct, longNow, total };
 }
 // 楽天証券の保証金率（%）から「入れている現金の保証金」を逆算する
 export function calibrateMargin(ratePct, book) {
   if (!(book?.N > 0) || !Number.isFinite(ratePct)) return null;
   return Math.round((ratePct / 100) * book.N - book.subst - book.plAdj);
+}
+
+// 証券会社のCSV（持っている株＋保証金率）から、予算と保証金を自動で決める（日本株）
+// list：読み込んだ持っている株（now＝CSVの今の値段つき）、rate：保証金率（%）
+// cashDeposit：保証金の現金（分かれば。なければ代用を8割として逆算）、cashFree：現物で使える現金（預り金・楽天銀行）
+export function setupFromCsv(list, { rate = null, cashDeposit = null, cashFree = 0 } = {}) {
+  let N = 0, pl = 0, V = 0, cost = 0;
+  for (const h of list) {
+    const now = h.now || h.price;
+    if (h.side < 0 || h.acct === 'margin') { N += h.price * h.qty; pl += (h.side < 0 ? -1 : 1) * (now - h.price) * h.qty; }
+    else { V += now * h.qty; cost += h.price * h.qty; }
+  }
+  const out = { budget: Math.round(cost + (Number(cashFree) || 0)) };
+  if (!(N > 0) || !(rate > 0)) return out;
+  const E = (rate / 100) * N, plAdj = Math.min(0, pl);
+  let base, substRate = SUBST;
+  if (cashDeposit > 0) {
+    base = Math.round(cashDeposit);
+    substRate = V > 0 ? Math.max(0, Math.min(SUBST, (E - base - plAdj) / V)) : SUBST;
+  } else base = Math.round(E - SUBST * V - plAdj);
+  out.marginBudget = Math.max(0, base);
+  out.cal = { base, rate, substRate: Math.round(substRate * 1000) / 1000 };
+  return out;
 }

@@ -160,7 +160,7 @@ const str = (x, n) => String(x ?? '').slice(0, n);
 const wayMap = (o) => Object.fromEntries(['fx', 'stock', 'us'].filter((k) => /^[a-zA-Z]{1,12}$/.test(o?.[k] || '')).map((k) => [k, o[k]]));
 // 信用の保証金：証券会社の保証金率から逆算した「入れている現金の保証金」（入れた日・そのときの率つき）
 const calOf = (o) => Object.fromEntries(['stock', 'us'].filter((k) => o?.[k] && /^\d{4}-\d{2}-\d{2}$/.test(o[k].date || '') && Number.isFinite(Number(o[k].base)))
-  .map((k) => [k, { date: o[k].date, base: Math.round(Math.max(-1e11, Math.min(1e11, Number(o[k].base)))), rate: Number.isFinite(Number(o[k].rate)) ? Number(o[k].rate) : null }]));
+  .map((k) => [k, { date: o[k].date, base: Math.round(Math.max(-1e11, Math.min(1e11, Number(o[k].base)))), rate: Number.isFinite(Number(o[k].rate)) ? Number(o[k].rate) : null, ...(Number(o[k].substRate) >= 0 && Number(o[k].substRate) <= 1 ? { substRate: Number(o[k].substRate) } : {}) }]));
 const lockMap = (o) => Object.fromEntries(['fx', 'stock', 'us'].filter((k) => o?.[k] && typeof o[k] === 'object').map((k) => {
   const x = o[k], ym = (m) => (/^\d{4}-\d{2}$/.test(m || '') ? m : '');
   const d = Math.round(Number(x.days));
