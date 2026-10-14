@@ -22,43 +22,69 @@
   "admin|285A.T|hold|exit|2026-10-09": "2026-10-09T00:30:52.400Z",
   "admin|5803.T|hold|cut|2026-10-13": "2026-10-13T00:31:19.526Z",
   "admin|6740.T|hold|exit|2026-10-13": "2026-10-13T00:31:19.526Z",
-  "admin|6981.T|hold|cut|2026-10-13": "2026-10-13T00:31:19.526Z"
+  "admin|6981.T|hold|cut|2026-10-13": "2026-10-13T00:31:19.526Z",
+  "admin|5803.T|hold|cut|2026-10-14": "2026-10-14T00:39:56.926Z",
+  "admin|6740.T|hold|exit|2026-10-14": "2026-10-14T00:39:56.926Z",
+  "admin|6981.T|hold|cut|2026-10-14": "2026-10-14T00:39:56.926Z",
+  "admin|4588.T|hold|cut|2026-10-14": "2026-10-14T00:39:56.926Z"
  },
  "book": {
   "admin": {
    "open": {
-    "swing|CHFJPY=X": {
+    "swing|8084.T": {
      "kind": "swing",
-     "mode": "fx",
-     "symbol": "CHFJPY=X",
-     "name": "スイスフラン円",
+     "mode": "stock",
+     "symbol": "8084.T",
+     "name": "RYODEN",
      "side": 1,
-     "signalTime": 1791948600,
-     "signalPrice": 102.3595640683995,
-     "sentAt": "2026-10-14T03:41:52.322Z",
-     "how": ""
+     "signalTime": 1791849600,
+     "signalPrice": 2502,
+     "sentAt": "2026-10-13T07:58:42.655Z",
+     "how": "現物で買う：100株＋信用で買う：400株（合計500株）"
     },
-    "swing|USDCHF=X": {
+    "swing|7203.T": {
      "kind": "swing",
-     "mode": "fx",
-     "symbol": "USDCHF=X",
-     "name": "ドルスイスフラン",
+     "mode": "stock",
+     "symbol": "7203.T",
+     "name": "トヨタ自動車",
      "side": 1,
-     "signalTime": 1791948600,
-     "signalPrice": 121.91561790527236,
-     "sentAt": "2026-10-14T03:41:52.322Z",
-     "how": ""
+     "signalTime": 1791849600,
+     "signalPrice": 2984,
+     "sentAt": "2026-10-13T07:58:42.655Z",
+     "how": "現物で買う：100株＋信用で買う：300株（合計400株）"
     },
-    "swing|AUDJPY=X": {
+    "swing|4894.T": {
      "kind": "swing",
-     "mode": "fx",
-     "symbol": "AUDJPY=X",
-     "name": "豪ドル円",
+     "mode": "stock",
+     "symbol": "4894.T",
+     "name": "クオリプス",
      "side": 1,
-     "signalTime": 1791948600,
-     "signalPrice": 89.4438500925645,
-     "sentAt": "2026-10-14T03:41:52.322Z",
-     "how": ""
+     "signalTime": 1791849600,
+     "signalPrice": 6280,
+     "sentAt": "2026-10-13T07:58:42.655Z",
+     "how": "信用で買う：100株"
+    },
+    "swing|5537.T": {
+     "kind": "swing",
+     "mode": "stock",
+     "symbol": "5537.T",
+     "name": "AlbaLink",
+     "side": 1,
+     "signalTime": 1791849600,
+     "signalPrice": 4140,
+     "sentAt": "2026-10-13T07:58:42.655Z",
+     "how": "現物で買う：100株＋信用で買う：100株（合計200株）"
+    },
+    "swing|6080.T": {
+     "kind": "swing",
+     "mode": "stock",
+     "symbol": "6080.T",
+     "name": "M&Aキャピタルパートナーズ",
+     "side": 1,
+     "signalTime": 1791849600,
+     "signalPrice": 4430,
+     "sentAt": "2026-10-13T07:58:42.655Z",
+     "how": "現物で買う：100株＋信用で買う：200株（合計300株）"
     }
    },
    "log": []
