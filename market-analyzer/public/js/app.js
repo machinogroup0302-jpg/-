@@ -415,6 +415,7 @@ async function boot() {
   // 今動いているサイトの版（直したものが届いているか確かめるため、設定のいちばん下に出す）
   const ver = document.getElementById('site-version');
   if (ver) ver.textContent = `サイトの版：${st.version || '—'}`;
+  watchVersion(st.version);
   if (st.loginRequired && !st.loggedIn) {
     $('login').hidden = false;
     $('login-form').addEventListener('submit', async (e) => {
@@ -433,3 +434,19 @@ async function boot() {
 }
 
 boot();
+
+// サイトが新しくなったら、開きっぱなしの画面も自動で新しくする
+// （画面を開き直したとき・5分ごとに版を確かめ、変わっていたら読み込み直す。入力中は待つ）
+function watchVersion(v0) {
+  if (!v0 || v0 === 'local') return;
+  const check = async () => {
+    let v;
+    try { v = (await api('/api/status')).version; } catch { return; }
+    if (!v || v === v0) return;
+    const typing = document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
+    if (typing) return;
+    location.reload();
+  };
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); });
+  setInterval(check, 5 * 60 * 1000);
+}
