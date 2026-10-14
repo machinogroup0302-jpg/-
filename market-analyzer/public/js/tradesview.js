@@ -247,13 +247,18 @@ function render() {
 }
 
 // 読み込んだ結果を分かりやすく表示する（最初の数件と、合計の確認）
-function showLoaded(list, format, fileName) {
+function showLoaded(list, format, fileName, moved = []) {
+  if (!list.length && moved.length) {
+    $('trade-status').innerHTML = `<div class="notice" style="margin-top:4px"><p style="margin:0"><b>✓ 「${esc(fileName)}」を読み込みました</b></p><p class="small" style="margin:4px 0 0">📦 このファイルは${esc(moved.join('・'))}の取引だったので、そちらの画面に自動で入れました。上の切り替えで見られます。</p></div>`;
+    return;
+  }
   const closed = list.filter((t) => t.pnl != null && t.pnl !== 0);
   const total = closed.reduce((a, t) => a + t.pnl, 0);
   const days = list.map((t) => t.date).filter(Boolean).sort();
   $('trade-status').innerHTML = `
     <div class="notice" style="margin-top:4px">
       <p style="margin:0 0 6px"><b>✓ 「${esc(fileName)}」を${esc(format.name)}として読み込みました</b></p>
+      ${moved.length ? `<p class="small" style="margin:0 0 6px">📦 ほかの市場の取引（${esc(moved.join('・'))}）は、それぞれの画面（上の切り替え）に自動で入れました。</p>` : ''}
       <div class="grid2" style="margin-bottom:6px">
         <div class="stat"><div class="label">損益が確定した取引</div><div class="value">${closed.length}件</div></div>
         <div class="stat"><div class="label">損益の合計</div><div class="value ${total >= 0 ? 'plus' : 'minus'}">${fmtYen(total)}</div></div>
@@ -263,18 +268,42 @@ function showLoaded(list, format, fileName) {
     </div>`;
 }
 
+// 取引がどの市場のものか：為替の通貨ペア・日本株（4けたのコード）・米国株（英字のティッカー）
+const MODE_NAME = { fx: '為替', stock: '日本株', us: '米国株' };
+function marketOf(t) {
+  const code = String(t.code || '').normalize('NFKC').trim().toUpperCase();
+  if (isFxTrade(t.symbol) && !/^\d{3}[0-9A-Z]$/.test(code)) return 'fx';
+  if (/^\d{3}[0-9A-Z]$/.test(code)) return 'stock';
+  if (/^[A-Z][A-Z.\-]{0,6}$/.test(code)) return 'us';
+  const sym = String(t.symbol || '').normalize('NFKC').trim().toUpperCase();
+  if (/^\d{3}[0-9A-Z](\.T)?$/.test(sym)) return 'stock';
+  if (/^[A-Z][A-Z.\-]{0,6}$/.test(sym)) return 'us';
+  return tradeMode;
+}
+
 function addTrades(list, fileKey, format, fileName) {
-  // 同じファイルを読み込み直したときは、前回の分を入れ替える（同じ値の取引も別々に数える）
-  // 別のファイル（期間が重なるCSV）にもう入っている取引は、2回数えない
-  const kept = trades.filter((t) => t.file !== fileKey);
-  const sig = (t) => [t.date, t.openDate, t.symbol, t.side, t.qty, t.price, t.entry, t.pnl].map((x) => String(x ?? '')).join('|');
-  const have = new Map();
-  for (const t of kept) have.set(sig(t), (have.get(sig(t)) || 0) + 1);
-  const fresh = [];
-  for (const t of list) { const k = sig(t); if (have.get(k) > 0) have.set(k, have.get(k) - 1); else fresh.push({ ...t, file: fileKey }); }
-  trades = [...kept, ...fresh].sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
-  save();
-  showLoaded(list, format, fileName);
+  // 市場ごとに分けて、それぞれの取引に入れる（日本株のCSVに米国株が入っていても、米国株のほうに入る）
+  const groups = { fx: [], stock: [], us: [] };
+  for (const t of list) groups[marketOf(t)].push(t);
+  const moved = [];
+  for (const [m, part] of Object.entries(groups)) {
+    if (!part.length) continue;
+    const cur = m === tradeMode ? trades : store.get(`trades_${m}`, []);
+    // 同じファイルを読み込み直したときは、前回の分を入れ替える（同じ値の取引も別々に数える）
+    // 別のファイル（期間が重なるCSV）にもう入っている取引は、2回数えない
+    const kept = cur.filter((t) => t.file !== fileKey);
+    const sig = (t) => [t.date, t.openDate, t.symbol, t.side, t.qty, t.price, t.entry, t.pnl].map((x) => String(x ?? '')).join('|');
+    const have = new Map();
+    for (const t of kept) have.set(sig(t), (have.get(sig(t)) || 0) + 1);
+    const fresh = [];
+    for (const t of part) { const k = sig(t); if (have.get(k) > 0) have.set(k, have.get(k) - 1); else fresh.push({ ...t, file: fileKey }); }
+    const next = [...kept, ...fresh].sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+    if (m === tradeMode) { trades = next; save(); } else {
+      if (!saveSynced(`trades_${m}`, next)) toast('保存できませんでした（容量オーバーの可能性があります）');
+      moved.push(`${MODE_NAME[m]} ${part.length}件`);
+    }
+  }
+  showLoaded(groups[tradeMode], format, fileName, moved);
   render();
 }
 
