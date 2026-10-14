@@ -259,8 +259,8 @@
           <div class="card">
             <h2>持っている株<span class="sub">入力すると、どうした方がいいか出します</span></h2>
             <details class="more-box" id="hold-import"><summary>📄 証券会社のCSVから読み込む（自動で入れる）</summary>
-              <p class="small muted" style="margin:6px 0">楽天証券の「保有商品一覧（CSV）」やLION FXの「建玉一覧（CSV）」を選ぶと、銘柄・数量・平均取得価額を読み取って入れます。日本株・米国株・為替は自動で分けます。</p>
-              <input type="file" id="hold-import-file" accept=".csv,text/csv">
+              <p class="small muted" style="margin:6px 0">楽天証券の「保有商品一覧（CSV）」「信用建玉一覧（CSV）」やLION FXの「建玉一覧（CSV）」を選ぶと（いくつか一緒に選べます）、銘柄・数量・平均取得価額を読み取って入れます。日本株・米国株・為替は自動で分けます。</p>
+              <input type="file" id="hold-import-file" accept=".csv,text/csv" multiple>
               <div id="hold-import-preview" style="margin-top:8px"></div>
             </details>
             <details class="more-box" id="hold-add" open><summary>＋ 持っている銘柄を追加する</summary>

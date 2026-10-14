@@ -44,6 +44,9 @@ export function parseHoldingsCsv(text, { lotSize = 10000 } = {}) {
     if (qi < 0 || pi < 0 || (ni < 0 && ci < 0)) continue;
     // 見出しの行が見つかった：その下を、空の行か次の見出しまで読む
     const si = findCol(h, COL.side), ki = findCol(h, COL.kind), di = findCol(h, COL.date);
+    // 「信用区分」「建玉」の列がある表は、信用の建玉の一覧（楽天証券の「信用建玉一覧」など）
+    const mi = findCol(h, /信用区分|弁済期限/);
+    const isMarginTable = mi >= 0 || h.some((c) => /建玉数量|建単価/.test(c));
     const isFx = h.some((c) => /通貨ペア/.test(c));
     const isLot = /Lot|ロット/i.test(h[qi]);
     for (let j = i + 1; j < rows.length; j++) {
@@ -61,7 +64,7 @@ export function parseHoldingsCsv(text, { lotSize = 10000 } = {}) {
       const sideText = si >= 0 ? String(r[si] || '') : '';
       const kindText = ki >= 0 ? String(r[ki] || '') : '';
       const side = /売/.test(sideText) || /売建|信用売|空売/.test(kindText) ? -1 : 1;
-      const acct = mode === 'fx' ? 'cash' : (/信用/.test(kindText + sideText) || side < 0 ? 'margin' : 'cash');
+      const acct = mode === 'fx' ? 'cash' : (isMarginTable || /信用|制度|買建|売建/.test(kindText + sideText) || side < 0 ? 'margin' : 'cash');
       const d = di >= 0 ? parseDate(r[di]) : null;
       out[mode].push({ code, name: mode === 'fx' ? `${code.slice(0, 3)}/${code.slice(3)}` : name.replace(/^\d{3}[0-9A-Z]\s*/, '') || code, side, price, qty, acct, date: d ? d.toISOString().slice(0, 10) : '' });
     }

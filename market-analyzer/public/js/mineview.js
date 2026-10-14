@@ -1105,12 +1105,16 @@ function initHoldForm() {
   $('hold-add').addEventListener('click', (e) => { if (e.target.closest('summary')) addFormTouched = true; });
   // 証券会社のCSVから読み込む
   $('hold-import-file').addEventListener('change', async (e) => {
-    const f = e.target.files?.[0];
+    const files = [...(e.target.files || [])];
     const box = $('hold-import-preview');
-    if (!f) return;
-    let found;
+    if (!files.length) return;
+    // 「保有商品一覧（現物）」と「信用建玉一覧」のように、いくつかのCSVをまとめて読める
+    const found = { stock: [], us: [], fx: [] };
     try {
-      found = parseHoldingsCsv(decodeFile(await f.arrayBuffer()), { lotSize: getProfile().fxLotSize || 10000 });
+      for (const f of files) {
+        const one = parseHoldingsCsv(decodeFile(await f.arrayBuffer()), { lotSize: getProfile().fxLotSize || 10000 });
+        for (const m of Object.keys(found)) found[m].push(...(one[m] || []));
+      }
     } catch (err) { box.innerHTML = `<p class="small error">読み込めませんでした（${esc(err.message)}）</p>`; return; }
     const NAME = { stock: '日本株', us: '米国株', fx: '為替' };
     const modes = Object.keys(found).filter((m) => found[m].length);
