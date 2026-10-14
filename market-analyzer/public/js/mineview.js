@@ -4,7 +4,7 @@ import { api, $, esc, store, fmtPrice, fmtYen } from './util.js';
 import { runStrategy, signalOdds, oddsLabel, oddsText } from './strategies.js';
 import { pagedList } from './stockscreener.js';
 import { getProfile, setProfile, getHoldings, setHoldings, syncState } from './favorites.js';
-import { replayWithBudget, kindText, sizeFor, orderText, WAYS, wayOf, waySides, wayProfile, compareWays, wayNotes, replayOpts, budgets, pipsOf, pipsText, CARRY, searchCustom, walkForward, afterTax, heldUse, leftBudget, keepWay, keepDays, monthKey } from './plan.js';
+import { replayWithBudget, kindText, sizeFor, orderText, WAYS, wayOf, waySides, wayProfile, compareWays, wayNotes, replayOpts, budgets, pipsOf, pipsText, CARRY, searchCustom, walkForward, afterTax, heldUse, leftBudget, marginHealth, keepWay, keepDays, monthKey } from './plan.js';
 import { loadRegime, loadCandles, universe, kindOf } from './labview.js';
 import { baseUniverse } from './universe.js';
 import { adviseHolding, exitTiming, longTermView, addOnAdvice } from './holdingadvice.js';
@@ -326,8 +326,12 @@ function renderPlan(r0, mode) {
   const minOdds = r.minOdds || (usePicky ? 0.55 : 0.5);
   // 持っている株（「持っている株」のタブと同じもの）で使っているお金を引いて、残りの予算・残りの枠で量を決める
   const held = getHoldings(mode);
-  const use = heldUse(held, mode, { prices: r.prices, usdjpy: r.usdjpy });
+  const use = heldUse(held, mode, { prices: r.prices, usdjpy: r.usdjpy, nowOf: (h) => priceOf(r, mode, h) });
   const left = leftBudget(pf, use);
+  // 信用が追証になっているときは、まず現物のお金から保証金に移す分を取っておく（その残りで買う）
+  const mh0 = mode !== 'fx' && budgets(pf).sep ? marginHealth(pf, use, mode) : null;
+  const topUp = mh0 && mh0.ratio < mh0.maint ? Math.ceil(mh0.maint * use.notional - mh0.equity) : 0;
+  if (topUp) left.cash = Math.max(0, left.cash - topUp);
   const bg = budgets(pf);
   const cashB = left.cash;
   const heldOf = (sym) => held.filter((h) => symbolOf(mode, h.code).toUpperCase() === String(sym).toUpperCase());
@@ -349,7 +353,7 @@ function renderPlan(r0, mode) {
     <button class="btn block" id="plan-settings" style="margin:8px 0 4px">予算・ルールを変える</button>
 
     ${heldHtml(mode, r, held, closeOf, opens, d)}
-    ${budgetHtml(mode, r, held, use, left, picks, d)}
+    ${budgetHtml(mode, r, held, use, left, picks, d, topUp)}
 
     <h3>✅ 今やるといいこと<span class="sub">${nextText()}・残りの予算で</span></h3>
     ${picks.length ? `<p class="small muted" style="margin:-4px 0 6px">1件ずつのくわしい内容です。買ったら、上の「🛒 残りのお金で買うもの」でチェックして、持っている株に入れてください。</p><ul class="list">${picks.map((x) => {
@@ -446,6 +450,13 @@ const codeFor = (mode, symbol) => (mode === 'fx' ? symbol.replace(/=X$/i, '') : 
 const todayStr = () => new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
 
 // 持っている株1件で使っているお金（現物はその金額、信用・空売りは保証金、為替は証拠金）
+// 持っている株の今の値段（計算に入っている銘柄なら）
+function priceOf(r, mode, h) {
+  const bare = (x) => String(x).toUpperCase().replace(/\.T$|=X$/, '');
+  const sym = bare(symbolOf(mode, h.code));
+  const k = Object.keys(r.prices).find((p) => bare(p) === sym);
+  return k ? r.prices[k] : null;
+}
 function useOne(mode, h, r) { const u = heldUse([h], mode, { prices: r.prices, usdjpy: r.usdjpy }); return { yen: u.cash + u.margin, margin: u.margin > 0 }; }
 function useText(mode, h, r) {
   const u = useOne(mode, h, r);
@@ -453,18 +464,34 @@ function useText(mode, h, r) {
 }
 
 // 💰 予算から持っている株を引いた残りと、🛒 その残りで買うもの（チェックしたものを持っている株に入れる）
-function budgetHtml(mode, r, held, use, left, picks, d) {
+function budgetHtml(mode, r, held, use, left, picks, d, topUp = 0) {
   const pf = r.pf;
   const bg = budgets(pf);
   const unit = mode === 'fx' ? '通貨' : '株';
   const isMargin = (h) => mode !== 'fx' && (h.side < 0 || h.acct === 'margin');
   const row = (label, yen, cls = '') => `<tr${cls ? ` class="${cls}"` : ''}><td class="small">${label}</td><td class="r small">${yen}</td></tr>`;
-  const block = (title, total, list, rest) => `<tr class="best"><td class="small"><b>${title}</b></td><td class="r small"><b>${yen0(total)}</b></td></tr>
-    ${list.map((h) => row(`− ${esc(h.name)}（${mode === 'fx' ? '' : isMargin(h) ? '信用 ' : '現物 '}${Number(h.qty).toLocaleString()}${unit}）`, `−${yen0(useOne(mode, h, r).yen)}`)).join('')}
-    ${row('<b>＝ 残り</b>', `<b>${yen0(rest)}</b>`)}`;
-  const tables = mode === 'fx' ? block('予算（証拠金に使えるお金）', bg.cash, held, left.cash)
-    : bg.sep ? block('現物の予算', bg.cash, held.filter((h) => !isMargin(h)), left.cash) + block('信用・空売りの予算', bg.margin, held.filter(isMargin), left.margin)
-    : block('予算（現物・信用で共通）', bg.cash, held, left.cash);
+  const block = (title, total, list, rest, withPl = false, extra = '') => {
+    // 信用・為替：含み損（為替は含み益も）の分だけ、本当の保証金・証拠金が変わる
+    const pls = withPl ? use.rows.filter((x) => list.includes(x.h) && x.now) : [];
+    const plRows = pls.some((x) => x.pl) ? `${pls.filter((x) => x.pl).map((x) => row(`<span class="muted">${x.pl < 0 ? '含み損' : '含み益'}：${esc(x.h.name)}（今 ${fmtPrice(x.now, d)}）</span>`, `<span class="${x.pl < 0 ? 'minus' : 'plus'}">${fmtYen(x.pl)}</span>`)).join('')}
+      ${row(mode === 'fx' ? '<b>＝ 本当の証拠金（有効証拠金）</b>' : `<b>＝ 本当の保証金</b>${use.pl > 0 ? '<span class="muted">（含み益は足されません）</span>' : ''}`, `<b>${yen0(total + use.plAdj)}</b>`)}` : '';
+    return `<tr class="best"><td class="small"><b>${title}</b></td><td class="r small"><b>${yen0(total)}</b></td></tr>
+    ${plRows}
+    ${list.map((h) => row(`− ${esc(h.name)}（${mode === 'fx' ? '必要な証拠金 ' : isMargin(h) ? '信用・必要な保証金 ' : '現物 '}${Number(h.qty).toLocaleString()}${unit}）`, `−${yen0(useOne(mode, h, r).yen)}`)).join('')}
+    ${extra}
+    ${row('<b>＝ 残り（新しく使えるお金）</b>', `<b>${yen0(rest)}</b>`)}`;
+  };
+  const tables = mode === 'fx' ? block('予算（証拠金に入れたお金）', bg.cash, held, left.cash, true)
+    : bg.sep ? block('現物の予算', bg.cash, held.filter((h) => !isMargin(h)), left.cash, false, topUp ? row('<b class="minus">− 追証を解消するため、信用の口座へ移すお金</b>', `<b class="minus">−${yen0(topUp)}</b>`) : '') + block('信用・空売りの予算（入れた保証金）', bg.margin, held.filter(isMargin), left.margin, true)
+    : block('予算（現物・信用で共通）', bg.cash, held, left.cash, true);
+  // 保証金維持率と、あといくら損が増えると追証（為替はロスカット）か
+  const mh = marginHealth(pf, use, mode);
+  const healthHtml = !mh ? '' : (() => {
+    const ratio = mode === 'fx' ? mh.equity / mh.need : mh.ratio;
+    const line = mode === 'fx' ? 1 : mh.maint;
+    const danger = ratio < line, near = !danger && mh.buffer < mh.equity * 0.3;
+    return `<p class="small ${danger ? 'error' : ''}" style="margin:4px 0 0">${danger ? '🚨' : near ? '⚠' : '🛡'} <b>${mode === 'fx' ? '証拠金維持率' : '保証金維持率'} ${Math.round(ratio * 100)}%</b>（${Math.round(line * 100)}%を下回ると${mode === 'fx' ? 'ロスカット（強制決済）' : '追証（お金の追加が必要）'}）${danger ? `。<b>もう下回っています。</b>${topUp ? `${Math.round(line * 100)}%に戻すには、約<b>${yen0(topUp)}</b>を信用の口座（保証金）に入れる必要があります。上の表では、そのお金を現物の予算から先に取っておいています。` : 'すぐにお金を入れるか、建玉を減らしてください。'}` : `。あと約<b>${yen0(mh.buffer)}</b>含み損が増えると${mode === 'fx' ? 'ロスカット' : '追証'}になります。`}${mode !== 'fx' ? '<br><span class="muted">保証金維持率 ＝ 本当の保証金 ÷ 信用で建てている金額。新しく信用で建てるには、残りの保証金が建てる金額の約30%以上いります。</span>' : ''}</p>`;
+  })();
   // 買うもののお金を、どちらの予算から出すか
   const bucket = (x) => (mode !== 'fx' && bg.sep && (x.side < 0 || x.size.acct === 'margin') ? 'margin' : 'cash');
   const spend = { cash: 0, margin: 0 };
@@ -489,6 +516,7 @@ function budgetHtml(mode, r, held, use, left, picks, d) {
   }).join('');
   return `<h3>💰 予算の計算<span class="sub">予算 − 持っている株 ＝ 残り</span></h3>
     <div class="tbl-wrap"><table class="tbl"><tbody>${tables}</tbody></table></div>
+    ${healthHtml}
     <h3>🛒 残りのお金で買うもの<span class="sub">${nextText()}</span></h3>
     ${left.slots <= 0 ? `<p class="small">同時に持つ数（${pf.maxPos}銘柄）まで、もう持っています。今は新しく買わずに、持っている株の決済のサインを待ちましょう。</p>`
     : picks.length ? `<p class="small" style="margin:0 0 6px">残りの <b>${leftNow}</b> で、あと${left.slots}銘柄まで持てます。<b>これを買ってください</b>（${picks.length}件・合計 約${yen0(spend.cash + spend.margin)} → 買ったあと ${after}）。</p>

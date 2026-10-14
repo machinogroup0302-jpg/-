@@ -468,30 +468,56 @@ export const afterTax = (v) => (v > 0 ? v * (1 - TAX) : v);
 
 // ---------------- 持っている株と、あなたのプランをつなぐ ----------------
 // 持っている株で使っているお金：現物はその金額、信用・空売りは保証金（金額 ÷ 倍率）、為替は証拠金（金額 ÷ 25）
-export function heldUse(holdings, mode, { prices = {}, usdjpy = null } = {}) {
-  let cash = 0, margin = 0, n = 0;
+// nowOf(h) で今の値段が分かれば、信用・空売り・為替の含み損益も出す（保証金・証拠金は含み損の分だけ減る）
+export function heldUse(holdings, mode, { prices = {}, usdjpy = null, nowOf = null } = {}) {
+  let cash = 0, margin = 0, n = 0, pl = 0, notional = 0;
+  const rows = [];
   for (const h of holdings || []) {
     const qty = Number(h.qty) || 0, price = Number(h.price) || 0;
     if (!(qty > 0 && price > 0)) continue;
     n++;
+    const now = nowOf ? Number(nowOf(h)) || null : null;
     if (mode === 'fx') {
       const q = quoteToJpy(`${String(h.code).replace(/=X$/i, '').toUpperCase()}=X`, prices) ?? (usdjpy || 150);
       cash += (qty * price * q) / FX_LEVERAGE;
+      notional += qty * price * q;
+      const p = now ? (h.side < 0 ? -1 : 1) * (now - price) * qty * q : 0;
+      pl += p;
+      rows.push({ h, pl: p, now });
       continue;
     }
-    const yen = qty * price * (mode === 'us' ? usdjpy || 150 : 1);
-    if (h.side < 0 || h.acct === 'margin') margin += yen / LEV_LIMIT[mode];
-    else cash += yen;
+    const k = mode === 'us' ? usdjpy || 150 : 1;
+    const yen = qty * price * k;
+    if (h.side < 0 || h.acct === 'margin') {
+      margin += yen / LEV_LIMIT[mode];
+      notional += yen;
+      const p = now ? (h.side < 0 ? -1 : 1) * (now - price) * qty * k : 0;
+      pl += p;
+      rows.push({ h, pl: p, now });
+    } else cash += yen;
   }
-  return { cash, margin, n };
+  // 信用：評価損は保証金から引かれ、評価益は足されない（楽天証券など国内の決まり）。為替：含み益も含み損も有効証拠金に入る
+  const plAdj = mode === 'fx' ? pl : Math.min(0, pl);
+  return { cash, margin, n, pl, plAdj, notional, rows };
 }
 // 残りの予算と、あと何銘柄まで持てるか（信用の予算を分けていないときは、どちらも同じお金から引く）
+// 信用・為替は「入れたお金 ＋ 含み損益（信用は損だけ）」が本当の保証金・証拠金になる
 export function leftBudget(pf, use) {
   const b = budgets(pf);
   const slots = Math.max(0, (Number(pf?.maxPos) || 3) - use.n);
-  if (b.sep) return { cash: Math.max(0, b.cash - use.cash), margin: Math.max(0, b.margin - use.margin), slots, sep: true };
-  const left = Math.max(0, b.cash - use.cash - use.margin);
+  const adj = use.plAdj || 0;
+  if (b.sep) return { cash: Math.max(0, b.cash - use.cash), margin: Math.max(0, b.margin + adj - use.margin), slots, sep: true };
+  const left = Math.max(0, b.cash + adj - use.cash - use.margin);
   return { cash: left, margin: left, slots, sep: false };
+}
+// 保証金（証拠金）維持率：本当の保証金 ÷ 建てている金額。日本株の信用は20%、米国株は25%、為替は4%（＝証拠金維持率100%）を下回ると追証・ロスカット
+export function marginHealth(pf, use, mode) {
+  if (!(use.notional > 0)) return null;
+  const b = budgets(pf);
+  const deposit = mode === 'fx' ? b.cash : b.sep ? b.margin : Math.max(0, b.cash - use.cash);
+  const equity = deposit + (use.plAdj || 0);
+  const maint = MAINT[mode];
+  return { deposit, equity, ratio: equity / use.notional, maint, buffer: equity - maint * use.notional, need: mode === 'fx' ? use.notional / FX_LEVERAGE : use.notional / LEV_LIMIT[mode] };
 }
 
 // ---------------- おすすめを、ある程度決めておく ----------------
