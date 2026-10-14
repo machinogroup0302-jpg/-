@@ -149,11 +149,18 @@ function cleanProfile(v) {
     // 自動で選んだ一番いいやり方と、見ているやり方（パソコンとスマホで共有）
     bestWay: wayMap(v.bestWay),
     wayView: wayMap(v.wayView),
+    // 今月はこのやり方・この日数に決めている（ころころ変えないため。毎月1日に見直す）
+    planLock: lockMap(v.planLock),
   };
 }
 
 const str = (x, n) => String(x ?? '').slice(0, n);
 const wayMap = (o) => Object.fromEntries(['fx', 'stock', 'us'].filter((k) => /^[a-zA-Z]{1,12}$/.test(o?.[k] || '')).map((k) => [k, o[k]]));
+const lockMap = (o) => Object.fromEntries(['fx', 'stock', 'us'].filter((k) => o?.[k] && typeof o[k] === 'object').map((k) => {
+  const x = o[k], ym = (m) => (/^\d{4}-\d{2}$/.test(m || '') ? m : '');
+  const d = Math.round(Number(x.days));
+  return [k, { way: /^[a-zA-Z]{1,12}$/.test(x.way || '') ? x.way : '', month: ym(x.month), days: d >= 1 && d <= 120 ? d : 0, daysMonth: ym(x.daysMonth) }];
+}));
 const numOrNull = (x) => (x == null || x === '' || !Number.isFinite(Number(x)) ? null : Number(x));
 
 function cleanValue(key, value) {

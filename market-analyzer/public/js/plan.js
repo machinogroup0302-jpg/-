@@ -59,13 +59,13 @@ export const CARRY = { long: 0.028, short: 0.011 };
 
 // やり方に合わせて「どの口座で・どれだけ」入るか
 export function sizeFor(profile, mode, side, args) {
-  if (mode === 'fx') { const z = sizePosition({ ...args, mode, ...sizeOpts(profile, mode) }); return z && { ...z, lotSize: Number(profile?.fxLotSize) || 10000 }; }
+  if (mode === 'fx') { const z = sizePosition({ ...args, mode, ...sizeOpts(profile, mode), riskBudget: args.riskBase }); return z && { ...z, lotSize: Number(profile?.fxLotSize) || 10000 }; }
   const acct = acctOf(profile, mode);
   const L = LEV_LIMIT[mode];
   // args.budget は現物の予算。信用・空売りの予算が別にあれば、そちらを信用の上限に使う（1回で減ってもいい額は合計から）
   const sep = Number(profile?.marginBudget) > 0;
-  const mb = sep ? Number(profile.marginBudget) : args.budget;
-  const riskBase = sep ? args.budget + mb : args.budget;
+  const mb = args.marginCap ?? (sep ? Number(profile.marginBudget) : args.budget);
+  const riskBase = args.riskBase ?? (sep ? args.budget + mb : args.budget);
   const cashZ = () => { const z = sizePosition({ ...args, mode, budget: riskBase, capBudget: args.budget, leverage: 1 }); return z && { ...z, acct: 'cash', acctText: '現物' }; };
   const marginZ = () => { const z = sizePosition({ ...args, mode, budget: riskBase, capBudget: mb, leverage: L }); return z && { ...z, acct: 'margin', acctText: '信用' }; };
   if (side < 0) {
@@ -117,8 +117,8 @@ export function quoteToJpy(symbol, prices) {
 /**
  * @param {object} p { mode, symbol, price, stop, side, budget, riskPct, maxPos, prices, usdjpy }
  */
-export function sizePosition({ mode, symbol, price, stop, budget, riskPct, maxPos, prices = {}, usdjpy = null, leverage = null, fxLots = 0, fxLotSize = 10000, capBudget = null }) {
-  const riskYen = budget * riskPct / 100;
+export function sizePosition({ mode, symbol, price, stop, budget, riskPct, maxPos, prices = {}, usdjpy = null, leverage = null, fxLots = 0, fxLotSize = 10000, capBudget = null, riskBudget = null }) {
+  const riskYen = (riskBudget ?? budget) * riskPct / 100;
   // 1銘柄に使えるお金。レバレッジをかけると、その倍の金額まで取引できる
   const lev = leverage ?? (mode === 'fx' ? FX_LEVERAGE : 1);
   const cap = ((capBudget ?? budget) / maxPos) * lev;
@@ -465,3 +465,53 @@ export function walkForward(tradesBy, mode, pf, prices = {}, { months = 12, look
 // 税金：株も為替も、1年の利益に約20%（所得税・住民税で20.315%）。損した年はかからない
 export const TAX = 0.20315;
 export const afterTax = (v) => (v > 0 ? v * (1 - TAX) : v);
+
+// ---------------- 持っている株と、あなたのプランをつなぐ ----------------
+// 持っている株で使っているお金：現物はその金額、信用・空売りは保証金（金額 ÷ 倍率）、為替は証拠金（金額 ÷ 25）
+export function heldUse(holdings, mode, { prices = {}, usdjpy = null } = {}) {
+  let cash = 0, margin = 0, n = 0;
+  for (const h of holdings || []) {
+    const qty = Number(h.qty) || 0, price = Number(h.price) || 0;
+    if (!(qty > 0 && price > 0)) continue;
+    n++;
+    if (mode === 'fx') {
+      const q = quoteToJpy(`${String(h.code).replace(/=X$/i, '').toUpperCase()}=X`, prices) ?? (usdjpy || 150);
+      cash += (qty * price * q) / FX_LEVERAGE;
+      continue;
+    }
+    const yen = qty * price * (mode === 'us' ? usdjpy || 150 : 1);
+    if (h.side < 0 || h.acct === 'margin') margin += yen / LEV_LIMIT[mode];
+    else cash += yen;
+  }
+  return { cash, margin, n };
+}
+// 残りの予算と、あと何銘柄まで持てるか（信用の予算を分けていないときは、どちらも同じお金から引く）
+export function leftBudget(pf, use) {
+  const b = budgets(pf);
+  const slots = Math.max(0, (Number(pf?.maxPos) || 3) - use.n);
+  if (b.sep) return { cash: Math.max(0, b.cash - use.cash), margin: Math.max(0, b.margin - use.margin), slots, sep: true };
+  const left = Math.max(0, b.cash - use.cash - use.margin);
+  return { cash: left, margin: left, slots, sep: false };
+}
+
+// ---------------- おすすめを、ある程度決めておく ----------------
+// 毎日計算し直すと、ほぼ同じ成績のやり方が入れ替わって、サインもころころ変わってしまう。
+// そこで、月の初めに決めたやり方は、その月の間は変えない（「1年前から先を知らずに」の練習と同じ、月に1回の見直し）。
+// ただし、決めたやり方が過去1年でマイナスになったら、すぐに見直す。
+export const monthKey = (t = Date.now()) => new Date(t + 9 * 3600e3).toISOString().slice(0, 7);
+export function keepWay(cmp, custom, lock, month = monthKey()) {
+  const fresh = custom?.adopted && cmp.note !== 'rest' ? custom : cmp.best;
+  if (!lock?.way || lock.month !== month || cmp.note === 'rest') return { best: fresh, fresh, kept: false };
+  const pool = [...cmp.rows, ...(custom?.adopted ? [custom] : [])];
+  const w = pool.find((x) => x.key === lock.way);
+  const total = w ? (w.full?.total ?? w.r?.total) : null;
+  if (!w || !(total > 0)) return { best: fresh, fresh, kept: false, dropped: !!w };
+  return { best: w, fresh, kept: true };
+}
+// スイングで持つ日数のおすすめも同じ：今月決めた日数が、まだプラスならそのまま
+export function keepDays(rows, best, lock, month = monthKey()) {
+  if (!lock?.days || lock.daysMonth !== month) return { best, kept: false };
+  const w = rows.find((x) => x.d === lock.days);
+  if (!w || !(w.r.total > 0) || w.r.broke) return { best, kept: false };
+  return { best: w, kept: true };
+}

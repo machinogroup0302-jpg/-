@@ -26,7 +26,41 @@
  },
  "book": {
   "admin": {
-   "open": {},
+   "open": {
+    "swing|CHFJPY=X": {
+     "kind": "swing",
+     "mode": "fx",
+     "symbol": "CHFJPY=X",
+     "name": "スイスフラン円",
+     "side": 1,
+     "signalTime": 1791948600,
+     "signalPrice": 102.3595640683995,
+     "sentAt": "2026-10-14T03:41:52.322Z",
+     "how": ""
+    },
+    "swing|USDCHF=X": {
+     "kind": "swing",
+     "mode": "fx",
+     "symbol": "USDCHF=X",
+     "name": "ドルスイスフラン",
+     "side": 1,
+     "signalTime": 1791948600,
+     "signalPrice": 121.91561790527236,
+     "sentAt": "2026-10-14T03:41:52.322Z",
+     "how": ""
+    },
+    "swing|AUDJPY=X": {
+     "kind": "swing",
+     "mode": "fx",
+     "symbol": "AUDJPY=X",
+     "name": "豪ドル円",
+     "side": 1,
+     "signalTime": 1791948600,
+     "signalPrice": 89.4438500925645,
+     "sentAt": "2026-10-14T03:41:52.322Z",
+     "how": ""
+    }
+   },
    "log": []
   }
  }

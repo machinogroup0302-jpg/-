@@ -10,7 +10,7 @@ import { runStrategy, regimeLookup, signalOdds, oddsLabel } from '../public/js/s
 import { baseUniverse } from '../public/js/universe.js';
 import { getEcon } from '../lib/econ.js';
 import { sendPush } from '../lib/pushsend.js';
-import { sizeFor, orderText, waySides, wayProfile, compareWays, budgets, searchCustom } from '../public/js/plan.js';
+import { sizeFor, orderText, waySides, wayProfile, compareWays, budgets, searchCustom, keepWay } from '../public/js/plan.js';
 import { adviseHolding, exitTiming, longTermView, addOnAdvice } from '../public/js/holdingadvice.js';
 import { US_LIST } from '../lib/usstocks.js';
 import { startScan, scanStatus } from '../lib/scanner.js';
@@ -352,7 +352,8 @@ function chooseWay(u, m, dayList, list, regime, days) {
   const cmp = compareWays(tb, m, pf, budget, prices);
   // AIの特別ルール（勝つ確率○%以上だけ）：前半で見つけて後半でも良かったときだけ使う
   const custom = searchCustom(tb, m, pf, budget, prices, cmp);
-  const best = custom?.adopted && cmp.note !== 'rest' ? custom : cmp.best;
+  // サイトの「あなた専用」と同じく、今月決めたやり方がまだプラスならそのまま使う（毎月1日に見直す）
+  const { best } = keepWay(cmp, custom, pf.planLock?.[m]);
   u.wayPf[m] = wayProfile(pf, m, (best.base || best).key);
   u.minOdds[m] = best.minOdds || 0;
   u.wayLabel[m] = (best.key === 'custom' ? `AIの特別ルール「${best.label}」` : best.label) + (cmp.note === 'rest' ? '（⚠ 過去1年はどのやり方もマイナス。見送りも考えてください）' : '');

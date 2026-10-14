@@ -128,6 +128,8 @@ textarea.input { min-height: 70px; resize: vertical; }
 .btn.block { width: 100%; }
 .btn:disabled { opacity: .5; cursor: default; }
 .btn.danger { color: var(--up); }
+.btn.small { padding: 6px 12px; font-size: 13px; min-height: 36px; }
+.plan-bought label { white-space: nowrap; }
 
 .chips { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
 .chips::-webkit-scrollbar { display: none; }

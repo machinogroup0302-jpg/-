@@ -4,7 +4,7 @@ import { api, $, esc, store, fmtPrice, fmtYen } from './util.js';
 import { runStrategy, signalOdds, oddsLabel, oddsText } from './strategies.js';
 import { pagedList } from './stockscreener.js';
 import { getProfile, setProfile, getHoldings, setHoldings, syncState } from './favorites.js';
-import { replayWithBudget, kindText, sizeFor, orderText, WAYS, wayOf, waySides, wayProfile, compareWays, wayNotes, replayOpts, budgets, pipsOf, pipsText, CARRY, searchCustom, walkForward, afterTax } from './plan.js';
+import { replayWithBudget, kindText, sizeFor, orderText, WAYS, wayOf, waySides, wayProfile, compareWays, wayNotes, replayOpts, budgets, pipsOf, pipsText, CARRY, searchCustom, walkForward, afterTax, heldUse, leftBudget, keepWay, keepDays, monthKey } from './plan.js';
 import { loadRegime, loadCandles, universe, kindOf } from './labview.js';
 import { baseUniverse } from './universe.js';
 import { adviseHolding, exitTiming, longTermView, addOnAdvice } from './holdingadvice.js';
@@ -170,6 +170,10 @@ function setWayPref(field, mode, key) {
   if ((pf[field] || {})[mode] === key) return;
   setProfile({ ...pf, [field]: { ...(pf[field] || {}), [mode]: key } });
 }
+function setLock(mode, patch) {
+  const pf = getProfile();
+  setProfile({ ...pf, planLock: { ...(pf.planLock || {}), [mode]: { ...(pf.planLock?.[mode] || {}), ...patch } } });
+}
 function viewOf(r, mode) {
   const pf = getProfile();
   // 比べる基準：株は現物と信用の予算の合計、為替は予算
@@ -187,12 +191,28 @@ function viewOf(r, mode) {
   }
   const std = r.cmp.best || wayOf(mode);
   // 特別ルールが後半でも通常のおすすめより良かったときだけ、自動で使う
-  const best = r.custom?.adopted && r.cmp.note !== 'rest' ? r.custom : std;
-  if (r.style === 'swing') setWayPref('bestWay', mode, (best.base || best).key);
+  // おすすめは月の初めに決めて、その月は変えない（決めたやり方がマイナスになったときだけ見直す）
+  const month = monthKey();
+  const keep = keepWay(r.cmp, r.custom, pf.planLock?.[mode], month);
+  const best = keep.best || std;
+  if (r.style === 'swing') {
+    setWayPref('bestWay', mode, (best.base || best).key);
+    const lk = pf.planLock?.[mode] || {};
+    if (lk.way !== best.key || lk.month !== month) setLock(mode, { way: best.key, month });
+  }
   const sel = wayViewOf(mode);
   const way = sel === 'custom' && r.custom ? r.custom : sel === 'auto' || !WAYS[mode].some((w) => w.key === sel) ? best : wayOf(mode, sel);
   const g = ensureOdds(r.by[way.sides]);
-  return { wfRes: r.wfRes, wfCount: r.wfCount, trades: g.trades, holding: g.holding, next: g.next, prices: r.prices, usdjpy: r.usdjpy, way, best, std, custom: r.custom, minOdds: way.minOdds || 0, cmp: r.cmp, auto: way === best && sel === 'auto', pf: wayProfile(pf, mode, (way.base || way).key), budget };
+  return { wfRes: r.wfRes, wfCount: r.wfCount, trades: g.trades, holding: g.holding, next: g.next, prices: r.prices, usdjpy: r.usdjpy, way, best, std, custom: r.custom, minOdds: way.minOdds || 0, cmp: r.cmp, keep, month, auto: way === best && sel === 'auto', pf: wayProfile(pf, mode, (way.base || way).key), budget };
+}
+
+// 「今月はこのやり方に決めています」の一言
+function lockNote(v) {
+  if (v.cmp.note === 'rest' || style !== 'swing') return '';
+  const m = Number(v.month.slice(5, 7));
+  const next = m === 12 ? 1 : m + 1;
+  const diff = v.keep?.kept && v.keep.fresh && v.keep.fresh.key !== v.best.key;
+  return `<p class="small" style="margin:0 0 4px">📌 <b>${m}月はこのやり方に決めています</b>。サインがころころ変わらないよう、見直すのは${next}月1日です（このやり方が過去1年でマイナスになったときだけ、すぐ見直します）。${diff ? `<br><span class="muted">今日計算し直すと「${esc(v.keep.fresh.label)}」の方が良い結果ですが、月の途中では変えません。</span>` : ''}</p>`;
 }
 
 // やり方を選ぶボタン（おすすめ＝自動・ほかのやり方も見られる）
@@ -201,6 +221,7 @@ function wayBar(v, mode) {
   const btn = (k, t) => `<button type="button" class="chip" data-way="${k}" aria-pressed="${k === sel}">${t}</button>`;
   return `<div class="way-bar">
     <div class="small" style="margin-bottom:4px">${v.auto || sel === 'auto' ? bestText(v, true) : `「${esc(v.way.label)}」でやった場合を表示中（おすすめは「${esc(v.best.label)}」）`}</div>
+    ${lockNote(v)}
     ${v.cmp.note === 'rest' ? `<p class="notice" style="margin:4px 0">⚠ 過去1年は、どのやり方でもマイナスでした。今は<b>お休み（取引しない）</b>のがおすすめです。下のサインは「やるなら」の参考です。</p>` : ''}
     <div class="chips">${btn('auto', `おすすめ（${esc(v.best.label)}）`)}${WAYS[mode].map((w) => btn(w.key, `${esc(w.label)}の場合`)).join('')}${v.custom ? btn('custom', `🤖 AIの特別ルールの場合`) : ''}</div>
   </div>`;
@@ -272,7 +293,7 @@ function customHtml(v) {
 // おすすめの一言：プラスのものから選ぶ。どれもマイナスならお休みをすすめる
 function bestText(v, short) {
   if (v.best?.key === 'custom' && v.cmp.note !== 'rest') return `🤖 <b>一番いいのは、AIが見つけた特別ルール「${esc(v.best.label)}」だと思います</b>（1年で${fmtYen(v.best.full.total)}）`;
-  const b = v.cmp.best;
+  const b = v.best?.key === 'custom' ? v.cmp.best : v.best || v.cmp.best;
   if (v.cmp.note === 'rest') return `🛑 <b>今はお休みがおすすめです</b>（過去1年はどのやり方もマイナス。やるなら一番損が小さい「${esc(b.label)}」：${fmtYen(b.r.total)}）`;
   if (v.cmp.note === 'dd') return `🏆 <b>一番いいのは「${esc(b.label)}」だと思います</b>（${fmtYen(b.r.total)}）${short ? '' : '。ただし一番減ったときが予算の35%を超えるので、量（ロット数・株数）を減らすのがおすすめです'}`;
   return `🏆 <b>一番いいのは「${esc(b.label)}」だと思います</b>（${fmtYen(b.r.total)}${short ? '・過去1年で比べて自動で選んでいます' : ''}）`;
@@ -280,7 +301,8 @@ function bestText(v, short) {
 
 // やり方ごとの成績（過去1年をあなたの予算でやり直した結果）と説明
 function waysHtml(v, mode) {
-  const { rows, best } = v.cmp;
+  const { rows } = v.cmp;
+  const best = v.best?.key === 'custom' ? v.cmp.best : v.best;
   return `<h3>やり方で比べると<span class="sub">過去1年・サインどおりに全部やった場合</span></h3>
     <div class="grid2">${rows.map((x) => replayCard(`${esc(x.label)}${x === best ? `<span class="badge warn" style="margin-left:4px">${v.best?.key === 'custom' ? 'ふつうのおすすめ' : 'おすすめ'}</span>` : ''}${x.key === v.way.key && x !== best ? '<span class="badge ok" style="margin-left:4px">表示中</span>' : ''}`, x.r)).join('')}</div>
     <p class="small" style="margin:6px 0 0">${bestText(v, false)}</p>
@@ -302,22 +324,35 @@ function renderPlan(r0, mode) {
   const picky = r.minOdds ? all : replayWithBudget(r.trades, { ...rule, minOdds: 0.55 });
   const usePicky = !r.minOdds && picky.trades >= 5 && picky.total > all.total;
   const minOdds = r.minOdds || (usePicky ? 0.55 : 0.5);
-  const cashB = budgets(pf).cash;
-  const sz = (x, stop) => sizeFor(pf, mode, x.side, { symbol: x.symbol, price: x.last, stop, budget: cashB, riskPct: pf.riskPct, maxPos: pf.maxPos, prices: r.prices, usdjpy: r.usdjpy });
-  const opens = r.next.filter((x) => x.type === 'open').map((x) => ({ ...x, size: sz(x, x.stopEst) }))
+  // 持っている株（「持っている株」のタブと同じもの）で使っているお金を引いて、残りの予算・残りの枠で量を決める
+  const held = getHoldings(mode);
+  const use = heldUse(held, mode, { prices: r.prices, usdjpy: r.usdjpy });
+  const left = leftBudget(pf, use);
+  const bg = budgets(pf);
+  const cashB = left.cash;
+  const heldOf = (sym) => held.filter((h) => symbolOf(mode, h.code).toUpperCase() === String(sym).toUpperCase());
+  const sz = (x, stop) => (left.slots > 0
+    ? sizeFor(pf, mode, x.side, { symbol: x.symbol, price: x.last, stop, budget: left.cash, marginCap: left.margin, riskBase: bg.sep ? bg.total : bg.cash, riskPct: pf.riskPct, maxPos: left.slots, prices: r.prices, usdjpy: r.usdjpy })
+    : { qty: 0, why: `同時に持つ数（${pf.maxPos}銘柄）まで、もう持っています` });
+  const opens = r.next.filter((x) => x.type === 'open').map((x) => ({ ...x, size: sz(x, x.stopEst), mine: heldOf(x.symbol) }))
     .sort((a, b) => (b.odds?.p || 0) - (a.odds?.p || 0));
   const good = opens.filter((x) => x.odds && x.odds.p >= minOdds && x.odds.expect > 0);
-  const picks = good.filter((x) => x.size?.qty > 0).slice(0, pf.maxPos);
+  const picks = good.filter((x) => !x.mine.length && x.size?.qty > 0).slice(0, left.slots);
   const rest = opens.filter((x) => !picks.includes(x));
-  const closes = r.next.filter((x) => x.type === 'close');
+  const allCloses = r.next.filter((x) => x.type === 'close');
+  // 決済のサインのうち、あなたが実際に持っているもの
+  const closeOf = (h) => allCloses.find((c) => c.symbol.toUpperCase() === symbolOf(mode, h.code).toUpperCase() && (!c.open || c.open.side === h.side));
+  const closes = allCloses.filter((c) => !held.some((h) => closeOf(h) === c));
   $('lab-plan').innerHTML = `
     ${wayBar(r, mode)}
     ${pf.budget ? '' : '<p class="notice" style="margin:0 0 8px">予算がまだ入っていないので、100万円で計算しています。右上の⚙（設定）の「あなたの設定」で入れてください。</p>'}
     <div class="plan-rule small">${mode === 'fx' ? `予算 <b>${yen0(budget)}</b>` : budgets(pf).sep ? `現物の予算 <b>${yen0(budgets(pf).cash)}</b>・信用・空売りの予算 <b>${yen0(budgets(pf).margin)}</b>` : `予算 <b>${yen0(budget)}</b>（現物・信用で共通）`}　／　1回で減ってもいい額 <b>${yen0(budget * pf.riskPct / 100)}</b>（${pf.riskPct}%）　／　同時に <b>${pf.maxPos}銘柄</b>まで（1銘柄 ${mode === 'fx' ? '' : '現物で'}${yen0(cashB / pf.maxPos)}まで）　／　取引のしかた <b>${esc(kindText(pf, mode))}</b></div>
     <button class="btn block" id="plan-settings" style="margin:8px 0 4px">予算・ルールを変える</button>
 
-    <h3>✅ 今やるといいこと<span class="sub">${nextText()}</span></h3>
-    ${picks.length ? `<ul class="list">${picks.map((x) => {
+    ${heldHtml(mode, r, held, use, left, closeOf, opens, d)}
+
+    <h3>✅ 今やるといいこと<span class="sub">${nextText()}・残りの予算で</span></h3>
+    ${picks.length ? `<ul class="list">${picks.map((x, i) => {
       const s = x.size;
       const gain = x.takeEst ? Math.abs(x.takeEst - x.last) * s.perPrice : null;
       return `<li class="plan-pick">
@@ -331,15 +366,16 @@ function renderPlan(r0, mode) {
           <div class="stat"><div class="label">利益確定の目標</div><div class="value plus" style="font-size:16px">${x.takeEst ? fmtPrice(x.takeEst, d) : '—'}</div><div class="small muted">${gain ? `届いたら決済：約+${yen0(gain)}` : '判定が変わるまで持つ'}</div></div>
         </div>
         ${oddsHtml(x.odds, { compact: true })}
-        <details class="why-box"><summary>理由を見る</summary>${whyList(x.why)}</details></li>`;
-    }).join('')}</ul>` : `<p class="small muted">今は、あなたのルールに合うサインがありません（勝つ確率の目安${Math.round(minOdds * 100)}%以上・予算内で買える量があるもの）。お休みも大事なトレードです。</p>`}
+        <details class="why-box"><summary>理由を見る</summary>${whyList(x.why)}</details>
+        ${boughtForm(mode, x, s, i, d)}</li>`;
+    }).join('')}</ul>` : left.slots <= 0 ? `<p class="small muted">同時に持つ数（${pf.maxPos}銘柄）まで、もう持っているので、新しくは入りません。上の「持っている株」の決済のサインを待ちましょう。</p>` : `<p class="small muted">今は、あなたのルールに合うサインがありません（勝つ確率の目安${Math.round(minOdds * 100)}%以上・残りの予算で買える量があるもの）。お休みも大事なトレードです。</p>`}
 
-    <h3>🔴 持っていたら決済した方がいいもの</h3>
+    <h3>🔴 ほかの決済のサイン<span class="sub">持っていなければ関係ありません</span></h3>
     ${closes.length ? `<ul class="list">${closes.map((x) => `<li><div class="li-head"><span class="name">${symLink(x.symbol, x.name)}</span>${x.open ? sideBadge(x.open.side) : ''}</div>
       <div class="small"><b>${nextText()}決済</b>：${esc(x.reason)}</div>${x.open ? moveLine(r, mode, x.open.side, x.symbol, x.open.entryPrice, x.last, Math.abs(x.open.entryPrice - (x.open.stop ?? x.open.entryPrice * 0.97)) / x.open.entryPrice, 'を決済（今の値段なら）') : ''}${timeLine(mode, x.t)}</li>`).join('')}</ul>` : '<p class="small muted">今はありません。</p>'}
 
     ${rest.length ? `<details class="why-box" style="margin-top:10px"><summary>見送ったサイン（${rest.length}件）</summary><ul class="list">${rest.map((x) => `<li class="small"><b>${esc(x.name)}</b> ${sideBadge(x.side)} 確率${x.odds ? Math.round(x.odds.p * 100) + '%' : '—'}　<span class="muted">${
-      !x.odds || x.odds.p < minOdds ? `勝つ確率の目安が${Math.round(minOdds * 100)}%未満` : x.odds.expect <= 0 ? '勝っても負けても平均するとマイナス' : x.size && x.size.qty === 0 ? esc(x.size.why) : !x.size ? '量を計算できませんでした' : `同時に持つ数（${pf.maxPos}つ）を超えるため`}</span></li>`).join('')}</ul></details>` : ''}
+      !x.odds || x.odds.p < minOdds ? `勝つ確率の目安が${Math.round(minOdds * 100)}%未満` : x.odds.expect <= 0 ? '勝っても負けても平均するとマイナス' : x.mine.length ? 'もう持っています（上の「持っている株」で見ています）' : x.size && x.size.qty === 0 ? esc(x.size.why) : !x.size ? '量を計算できませんでした' : `同時に持つ数（${pf.maxPos}つ）を超えるため`}</span></li>`).join('')}</ul></details>` : ''}
 
     ${wfHtml(r, mode)}
     <details class="more-box"><summary>📊 後から見た計算（今のやり方を1年前から使っていたら）</summary>
@@ -350,6 +386,78 @@ function renderPlan(r0, mode) {
     <p class="notice" style="margin-top:8px">過去の値動きでの計算です。日本株は100株単位、為替は1,000通貨単位で、取引のしかたは「${esc(kindText(pf, mode))}」で計算しています（為替の証拠金は国内の決まりの25倍で計算）。手数料・値段のずれ・金利（スワップ）は目安で差し引き、「税引き後」も出しています。それでも、計算どおりに毎回売買できるとは限らず、実際の結果は変わります。最終的な判断はご自身で行ってください。</p>
     ${updatedNote(r0)}`;
   $('plan-settings').onclick = () => $('open-settings').click();
+  const box = $('lab-plan');
+  // 「この通りに買った」→ 持っている株に入れる
+  box.querySelectorAll('.plan-bought-open').forEach((b) => { b.onclick = () => { const f = b.nextElementSibling; f.hidden = !f.hidden; }; });
+  box.querySelectorAll('.plan-bought-save').forEach((b) => { b.onclick = () => {
+    const x = picks[Number(b.dataset.i)];
+    const f = b.closest('.plan-bought');
+    const v = (k) => Number(String(f.querySelector(`[data-f="${k}"]`)?.value ?? '').normalize('NFKC').replace(/[,，円\s]/g, ''));
+    const price = v('price'), date = f.querySelector('[data-f="date"]').value || '';
+    const parts = x.size.acct === 'mix' ? [['cash', v('cashQty')], ['margin', v('marginQty')]] : [[mode === 'fx' ? 'cash' : x.side < 0 || x.size.acct === 'margin' ? 'margin' : 'cash', v('qty')]];
+    if (!(price > 0) || !parts.some(([, q]) => q > 0)) { f.querySelector('.error').textContent = '値段と数量を数字で入れてください'; return; }
+    for (const [acct, qty] of parts) if (qty > 0) addHolding(mode, { code: codeFor(mode, x.symbol), name: x.name, side: x.side, price, qty, date, acct });
+    renderPlan(r0, mode);
+  }; });
+  // 決済した → 持っている株から消す
+  box.querySelectorAll('.plan-sold').forEach((b) => { b.onclick = () => {
+    if (!confirm('決済した（売った・買い戻した）ので、持っている株から消しますか？')) return;
+    setHoldings(mode, getHoldings(mode).filter((h) => h.id !== b.dataset.id));
+    renderPlan(r0, mode);
+  }; });
+  box.querySelectorAll('.plan-go-hold').forEach((b) => { b.onclick = () => { mineSub = 'hold'; store.set('mine_sub', mineSub); updateMine(mode); }; });
+}
+
+// 持っている株：あなたのプランから見た今の判断（「持っている株」のタブと連動）
+function heldHtml(mode, r, held, use, left, closeOf, opens, d) {
+  const pf = r.pf;
+  const unit = mode === 'fx' ? '通貨' : '株';
+  const bg = budgets(pf);
+  const used = mode === 'fx' ? `証拠金 約${yen0(use.cash)}` : [use.cash ? `現物 約${yen0(use.cash)}` : '', use.margin ? `信用の保証金 約${yen0(use.margin)}` : ''].filter(Boolean).join('・');
+  const leftText = mode === 'fx' ? `残り <b>${yen0(left.cash)}</b>` : bg.sep ? `現物 残り <b>${yen0(left.cash)}</b>・信用 残り <b>${yen0(left.margin)}</b>` : `残り <b>${yen0(left.cash)}</b>`;
+  const head = `<h3>📦 あなたが持っている株<span class="sub">「持っている株」のタブと連動</span></h3>`;
+  if (!held.length) return `${head}<p class="small muted" style="margin:0 0 6px">まだ入っていません。下の「今やるといいこと」で買ったら「✔ この通りに買った」を押すと、ここと「持っている株」に入ります（予算の残りも自動で計算し直します）。</p>`;
+  const items = held.map((h) => {
+    const sym = symbolOf(mode, h.code);
+    const now = r.prices[sym];
+    const c = closeOf(h);
+    const sig = opens.find((x) => x.symbol.toUpperCase() === sym.toUpperCase());
+    const pl = now ? h.side * (now - h.price) * h.qty * (mode === 'us' ? r.usdjpy || 0 : mode === 'fx' ? quoteYen(sym, r.prices) : 1) : null;
+    const acct = mode === 'fx' ? '' : h.side < 0 ? '信用・空売り' : h.acct === 'margin' ? '信用買い' : '現物';
+    let st;
+    if (c) st = `<div class="verdict danger">🔴 <b>${nextText()}決済のサイン</b>：${esc(c.reason)}</div><button class="btn small plan-sold" data-id="${esc(h.id)}" style="margin-top:4px">✔ 決済した（持っている株から消す）</button>`;
+    else if (sig && sig.side !== h.side) st = '<div class="verdict warn">⚠ <b>反対向きのサインが出ています</b>。決済を考えましょう（くわしくは「持っている株」のタブ）</div>';
+    else if (sig) st = '<div class="verdict ok">🟢 <b>同じ向きのサインがまた出ています</b>。持ち続けてOK（買い増しするかは「持っている株」のタブで判断）</div>';
+    else if (now) st = '<div class="verdict ok">✋ <b>今は持ち続けてOK</b>（プランの判断が変わったら、ここに決済のサインを出します）</div>';
+    else st = '<div class="small muted">この銘柄は、まだプランの計算に入っていません（次に計算し直すときに入ります）。今は「持っている株」のタブの判断を見てください。</div>';
+    return `<li><div class="li-head"><span class="name">${symLink(sym, h.name)}</span>${acct ? `<span class="badge ${h.side > 0 ? 'buy' : 'sell'}">${acct}</span>` : sideBadge(h.side)}${pl != null ? `<b class="${pl >= 0 ? 'plus' : 'minus'}">${fmtYen(pl)}</b>` : ''}</div>
+      <div class="small">${fmtPrice(h.price, d)} で ${Number(h.qty).toLocaleString()}${unit}${now ? ` → 今 ${fmtPrice(now, d)}` : ''}</div>${st}</li>`;
+  }).join('');
+  return `${head}<p class="small" style="margin:0 0 6px">${held.length}銘柄で ${used} を使っています → 新しく使えるのは ${leftText}・あと <b>${left.slots}銘柄</b>まで（同時に${pf.maxPos}銘柄まで）。下の「今やるといいこと」は、この残りで量を計算しています。</p>
+    <ul class="list">${items}</ul><button class="btn block plan-go-hold" style="margin:6px 0 4px">「持っている株」で損切りの線・くわしい判断を見る</button>`;
+}
+const quoteYen = (sym, prices) => { const c = sym.replace(/=X$/, ''); const q = c.slice(3, 6); return q === 'JPY' ? 1 : prices[`${q}JPY=X`] || 0; };
+// 銘柄の記号から「持っている株」に入れるコードへ（7203.T → 7203、USDJPY=X → USDJPY）
+const codeFor = (mode, symbol) => (mode === 'fx' ? symbol.replace(/=X$/i, '') : mode === 'stock' ? symbol.replace(/\.T$/i, '') : symbol);
+const todayStr = () => new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
+
+// 「この通りに買った」：量と値段は入っているので、違ったところだけ直して入れる
+function boughtForm(mode, x, s, i, d) {
+  const step = mode === 'stock' ? 1 : mode === 'us' ? 0.01 : 0.001;
+  const price = Math.round(x.last / step) * step;
+  const unit = s.unitLabel || (mode === 'fx' ? '通貨' : '株');
+  const qtyInputs = s.acct === 'mix'
+    ? `<div class="row"><label class="small muted">現物</label><input class="input grow" data-f="cashQty" inputmode="numeric" value="${s.cashQty}"><span class="small muted">${unit}</span><label class="small muted">信用</label><input class="input grow" data-f="marginQty" inputmode="numeric" value="${s.marginQty}"><span class="small muted">${unit}</span></div>`
+    : `<div class="row"><label class="small muted">数量</label><input class="input grow" data-f="qty" inputmode="numeric" value="${s.qty}"><span class="small muted">${unit}</span></div>`;
+  return `<button type="button" class="btn small plan-bought-open" style="margin-top:6px">✔ この通りに${x.side > 0 ? '買った' : '売った'}（持っている株に入れる）</button>
+    <div class="plan-bought stack" hidden style="margin-top:6px">
+      <div class="row"><label class="small muted">${x.side > 0 ? '買った' : '売った'}値段</label><input class="input grow" data-f="price" inputmode="decimal" value="${fmtPrice(price, d).replace(/,/g, '')}"></div>
+      ${qtyInputs}
+      <div class="row"><label class="small muted">日付</label><input class="input grow" data-f="date" type="date" value="${todayStr()}"></div>
+      <p class="small muted" style="margin:0">実際に注文が通った値段・数量に直してから入れてください。同じ銘柄がもうあれば、買い増しとしてまとめます。</p>
+      <button type="button" class="btn primary plan-bought-save" data-i="${i}">持っている株に入れる</button>
+      <p class="small error"></p>
+    </div>`;
 }
 
 async function showNow(mode, force = false) {
@@ -681,6 +789,43 @@ export function mergeBuy(h, buy) {
   return { price, qty, date: dates[0] || '', buys };
 }
 
+// 持っている株に1件入れる（同じ銘柄・向き・口座があれば、買い増しとしてまとめる）
+function addHolding(mode, x, { merge = true } = {}) {
+  const list = getHoldings(mode);
+  const buy = { price: x.price, qty: x.qty, date: x.date || '' };
+  const same = merge && list.find((y) => String(y.code).toUpperCase() === String(x.code).toUpperCase() && y.side === x.side && (y.acct || 'cash') === x.acct);
+  if (same) Object.assign(same, mergeBuy(same, buy));
+  else list.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), code: x.code, name: x.name, side: x.side, ...buy, acct: x.acct, buys: [] });
+  setHoldings(mode, list);
+  // プランの計算に入っていない銘柄なら、次に開いたときに計算し直す
+  const sym = symbolOf(mode, x.code).toUpperCase();
+  for (const [k, c] of Object.entries(logCache)) if (k.startsWith(`${mode}|`) && !Object.keys(c.data.prices).some((p) => p.toUpperCase() === sym)) delete logCache[k];
+}
+
+// 「持っている株」のタブにも、あなたのプランの判断を出す（プランの計算が済んでいれば。まだなら裏で計算しておく）
+let planWarm = null;
+function planLine(mode, h) {
+  const ck = `${mode}|${style}|${style === 'swing' ? getProfile().swingDays || 30 : ''}`;
+  const hit = logCache[ck];
+  if (!hit) {
+    if (planWarm !== ck) {
+      planWarm = ck;
+      computeLog(mode, document.createElement('div')).then(() => { if (getModeFn() === mode && mineSub === 'hold' && !$('view-mine').hidden) showHoldings(mode); }).catch(() => {}).finally(() => { planWarm = null; });
+    }
+    return '<p class="small muted" style="margin:4px 0 0"><span class="spinner"></span> あなたのプランでの判断を計算しています…</p>';
+  }
+  const v = viewOf(hit.data, mode);
+  const sym = symbolOf(mode, h.code).toUpperCase();
+  const c = v.next.find((x) => x.type === 'close' && x.symbol.toUpperCase() === sym && (!x.open || x.open.side === h.side));
+  const o = v.next.find((x) => x.type === 'open' && x.symbol.toUpperCase() === sym);
+  const inPlan = Object.keys(v.prices).some((p) => p.toUpperCase() === sym);
+  const t = c ? `🔴 <b>${nextText()}決済のサイン</b>：${esc(c.reason)}`
+    : o && o.side !== h.side ? '⚠ <b>反対向きのサインが出ています</b>。決済を考えましょう'
+    : o ? '🟢 同じ向きのサインがまた出ています。持ち続けてOK'
+    : inPlan ? '✋ 今は持ち続けてOK（決済のサインは出ていません）' : 'まだプランの計算に入っていません（次の計算で入ります）';
+  return `<p class="small" style="margin:4px 0 0">📋 あなたのプラン（${esc(v.way.label)}）では：${t}</p>`;
+}
+
 let addFormTouched = false;
 async function showHoldings(mode) {
   try { await showHoldingsInner(mode); } catch (e) {
@@ -733,6 +878,7 @@ async function showHoldingsInner(mode) {
           <div class="stat"><div class="label">利益確定の目標</div><div class="value plus" style="font-size:16px">${fmtPrice(adv.target, d)}</div><div class="small muted">${adv.wall ? `${esc(adv.wall.label)}（${esc(adv.wall.strength)}）` : '値動きの大きさから'}</div></div>
         </div>
         <p class="small" style="margin:6px 0 0">${esc(adv.reasons[0] || '')}</p>
+        ${planLine(mode, h)}
         ${earnSoonHtml(earningsDate, today, adv)}
         ${marginNote(mode, h, adv)}
         ${addOn ? `<p class="small" style="margin:4px 0 0">${addOn.icon} <b>${esc(addOn.title)}</b>：${esc(addOn.text)}</p>` : ''}
@@ -924,7 +1070,13 @@ async function updateHoldDays(mode, r) {
   const safe = ok.filter((x) => x.r.maxDD <= budget * 0.35);
   let best = null;
   for (const x of safe.length ? safe : ok) if (!best || x.r.total > best.r.total + budget * 0.02) best = x;
-  holdDays[mode] = { key, rows, best, way };
+  // 日数のおすすめも、今月決めたものがまだプラスならそのまま（毎月1日に見直す）
+  const month = monthKey();
+  const kd = best ? keepDays(rows, best, getProfile().planLock?.[mode], month) : { best, kept: false };
+  const fresh = best;
+  best = kd.best;
+  if (best && (getProfile().planLock?.[mode]?.days !== best.d || getProfile().planLock?.[mode]?.daysMonth !== month)) setLock(mode, { days: best.d, daysMonth: month });
+  holdDays[mode] = { key, rows, best, fresh, kept: kd.kept, way };
   holdRunning = null;
   renderHoldDays(mode);
 }
@@ -932,7 +1084,7 @@ function renderHoldDays(mode) {
   const h = holdDays[mode], el = $('swing-days-best');
   if (!h) return;
   const sd = getProfile().swingDays || 30;
-  el.innerHTML = `${h.best ? `🏆 <b>おすすめは${h.best.d}日</b>（「${esc(h.way.label)}」で過去1年 ${fmtYen(h.best.r.total)}・税引き後 ${fmtYen(afterTax(h.best.r.total))}）${h.best.d !== sd ? ` <button type="button" class="chip" data-d="${h.best.d}">${h.best.d}日にする</button>` : '（今の設定です）'}` : '⚠ どの日数でもマイナスでした。今はお休みがおすすめです。'}
+  el.innerHTML = `${h.best ? `🏆 <b>おすすめは${h.best.d}日</b>（「${esc(h.way.label)}」で過去1年 ${fmtYen(h.best.r.total)}・税引き後 ${fmtYen(afterTax(h.best.r.total))}）${h.best.d !== sd ? ` <button type="button" class="chip" data-d="${h.best.d}">${h.best.d}日にする</button>` : '（今の設定です）'}<br><span class="small muted">📌 このおすすめは今月の間は変えません（毎月1日に見直し）。${h.kept && h.fresh && h.fresh.d !== h.best.d ? `今日計算し直すと${h.fresh.d}日の方が良い結果ですが、月の途中では変えません。` : ''}</span>` : '⚠ どの日数でもマイナスでした。今はお休みがおすすめです。'}
     <details class="more-box"><summary>日数ごとの成績を見る</summary>
       <div class="tbl-wrap"><table class="tbl"><thead><tr><th>持つ日数の上限</th><th class="r">1年の損益</th><th class="r">税引き後</th><th class="r">回数・勝率</th><th class="r">一番減ったとき</th></tr></thead><tbody>
       ${h.rows.map((x) => `<tr${x === h.best ? ' class="best"' : ''}><td class="small">${x.d}日${x === h.best ? ' ★' : ''}${x.d === sd ? '（今）' : ''}</td><td class="r small ${x.r.total >= 0 ? 'plus' : 'minus'}">${fmtYen(x.r.total)}</td><td class="r small">${fmtYen(afterTax(x.r.total))}</td><td class="r small">${x.r.trades}回・${pct(x.r.winRate)}</td><td class="r small">${fmtYen(-x.r.maxDD)}</td></tr>`).join('')}
