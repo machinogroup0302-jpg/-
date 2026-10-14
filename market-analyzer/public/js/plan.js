@@ -613,7 +613,12 @@ export function setupFromCsv(list, { rate = null, cashDeposit = null, cashFree =
   if (cashDeposit > 0) {
     base = Math.round(cashDeposit);
     substRate = V > 0 ? Math.max(0, Math.min(SUBST, (E - base - plAdj) / V)) : SUBST;
-  } else base = Math.round(E - SUBST * V - plAdj);
+  } else {
+    // 保証金現金が分からないとき：現物の株は担保（代用）に入っていないものとして、保証金率から逆算する
+    // （保証金率・新しく使える保証金・追証までの余裕は、どちらでも同じになる）
+    substRate = 0;
+    base = Math.round(E - plAdj);
+  }
   out.marginBudget = Math.max(0, base);
   out.cal = { base, rate, substRate: Math.round(substRate * 1000) / 1000 };
   return out;

@@ -1160,12 +1160,11 @@ function initHoldForm() {
     box.innerHTML = `${modes.map((m) => `<p class="small" style="margin:4px 0"><b>${NAME[m]}：${found[m].length}銘柄</b><br>${found[m].map((x) => `${esc(x.name)}${m === 'fx' ? '' : `（${esc(x.code)}）`} ${x.side < 0 ? '売り' : ''}${x.acct === 'margin' ? '信用' : ''} ${Number(x.price).toLocaleString()} × ${Number(x.qty).toLocaleString()}`).join('<br>')}</p>`).join('')}
       ${found.stock.length ? `<div class="stat" style="margin-top:8px">
         <label class="plan-buy-check"><input type="checkbox" id="imp-budget" checked><span><b>予算も、このCSVに合わせて自動で決める</b>（日本株）${rate != null ? `<br><span class="small muted">保証金率 ${rate}% も読み取りました。信用の保証金は、これから毎日自動で計算します。</span>` : ''}</span></label>
-        <div class="stack" style="margin-top:6px">
-          <div class="row"><label class="small muted" style="min-width:10em">現物で使える現金</label><input class="input grow" id="imp-free" inputmode="numeric" value="0"><span class="small muted">円</span></div>
-          <p class="small muted" style="margin:0">楽天証券の「預り金」と「楽天銀行利用可能額」の合計。全部保証金に入れているなら0のままでOK。</p>
-          ${rate != null ? `<div class="row"><label class="small muted" style="min-width:10em">保証金現金（わかれば）</label><input class="input grow" id="imp-dep" inputmode="numeric" placeholder="例 2190784"><span class="small muted">円</span></div>
-          <p class="small muted" style="margin:0">「余力・保証金率」の画面の「保証金現金」。入れるとピッタリ合います。空でもだいたい合います。</p>` : ''}
-        </div></div>` : ''}
+        <p class="small muted" style="margin:6px 0 0">何も入れなくてOKです。CSVだけで、予算・保証金・今使えるお金を計算します。</p>
+        <details class="small" style="margin-top:4px"><summary class="muted">現物用の現金を、保証金とは別に置いているとき</summary>
+          <div class="row" style="margin-top:6px"><label class="small muted" style="min-width:8em">現物で使える現金</label><input class="input grow" id="imp-free" inputmode="numeric" value="0"><span class="small muted">円</span></div>
+          <p class="small muted" style="margin:2px 0 0">楽天証券の「預り金」と「楽天銀行利用可能額」の合計。全部保証金に入れているなら0のまま。</p>
+        </details></div>` : ''}
       <div class="row" style="margin-top:6px"><button class="btn primary grow" id="hold-import-replace">この内容に置き換える</button><button class="btn grow" id="hold-import-add">今のものに足す</button></div>
       <p class="small muted" style="margin:4px 0 0">「置き換える」は、上に出た市場（${modes.map((m) => NAME[m]).join('・')}）の持っている株を、CSVの内容だけにします。</p>`;
     const apply = (replace) => {
