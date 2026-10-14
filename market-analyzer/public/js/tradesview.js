@@ -270,14 +270,17 @@ function showLoaded(list, format, fileName, moved = []) {
 
 // 取引がどの市場のものか：為替の通貨ペア・日本株（4けたのコード）・米国株（英字のティッカー）
 const MODE_NAME = { fx: '為替', stock: '日本株', us: '米国株' };
+const CCY = 'USD|EUR|GBP|AUD|NZD|CAD|CHF|JPY|ZAR|MXN|TRY|CNH|CNY|HKD|SGD|NOK|SEK|PLN|HUF';
+const FX_PAIR = new RegExp(`^(${CCY})\\s*/?\\s*(${CCY})$`);
 function marketOf(t) {
   const code = String(t.code || '').normalize('NFKC').trim().toUpperCase();
-  if (isFxTrade(t.symbol) && !/^\d{3}[0-9A-Z]$/.test(code)) return 'fx';
-  if (/^\d{3}[0-9A-Z]$/.test(code)) return 'stock';
-  if (/^[A-Z][A-Z.\-]{0,6}$/.test(code)) return 'us';
   const sym = String(t.symbol || '').normalize('NFKC').trim().toUpperCase();
-  if (/^\d{3}[0-9A-Z](\.T)?$/.test(sym)) return 'stock';
-  if (/^[A-Z][A-Z.\-]{0,6}$/.test(sym)) return 'us';
+  // 為替：通貨ペア（USDJPY・USD/JPY）か、「米ドル/円」のような書き方
+  if (FX_PAIR.test(code) || FX_PAIR.test(sym) || (!code && /(円|ドル|ユーロ|ポンド|ランド|ペソ|リラ|フラン)\s*\/\s*(円|ドル|ユーロ|ポンド|ランド|ペソ|リラ|フラン)/.test(sym))) return 'fx';
+  // 日本株：4けたのコード（7203・186A）
+  if (/^\d{3}[0-9A-Z]$/.test(code) || /^\d{3}[0-9A-Z](\.T)?$/.test(sym)) return 'stock';
+  // 米国株：英字のティッカー（AAPL・BRK.B）
+  if (/^[A-Z][A-Z.\-]{0,6}$/.test(code) || (!code && /^[A-Z][A-Z.\-]{0,6}$/.test(sym))) return 'us';
   return tradeMode;
 }
 
@@ -358,7 +361,28 @@ async function onCsv(file) {
 }
 
 
+// 前に違う市場に入ってしまった取引（米国株が為替に入っていた など）を、正しい市場に戻す
+function fixMisfiled() {
+  const all = Object.fromEntries(['fx', 'stock', 'us'].map((m) => [m, store.get(`trades_${m}`, [])]));
+  const moved = { fx: [], stock: [], us: [] };
+  let changed = false;
+  for (const m of Object.keys(all)) {
+    all[m] = all[m].filter((t) => {
+      const to = t.code ? marketOf(t) : m;
+      if (to === m) return true;
+      moved[to].push(t); changed = true; return false;
+    });
+  }
+  if (!changed) return;
+  for (const m of Object.keys(all)) {
+    const next = [...all[m], ...moved[m]].sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+    saveSynced(`trades_${m}`, next);
+  }
+  trades = store.get(`trades_${tradeMode}`, []);
+}
+
 export function initTradesView() {
+  fixMisfiled();
   $('csv-file').addEventListener('change', (e) => {
     const f = e.target.files[0];
     if (f) onCsv(f).catch((err) => toast(err.message));

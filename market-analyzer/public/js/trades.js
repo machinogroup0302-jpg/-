@@ -248,7 +248,9 @@ export function execToTrades(rows, headerIndex) {
   const col = (...res) => { for (const re of res) { const i = h.findIndex((c) => re.test(c)); if (i >= 0) return i; } return -1; };
   const C = { date: col(/^約定日/, /^国内約定日/, /^現地約定日/, /^(?!建).*約定日/), code: col(/^銘柄コード/, /^ティッカー/, /^コード/, /シンボル/), name: col(/^銘柄名/, /^銘柄$/),
     fx: col(/^為替レート/, /^約定為替/, /為替/), kind: col(/^取引区分/, /^取引種別/, /^取引$/), side: col(/^売買区分/, /^売買$/, /売買/), qty: col(/^数量/, /約定数量/, /数量/), price: col(/^単価/, /^約定単価/, /^約定価格/, /単価/),
-    openDate: col(/^建約定日/), entry: col(/^建単価/) };
+    openDate: col(/^建約定日/), entry: col(/^建単価/), acct: col(/^口座区分/, /^口座$/),
+    // 受け渡した円の金額（米国株：手数料・為替まで入った、実際に払った・受け取った円）
+    yen: h.findIndex((c) => /^受渡金額/.test(c) && /円/.test(c) && !/ドル|USD/i.test(c)) };
   const costCols = h.map((c, i) => [c, i]).filter(([c]) => /^(手数料|諸費用|建手数料|建手数料消費税|金利\(支払\)|逆日歩.*\(支払\)|貸株料|事務管理費|名義書換料)/.test(c)).map(([, i]) => i);
   const gainCols = h.map((c, i) => [c, i]).filter(([c]) => /^(金利\(受取\)|逆日歩\(受取\))/.test(c)).map(([, i]) => i);
   const num = (x) => { const v = toNumber(x); return Number.isNaN(v) ? 0 : v; };
@@ -276,16 +278,20 @@ export function execToTrades(rows, headerIndex) {
       out.push({ kind: long ? 'margin' : 'short', date: d.toISOString(), symbol: name || code, code, side: long ? '買' : '売', qty, price, entry,
         openDate: parseDate(r[C.openDate])?.toISOString() || null, pnl: Math.round((long ? 1 : -1) * (price - entry) * qty * k - cost) });
     } else if (/現物/.test(kind)) {
-      const lot = lots.get(code) || { qty: 0, cost: 0, first: null };
-      if (/買/.test(side)) { lot.qty += qty; lot.cost += price * qty * k + cost; lot.first ||= d; lots.set(code, lot); continue; }
+      // NISAと特定口座は別々に平均する
+      const key = `${code}|${C.acct >= 0 ? String(r[C.acct] || '') : ''}`;
+      const yen = C.yen >= 0 && k !== 1 ? num(r[C.yen]) : 0;
+      const lot = lots.get(key) || { qty: 0, cost: 0, first: null };
+      if (/買/.test(side)) { lot.qty += qty; lot.cost += yen > 0 ? yen : price * qty * k + cost; lot.first ||= d; lots.set(key, lot); continue; }
       if (!/売/.test(side)) continue;
       const q = Math.min(qty, lot.qty);
       if (!(q > 0)) continue;
       const avg = lot.cost / lot.qty;
+      const got = yen > 0 ? yen * (q / qty) : price * k * q - cost * (q / qty);
       out.push({ kind: 'cash', date: d.toISOString(), symbol: name || code, code, side: '買', qty: q, price, entry: Math.round((avg / k) * 100) / 100,
-        openDate: lot.first ? lot.first.toISOString() : null, pnl: Math.round((price * k - avg) * q - cost * (q / qty)) });
+        openDate: lot.first ? lot.first.toISOString() : null, pnl: Math.round(got - avg * q) });
       lot.qty -= q; lot.cost -= avg * q;
-      if (lot.qty <= 0) lots.delete(code); else lots.set(code, lot);
+      if (lot.qty <= 0) lots.delete(key); else lots.set(key, lot);
     }
   }
   return out;
