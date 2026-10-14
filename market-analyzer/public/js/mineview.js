@@ -349,10 +349,11 @@ function renderPlan(r0, mode) {
     <div class="plan-rule small">${mode === 'fx' ? `予算 <b>${yen0(budget)}</b>` : budgets(pf).sep ? `現物の予算 <b>${yen0(budgets(pf).cash)}</b>・信用・空売りの予算 <b>${yen0(budgets(pf).margin)}</b>` : `予算 <b>${yen0(budget)}</b>（現物・信用で共通）`}　／　1回で減ってもいい額 <b>${yen0(budget * pf.riskPct / 100)}</b>（${pf.riskPct}%）　／　同時に <b>${pf.maxPos}銘柄</b>まで（1銘柄 ${mode === 'fx' ? '' : '現物で'}${yen0(cashB / pf.maxPos)}まで）　／　取引のしかた <b>${esc(kindText(pf, mode))}</b></div>
     <button class="btn block" id="plan-settings" style="margin:8px 0 4px">予算・ルールを変える</button>
 
-    ${heldHtml(mode, r, held, use, left, closeOf, opens, d)}
+    ${heldHtml(mode, r, held, closeOf, opens, d)}
+    ${budgetHtml(mode, r, held, use, left, picks, d)}
 
     <h3>✅ 今やるといいこと<span class="sub">${nextText()}・残りの予算で</span></h3>
-    ${picks.length ? `<ul class="list">${picks.map((x, i) => {
+    ${picks.length ? `<p class="small muted" style="margin:-4px 0 6px">1件ずつのくわしい内容です。買ったら、上の「🛒 残りのお金で買うもの」でチェックして、持っている株に入れてください。</p><ul class="list">${picks.map((x) => {
       const s = x.size;
       const gain = x.takeEst ? Math.abs(x.takeEst - x.last) * s.perPrice : null;
       return `<li class="plan-pick">
@@ -367,7 +368,7 @@ function renderPlan(r0, mode) {
         </div>
         ${oddsHtml(x.odds, { compact: true })}
         <details class="why-box"><summary>理由を見る</summary>${whyList(x.why)}</details>
-        ${boughtForm(mode, x, s, i, d)}</li>`;
+        </li>`;
     }).join('')}</ul>` : left.slots <= 0 ? `<p class="small muted">同時に持つ数（${pf.maxPos}銘柄）まで、もう持っているので、新しくは入りません。上の「持っている株」の決済のサインを待ちましょう。</p>` : `<p class="small muted">今は、あなたのルールに合うサインがありません（勝つ確率の目安${Math.round(minOdds * 100)}%以上・残りの予算で買える量があるもの）。お休みも大事なトレードです。</p>`}
 
     <h3>🔴 ほかの決済のサイン<span class="sub">持っていなければ関係ありません</span></h3>
@@ -387,18 +388,30 @@ function renderPlan(r0, mode) {
     ${updatedNote(r0)}`;
   $('plan-settings').onclick = () => $('open-settings').click();
   const box = $('lab-plan');
-  // 「この通りに買った」→ 持っている株に入れる
-  box.querySelectorAll('.plan-bought-open').forEach((b) => { b.onclick = () => { const f = b.nextElementSibling; f.hidden = !f.hidden; }; });
-  box.querySelectorAll('.plan-bought-save').forEach((b) => { b.onclick = () => {
-    const x = picks[Number(b.dataset.i)];
-    const f = b.closest('.plan-bought');
-    const v = (k) => Number(String(f.querySelector(`[data-f="${k}"]`)?.value ?? '').normalize('NFKC').replace(/[,，円\s]/g, ''));
-    const price = v('price'), date = f.querySelector('[data-f="date"]').value || '';
-    const parts = x.size.acct === 'mix' ? [['cash', v('cashQty')], ['margin', v('marginQty')]] : [[mode === 'fx' ? 'cash' : x.side < 0 || x.size.acct === 'margin' ? 'margin' : 'cash', v('qty')]];
-    if (!(price > 0) || !parts.some(([, q]) => q > 0)) { f.querySelector('.error').textContent = '値段と数量を数字で入れてください'; return; }
-    for (const [acct, qty] of parts) if (qty > 0) addHolding(mode, { code: codeFor(mode, x.symbol), name: x.name, side: x.side, price, qty, date, acct });
+  // 🛒 チェックしたものだけ、持っている株に入れる
+  const cbs = [...box.querySelectorAll('.plan-buy-cb')];
+  const btn = box.querySelector('#plan-buy-save');
+  const sync = () => {
+    const n = cbs.filter((c) => c.checked).length;
+    cbs.forEach((c) => { c.closest('.plan-buy-item').querySelector('.plan-bought').hidden = !c.checked; });
+    if (btn) { btn.disabled = !n; btn.textContent = n ? `チェックした${n}件を持っている株に入れる` : '買ったものにチェックを入れてください'; }
+  };
+  cbs.forEach((c) => c.addEventListener('change', sync));
+  sync();
+  if (btn) btn.onclick = () => {
+    const todo = [];
+    for (const c of cbs.filter((x) => x.checked)) {
+      const x = picks[Number(c.dataset.i)];
+      const f = c.closest('.plan-buy-item');
+      const v = (k) => Number(String(f.querySelector(`[data-f="${k}"]`)?.value ?? '').normalize('NFKC').replace(/[,，円\s]/g, ''));
+      const price = v('price'), date = f.querySelector('[data-f="date"]').value || '';
+      const parts = x.size.acct === 'mix' ? [['cash', v('cashQty')], ['margin', v('marginQty')]] : [[mode === 'fx' ? 'cash' : x.side < 0 || x.size.acct === 'margin' ? 'margin' : 'cash', v('qty')]];
+      if (!(price > 0) || !parts.some(([, q]) => q > 0)) { box.querySelector('#plan-buy-err').textContent = `${x.name}：値段と数量を数字で入れてください`; return; }
+      for (const [acct, qty] of parts) if (qty > 0) todo.push({ code: codeFor(mode, x.symbol), name: x.name, side: x.side, price, qty, date, acct });
+    }
+    for (const t of todo) addHolding(mode, t);
     renderPlan(r0, mode);
-  }; });
+  };
   // 決済した → 持っている株から消す
   box.querySelectorAll('.plan-sold').forEach((b) => { b.onclick = () => {
     if (!confirm('決済した（売った・買い戻した）ので、持っている株から消しますか？')) return;
@@ -409,14 +422,10 @@ function renderPlan(r0, mode) {
 }
 
 // 持っている株：あなたのプランから見た今の判断（「持っている株」のタブと連動）
-function heldHtml(mode, r, held, use, left, closeOf, opens, d) {
-  const pf = r.pf;
+function heldHtml(mode, r, held, closeOf, opens, d) {
   const unit = mode === 'fx' ? '通貨' : '株';
-  const bg = budgets(pf);
-  const used = mode === 'fx' ? `証拠金 約${yen0(use.cash)}` : [use.cash ? `現物 約${yen0(use.cash)}` : '', use.margin ? `信用の保証金 約${yen0(use.margin)}` : ''].filter(Boolean).join('・');
-  const leftText = mode === 'fx' ? `残り <b>${yen0(left.cash)}</b>` : bg.sep ? `現物 残り <b>${yen0(left.cash)}</b>・信用 残り <b>${yen0(left.margin)}</b>` : `残り <b>${yen0(left.cash)}</b>`;
   const head = `<h3>📦 あなたが持っている株<span class="sub">「持っている株」のタブと連動</span></h3>`;
-  if (!held.length) return `${head}<p class="small muted" style="margin:0 0 6px">まだ入っていません。下の「今やるといいこと」で買ったら「✔ この通りに買った」を押すと、ここと「持っている株」に入ります（予算の残りも自動で計算し直します）。</p>`;
+  if (!held.length) return `${head}<p class="small muted" style="margin:0 0 6px">まだ入っていません。下の「今やるといいこと」で買ったら下の「🛒 残りのお金で買うもの」で買ったものにチェックを入れると、ここと「持っている株」に入ります（予算の残りも自動で計算し直します）。</p>`;
   const items = held.map((h) => {
     const sym = symbolOf(mode, h.code);
     const now = r.prices[sym];
@@ -431,33 +440,68 @@ function heldHtml(mode, r, held, use, left, closeOf, opens, d) {
     else if (now) st = '<div class="verdict ok">✋ <b>今は持ち続けてOK</b>（プランの判断が変わったら、ここに決済のサインを出します）</div>';
     else st = '<div class="small muted">この銘柄は、まだプランの計算に入っていません（次に計算し直すときに入ります）。今は「持っている株」のタブの判断を見てください。</div>';
     return `<li><div class="li-head"><span class="name">${symLink(sym, h.name)}</span>${acct ? `<span class="badge ${h.side > 0 ? 'buy' : 'sell'}">${acct}</span>` : sideBadge(h.side)}${pl != null ? `<b class="${pl >= 0 ? 'plus' : 'minus'}">${fmtYen(pl)}</b>` : ''}</div>
-      <div class="small">${fmtPrice(h.price, d)} で ${Number(h.qty).toLocaleString()}${unit}${now ? ` → 今 ${fmtPrice(now, d)}` : ''}</div>${st}</li>`;
+      <div class="small">${fmtPrice(h.price, d)} で ${Number(h.qty).toLocaleString()}${unit}${now ? ` → 今 ${fmtPrice(now, d)}` : ''}</div>
+      <div class="small muted">使っているお金：${useText(mode, h, r)}</div>${st}</li>`;
   }).join('');
-  return `${head}<p class="small" style="margin:0 0 6px">${held.length}銘柄で ${used} を使っています → 新しく使えるのは ${leftText}・あと <b>${left.slots}銘柄</b>まで（同時に${pf.maxPos}銘柄まで）。下の「今やるといいこと」は、この残りで量を計算しています。</p>
-    <ul class="list">${items}</ul><button class="btn block plan-go-hold" style="margin:6px 0 4px">「持っている株」で損切りの線・くわしい判断を見る</button>`;
+  return `${head}<ul class="list">${items}</ul><button class="btn block plan-go-hold" style="margin:6px 0 4px">「持っている株」で損切りの線・くわしい判断を見る</button>`;
 }
 const quoteYen = (sym, prices) => { const c = sym.replace(/=X$/, ''); const q = c.slice(3, 6); return q === 'JPY' ? 1 : prices[`${q}JPY=X`] || 0; };
 // 銘柄の記号から「持っている株」に入れるコードへ（7203.T → 7203、USDJPY=X → USDJPY）
 const codeFor = (mode, symbol) => (mode === 'fx' ? symbol.replace(/=X$/i, '') : mode === 'stock' ? symbol.replace(/\.T$/i, '') : symbol);
 const todayStr = () => new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
 
-// 「この通りに買った」：量と値段は入っているので、違ったところだけ直して入れる
-function boughtForm(mode, x, s, i, d) {
-  const step = mode === 'stock' ? 1 : mode === 'us' ? 0.01 : 0.001;
-  const price = Math.round(x.last / step) * step;
-  const unit = s.unitLabel || (mode === 'fx' ? '通貨' : '株');
-  const qtyInputs = s.acct === 'mix'
-    ? `<div class="row"><label class="small muted">現物</label><input class="input grow" data-f="cashQty" inputmode="numeric" value="${s.cashQty}"><span class="small muted">${unit}</span><label class="small muted">信用</label><input class="input grow" data-f="marginQty" inputmode="numeric" value="${s.marginQty}"><span class="small muted">${unit}</span></div>`
-    : `<div class="row"><label class="small muted">数量</label><input class="input grow" data-f="qty" inputmode="numeric" value="${s.qty}"><span class="small muted">${unit}</span></div>`;
-  return `<button type="button" class="btn small plan-bought-open" style="margin-top:6px">✔ この通りに${x.side > 0 ? '買った' : '売った'}（持っている株に入れる）</button>
-    <div class="plan-bought stack" hidden style="margin-top:6px">
-      <div class="row"><label class="small muted">${x.side > 0 ? '買った' : '売った'}値段</label><input class="input grow" data-f="price" inputmode="decimal" value="${fmtPrice(price, d).replace(/,/g, '')}"></div>
-      ${qtyInputs}
-      <div class="row"><label class="small muted">日付</label><input class="input grow" data-f="date" type="date" value="${todayStr()}"></div>
-      <p class="small muted" style="margin:0">実際に注文が通った値段・数量に直してから入れてください。同じ銘柄がもうあれば、買い増しとしてまとめます。</p>
-      <button type="button" class="btn primary plan-bought-save" data-i="${i}">持っている株に入れる</button>
-      <p class="small error"></p>
-    </div>`;
+// 持っている株1件で使っているお金（現物はその金額、信用・空売りは保証金、為替は証拠金）
+function useOne(mode, h, r) { const u = heldUse([h], mode, { prices: r.prices, usdjpy: r.usdjpy }); return { yen: u.cash + u.margin, margin: u.margin > 0 }; }
+function useText(mode, h, r) {
+  const u = useOne(mode, h, r);
+  return `約${yen0(u.yen)}（${mode === 'fx' ? '証拠金' : u.margin ? '信用の保証金' : '現物'}）`;
+}
+
+// 💰 予算から持っている株を引いた残りと、🛒 その残りで買うもの（チェックしたものを持っている株に入れる）
+function budgetHtml(mode, r, held, use, left, picks, d) {
+  const pf = r.pf;
+  const bg = budgets(pf);
+  const unit = mode === 'fx' ? '通貨' : '株';
+  const isMargin = (h) => mode !== 'fx' && (h.side < 0 || h.acct === 'margin');
+  const row = (label, yen, cls = '') => `<tr${cls ? ` class="${cls}"` : ''}><td class="small">${label}</td><td class="r small">${yen}</td></tr>`;
+  const block = (title, total, list, rest) => `<tr class="best"><td class="small"><b>${title}</b></td><td class="r small"><b>${yen0(total)}</b></td></tr>
+    ${list.map((h) => row(`− ${esc(h.name)}（${mode === 'fx' ? '' : isMargin(h) ? '信用 ' : '現物 '}${Number(h.qty).toLocaleString()}${unit}）`, `−${yen0(useOne(mode, h, r).yen)}`)).join('')}
+    ${row('<b>＝ 残り</b>', `<b>${yen0(rest)}</b>`)}`;
+  const tables = mode === 'fx' ? block('予算（証拠金に使えるお金）', bg.cash, held, left.cash)
+    : bg.sep ? block('現物の予算', bg.cash, held.filter((h) => !isMargin(h)), left.cash) + block('信用・空売りの予算', bg.margin, held.filter(isMargin), left.margin)
+    : block('予算（現物・信用で共通）', bg.cash, held, left.cash);
+  // 買うもののお金を、どちらの予算から出すか
+  const bucket = (x) => (mode !== 'fx' && bg.sep && (x.side < 0 || x.size.acct === 'margin') ? 'margin' : 'cash');
+  const spend = { cash: 0, margin: 0 };
+  for (const x of picks) spend[bucket(x)] += x.size.cost || 0;
+  const after = bg.sep && mode !== 'fx' ? `現物 残り ${yen0(left.cash - spend.cash)}・信用 残り ${yen0(left.margin - spend.margin)}` : `残り ${yen0(left.cash - spend.cash)}`;
+  const leftNow = bg.sep && mode !== 'fx' ? `現物 ${yen0(left.cash)}・信用 ${yen0(left.margin)}` : yen0(left.cash);
+  const items = picks.map((x, i) => {
+    const s = x.size;
+    const step = mode === 'stock' ? 1 : mode === 'us' ? 0.01 : 0.001;
+    const price = fmtPrice(Math.round(x.last / step) * step, d).replace(/,/g, '');
+    const qtyInputs = s.acct === 'mix'
+      ? `<div class="row"><label class="small muted">現物</label><input class="input grow" data-f="cashQty" inputmode="numeric" value="${s.cashQty}"><label class="small muted">信用</label><input class="input grow" data-f="marginQty" inputmode="numeric" value="${s.marginQty}"><span class="small muted">${unit}</span></div>`
+      : `<div class="row"><label class="small muted">数量</label><input class="input grow" data-f="qty" inputmode="numeric" value="${s.qty}"><span class="small muted">${unit}</span></div>`;
+    return `<li class="plan-buy-item">
+      <label class="plan-buy-check"><input type="checkbox" class="plan-buy-cb" data-i="${i}">
+        <span><b>${esc(x.name)}</b>${codeOf(x.symbol) && codeOf(x.symbol) !== x.name ? ` <span class="small muted">${esc(codeOf(x.symbol))}</span>` : ''}<br><span class="small">${orderText(x.side, s)}</span><br><span class="small muted">${s.kindLabel} 約${yen0(s.cost)}</span></span></label>
+      <div class="plan-bought stack" hidden>
+        <div class="row"><label class="small muted">${x.side > 0 ? '買った' : '売った'}値段</label><input class="input grow" data-f="price" inputmode="decimal" value="${price}"></div>
+        ${qtyInputs}
+        <div class="row"><label class="small muted">日付</label><input class="input grow" data-f="date" type="date" value="${todayStr()}"></div>
+      </div></li>`;
+  }).join('');
+  return `<h3>💰 予算の計算<span class="sub">予算 − 持っている株 ＝ 残り</span></h3>
+    <div class="tbl-wrap"><table class="tbl"><tbody>${tables}</tbody></table></div>
+    <h3>🛒 残りのお金で買うもの<span class="sub">${nextText()}</span></h3>
+    ${left.slots <= 0 ? `<p class="small">同時に持つ数（${pf.maxPos}銘柄）まで、もう持っています。今は新しく買わずに、持っている株の決済のサインを待ちましょう。</p>`
+    : picks.length ? `<p class="small" style="margin:0 0 6px">残りの <b>${leftNow}</b> で、あと${left.slots}銘柄まで持てます。<b>これを買ってください</b>（${picks.length}件・合計 約${yen0(spend.cash + spend.margin)} → 買ったあと ${after}）。</p>
+      <ul class="list plan-buy-list">${items}</ul>
+      <p class="small muted" style="margin:4px 0">買ったものにチェックを入れると、値段・数量の欄が出ます。実際に注文が通った値段・数量に直してから入れてください。同じ銘柄がもうあれば、買い増しとしてまとめます。</p>
+      <button type="button" class="btn primary block" id="plan-buy-save" disabled>買ったものにチェックを入れてください</button>
+      <p class="small error" id="plan-buy-err"></p>`
+    : `<p class="small">残りの <b>${leftNow}</b> で買えるものは、今はありません（あなたのルールに合うサインがない）。お金はそのまま置いておきましょう。</p>`}`;
 }
 
 async function showNow(mode, force = false) {
