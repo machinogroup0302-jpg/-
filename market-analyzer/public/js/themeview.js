@@ -89,10 +89,12 @@ async function fillStocks(t, el) {
 function themeBlock(t, i) {
   const isOpen = open.has(t.id) || (!touched && (i === 0 || i === 100));
   if (isOpen) open.add(t.id);
-  const heads = t.headlines.map((h) => `<li class="small"><a href="${esc(h.url)}" target="_blank" rel="noopener noreferrer" style="color:var(--text)">${esc(h.title)}</a> <span class="muted">${esc(h.source)}</span></li>`).join('');
+  const mark = (h) => (h.impact === '上昇材料' ? '📈 ' : h.impact === '下落材料' ? '📉 ' : '');
+  const heads = t.headlines.map((h) => `<li class="small">${mark(h)}<a href="${esc(h.url)}" target="_blank" rel="noopener noreferrer" style="color:var(--text)">${esc(h.title)}</a> <span class="muted">${esc(h.source)}</span></li>`).join('');
   return `<details class="more-box theme-box" data-id="${esc(t.id)}" ${isOpen ? 'open' : ''}>
-    <summary><span style="color:var(--text)">${esc(t.name)}</span> <span class="badge ${heatBadge(t.label)}">${esc(t.label)}</span>
+    <summary><span style="color:var(--text)">${esc(t.name)}${t.flipped ? '（下落のニュースが多い）' : ''}</span> <span class="badge ${heatBadge(t.label)}">${esc(t.label)}</span>
       <span class="small muted">直近2日 ${t.recent}件${t.before ? `（前の5日の${t.heat}倍のペース）` : ''}</span></summary>
+    ${t.flipped ? `<p class="small" style="margin:6px 0;color:var(--warn)">⚠ ふだんはニュースが増えると上がりやすいテーマですが、<b>今は下落のニュースが多い</b>（下がる話${t.tone.down}件・上がる話${t.tone.up}件）ので、「下がりやすい」側に入れています。</p>` : t.tone?.mood === 'mixed' ? `<p class="small muted" style="margin:6px 0">上がる話（${t.tone.up}件）と下がる話（${t.tone.down}件）が混ざっています。方向ははっきりしません。</p>` : ''}
     <p class="small" style="margin:6px 0">${esc(t.why)}</p>
     ${heads ? `<ul style="margin:4px 0 8px;padding-left:18px">${heads}</ul>` : ''}
     <div class="theme-stocks"></div>
@@ -111,7 +113,7 @@ function render() {
       (rest.length ? `<details class="more-box"><summary>ほかのテーマ（${rest.length}）</summary>${rest.map((t, i) => themeBlock(t, i + offset + 4)).join('')}</details>` : '');
   };
   const ups = list.filter((t) => (t.dir || 1) > 0), downs = list.filter((t) => t.dir < 0);
-  out.innerHTML = group(ups, '📈 ニュースが増えると上がりやすいテーマ', 0) + group(downs, '📉 ニュースが増えると下がりやすいテーマ', 100);
+  out.innerHTML = group(ups, '📈 上がりやすいテーマ（今のニュースから）', 0) + group(downs, '📉 下がりやすいテーマ（今のニュースから）', 100);
   out.querySelectorAll('.theme-box').forEach((d) => {
     const t = list.find((x) => x.id === d.dataset.id);
     const load = () => fillStocks(t, d.querySelector('.theme-stocks'));

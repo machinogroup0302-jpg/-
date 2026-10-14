@@ -1101,3 +1101,18 @@ test('楽天証券の取引履歴（約定ごと）から、決済した取引�
   assert.equal(t.length, 3);
   assert.deepEqual(t.map((x) => [x.kind, x.pnl]), [['cash', 30000], ['margin', -10050], ['short', 49970]]);
 });
+
+test('テーマ：下落のニュースが多ければ「下がる」と判断する（半導体が下落 など）', async () => {
+  const { newsTone } = await import('../lib/themes.js');
+  const { scoreItems } = await import('../lib/news.js');
+  const now = Date.parse('2026-10-15T00:00:00Z');
+  const d = new Date(now - 3600e3).toUTCString();
+  const items = scoreItems([
+    { title: '半導体株が急落、東京エレクトロンなど売られる', source: '日本経済新聞', date: d },
+    { title: '半導体関連が軒並み下落　米ハイテク株安を嫌気', source: 'ロイター', date: d },
+    { title: '半導体の需要は回復か', source: 'ブルームバーグ', date: d },
+  ]);
+  const t = newsTone(items, now);
+  assert.equal(t.mood, 'down');
+  assert.ok(t.down >= 2);
+});

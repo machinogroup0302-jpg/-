@@ -100,6 +100,19 @@ export function themeHeat(items, now = Date.now()) {
   return { recent, before, heat: Math.round(heat * 10) / 10, label };
 }
 
+// 最近（3日）の記事の見出しが、上がる話か下がる話か
+export function newsTone(items, now = Date.now()) {
+  let up = 0, down = 0;
+  for (const it of items) {
+    const t = Date.parse(it.date);
+    if (Number.isFinite(t) && now - t > 3 * DAY) continue;
+    if (it.impact === '上昇材料') up++;
+    else if (it.impact === '下落材料') down++;
+  }
+  const mood = down >= 2 && down >= up * 1.5 ? 'down' : up >= 2 && up >= down * 1.5 ? 'up' : up + down >= 2 ? 'mixed' : 'none';
+  return { up, down, mood };
+}
+
 let cache = null;
 
 export async function getThemes() {
@@ -114,11 +127,15 @@ export async function getThemes() {
     items = items.filter((it) => (seen.has(it.title) ? false : seen.add(it.title)));
     const kept = scoreItems(items).filter((x) => x.verdict !== '除外');
     const h = themeHeat(kept, now);
-    const headlines = kept.sort((a, b) => Date.parse(b.date) - Date.parse(a.date)).slice(0, 4)
-      .map(({ title, source, url, date }) => ({ title, source, url, date }));
+    const sorted = kept.sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
+    const headlines = sorted.slice(0, 4).map(({ title, source, url, date, impact }) => ({ title, source, url, date, impact }));
     // 並べる順番：最近の記事が多くて、増え方も大きいものほど上
     const score = h.recent * Math.min(3, Math.max(0.5, h.heat));
-    return { id: t.id, dir: t.dir || 1, name: t.name, why: t.why, stock: t.stock, us: t.us, ...h, score, headlines };
+    const tone = newsTone(sorted, now);
+    const base = t.dir || 1;
+    // 「上がりやすいテーマ」でも、今は下落のニュースが多い（例：半導体株が下落）なら、下がりやすい側に入れる
+    const dir = base > 0 && tone.mood === 'down' ? -1 : base;
+    return { id: t.id, dir, baseDir: base, flipped: dir !== base, tone, name: t.name, why: t.why, stock: t.stock, us: t.us, ...h, score, headlines };
   }));
   themes.sort((a, b) => b.score - a.score);
   const data = { at: now, themes };
