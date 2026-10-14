@@ -6,8 +6,10 @@ const isIos = () => /iPhone|iPad|iPod/.test(navigator.userAgent);
 const standalone = () => window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone === true;
 const toKey = (b64) => { const s = atob((b64 + '='.repeat((4 - (b64.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(s, (c) => c.charCodeAt(0)); };
 
+// 通知を受け取る係（Service Worker）：まだ入っていなければ入れる
 async function registration() {
-  return navigator.serviceWorker.getRegistration('/') || navigator.serviceWorker.register('/sw.js', { scope: '/' });
+  const r = await navigator.serviceWorker.getRegistration('/');
+  return r || navigator.serviceWorker.register('/sw.js', { scope: '/' });
 }
 
 export async function renderPush() {
@@ -29,8 +31,8 @@ export async function renderPush() {
     try {
       const perm = await Notification.requestPermission();
       if (perm !== 'granted') { toast('通知が許可されませんでした（端末の設定で許可してください）'); return; }
-      const r = await registration();
-      await navigator.serviceWorker.ready;
+      await registration();
+      const r = await navigator.serviceWorker.ready;
       const s = await r.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: toKey(info.publicKey) });
       await api('/api/push/subscribe', { method: 'POST', body: { subscription: s.toJSON() } });
       toast('この端末に通知が届くようになりました');

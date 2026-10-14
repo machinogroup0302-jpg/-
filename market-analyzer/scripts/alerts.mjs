@@ -10,7 +10,7 @@ import { runStrategy, regimeLookup, signalOdds, oddsLabel } from '../public/js/s
 import { baseUniverse } from '../public/js/universe.js';
 import { getEcon } from '../lib/econ.js';
 import { sendPush } from '../lib/pushsend.js';
-import { sizeFor, orderText, waySides, wayProfile, compareWays, budgets, searchCustom, keepWay } from '../public/js/plan.js';
+import { sizeFor, orderText, waySides, wayProfile, compareWays, budgets, searchCustom, keepWay, forMode } from '../public/js/plan.js';
 import { adviseHolding, exitTiming, longTermView, addOnAdvice } from '../public/js/holdingadvice.js';
 import { US_LIST } from '../lib/usstocks.js';
 import { startScan, scanStatus } from '../lib/scanner.js';
@@ -128,7 +128,7 @@ function holdingSignals(mode, list, u) {
     const x = byCode.get(String(h.code).toUpperCase());
     if (!x) continue;
     const hh = { ...h, symbol: x.symbol };
-    const adv = adviseHolding(hh, x.candles, { mode, prices, usdjpy: prices['USDJPY=X'], profile: u.profile });
+    const adv = adviseHolding(hh, x.candles, { mode, prices, usdjpy: prices['USDJPY=X'], profile: forMode(u.profile, mode) });
     if (!adv || adv.key === 'hold') continue;
     const timing = exitTiming(hh, x.candles, adv, { mode, prices, usdjpy: prices['USDJPY=X'] });
     const longView = longTermView(hh, x.candles, adv, { mode, prices, usdjpy: prices['USDJPY=X'] });
@@ -345,7 +345,7 @@ function buildMail(fresh, modes, pf, today, TEST, day = false, record = '') {
 function chooseWay(u, m, dayList, list, regime, days) {
   u.wayPf ||= {}; u.wayLabel ||= {}; u.minOdds ||= {};
   const by = Object.fromEntries(waySides(m).map((v) => [v, dayList ? dayList[v] : signalsFor(m, list, regime, days, v)]));
-  const pf = u.profile || {};
+  const pf = forMode(u.profile || {}, m);
   const bg = budgets(pf);
   const tb = Object.fromEntries(Object.entries(by).map(([k, g]) => [k, withOdds(g.trades)]));
   const budget = m === 'fx' ? bg.cash : bg.total;
@@ -410,7 +410,7 @@ async function morning(users, state, TEST) {
       for (const h of u.holdings?.[m] || []) {
         const x = lists[m]?.find((y) => y.code.toUpperCase() === String(h.code).toUpperCase());
         if (!x) continue;
-        const adv = adviseHolding({ ...h, symbol: x.symbol }, x.candles, { mode: m, prices, usdjpy: prices['USDJPY=X'], profile: u.profile, today });
+        const adv = adviseHolding({ ...h, symbol: x.symbol }, x.candles, { mode: m, prices, usdjpy: prices['USDJPY=X'], profile: forMode(u.profile, m), today });
         if (!adv) continue;
         const ao = addOnAdvice({ ...h, symbol: x.symbol }, x.candles, adv, { mode: m });
         holds.push(`${h.name}：${adv.verdict.icon}${adv.verdict.label}（今 ${price(adv.now, m)}・${adv.plPct >= 0 ? '+' : ''}${(adv.plPct * 100).toFixed(1)}%）／${adv.protects ? '利益を守る線' : '損切りの線'} ${price(adv.stop, m)}${ao ? `／${ao.icon}${ao.title}` : ''}`);

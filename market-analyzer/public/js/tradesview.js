@@ -2,7 +2,7 @@
 import { $, esc, store, fmtYen, toast, api } from './util.js';
 import { term } from './glossary.js';
 import { saveSynced, getProfile } from './favorites.js';
-import { wayOf } from './plan.js';
+import { wayOf, forMode } from './plan.js';
 import { coach, fmtDuration, tradeSymbol, pickInterval, excursion, excursionAdvice } from './tradecoach.js';
 import { parseCsv, findHeader, guessMapping, rowsToTrades, decodeFile, computeStats, FIELD_LABELS, detectFormat, fileId } from './trades.js';
 
@@ -157,7 +157,37 @@ async function runExcursions(c) {
     <ul class="list findings">${adv.findings.map(findingHtml).join('')}</ul>`;
 }
 
+// 月ごとの一覧：どの月の取引を入れたか・まだか（月に1回、先月の分を入れる）
+const ymOf = (d) => { const t = new Date(d); return Number.isNaN(t.getTime()) ? null : new Date(t.getTime() + 9 * 3600e3).toISOString().slice(0, 7); };
+function renderMonths() {
+  const el = $('trade-months');
+  if (!el) return;
+  const count = {};
+  for (const t of trades) { const k = ymOf(t.date || t.openDate); if (k) count[k] = (count[k] || 0) + 1; }
+  const now = new Date(Date.now() + 9 * 3600e3);
+  const months = [];
+  for (let i = 0; i < 12; i++) { const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1)); months.push(d.toISOString().slice(0, 7)); }
+  const last = (ym) => new Date(Date.UTC(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)), 0)).getUTCDate();
+  const label = (ym) => `${ym.slice(0, 4)}年${Number(ym.slice(5, 7))}月`;
+  const period = (ym) => `${ym.replace('-', '/')}/01〜${ym.replace('-', '/')}/${last(ym)}`;
+  const prev = months[1];
+  const any = Object.keys(count).length;
+  el.innerHTML = `${any && !count[prev] ? `<p class="notice" style="margin:8px 0">📅 <b>${label(prev)}分がまだです。</b>証券会社の取引履歴で、期間を <b>${period(prev)}</b> にしてCSVを保存し、下の「${label(prev)}」の行から入れてください。</p>` : ''}
+    <details class="more-box"${any ? '' : ' open'}><summary>📅 月ごとの一覧（月に1回、先月の分を入れる）</summary>
+    <ul class="list" style="margin-top:6px">${months.map((ym, i) => `<li class="row" style="justify-content:space-between;align-items:center;gap:8px">
+      <span><b>${label(ym)}</b>${i === 0 ? '<span class="small muted">（今月・月末に入れる）</span>' : ''}<br><span class="small muted">期間 ${period(ym)}</span></span>
+      <span class="row" style="gap:8px;align-items:center">${count[ym] ? `<span class="small plus">✅ ${count[ym]}件</span>` : `<span class="small muted">${i === 0 ? '—' : '⬜ まだ'}</span>`}
+        <label class="btn small">${count[ym] ? '入れ直す' : 'CSVを入れる'}<input type="file" class="month-file" accept=".csv,.txt,text/csv" hidden></label></span></li>`).join('')}</ul>
+    <p class="small muted" style="margin:4px 0 0">同じ取引を2回入れても、重ならないようにしています。何か月分かまとめたCSVでもOKです。</p></details>`;
+  el.querySelectorAll('.month-file').forEach((inp) => inp.addEventListener('change', (e) => {
+    const f = e.target.files[0];
+    if (f) onCsv(f).catch((err) => toast(err.message));
+    e.target.value = '';
+  }));
+}
+
 function render() {
+  renderMonths();
   const out = $('trade-result');
   const s = computeStats(trades);
   if (!s) {
@@ -168,7 +198,7 @@ function render() {
   }
   const pct = (v) => `${Math.round(v * 100)}%`;
   const bw = getProfile().bestWay?.[tradeMode];
-  const pf = getProfile();
+  const pf = forMode(getProfile(), tradeMode);
   const c = coach(trades, tradeMode, { siteBest: bw ? wayOf(tradeMode, bw).label : '', budget: pf.budget || 0, riskPct: pf.riskPct || 2 });
   const period = s.from ? `${new Date(s.from).toLocaleDateString('ja-JP')} 〜 ${new Date(s.to).toLocaleDateString('ja-JP')}` : '';
   out.innerHTML = `
@@ -232,8 +262,14 @@ function showLoaded(list, format, fileName) {
 
 function addTrades(list, fileKey, format, fileName) {
   // 同じファイルを読み込み直したときは、前回の分を入れ替える（同じ値の取引も別々に数える）
-  trades = [...trades.filter((t) => t.file !== fileKey), ...list.map((t) => ({ ...t, file: fileKey }))]
-    .sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+  // 別のファイル（期間が重なるCSV）にもう入っている取引は、2回数えない
+  const kept = trades.filter((t) => t.file !== fileKey);
+  const sig = (t) => [t.date, t.openDate, t.symbol, t.side, t.qty, t.price, t.entry, t.pnl].map((x) => String(x ?? '')).join('|');
+  const have = new Map();
+  for (const t of kept) have.set(sig(t), (have.get(sig(t)) || 0) + 1);
+  const fresh = [];
+  for (const t of list) { const k = sig(t); if (have.get(k) > 0) have.set(k, have.get(k) - 1); else fresh.push({ ...t, file: fileKey }); }
+  trades = [...kept, ...fresh].sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
   save();
   showLoaded(list, format, fileName);
   render();

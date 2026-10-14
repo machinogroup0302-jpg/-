@@ -31,6 +31,13 @@ export function budgets(pf) {
   return { cash, margin, sep, total: sep ? cash + margin : cash };
 }
 
+// 市場ごとの予算：為替・米国株は別の予算（入っていなければ日本株の予算を使う）。信用の予算・保証金の計算は日本株だけ
+export function forMode(pf, mode) {
+  if (!pf || mode === 'stock' || !mode) return pf;
+  const b = Number(mode === 'fx' ? pf.fxBudget : pf.usBudget);
+  return { ...pf, budget: b > 0 ? b : pf.budget, marginBudget: 0, marginCal: {} };
+}
+
 // 買うときの口座：'cash'（現物）・'margin'（信用）・'mix'（現物で買える分は現物、足りない分は信用）
 export function acctOf(profile, mode) {
   if (mode === 'fx') return 'fx';

@@ -5,7 +5,7 @@ import { pagedList } from './stockscreener.js';
 import { supportResistance } from './levels.js';
 import { monteCarlo } from './forecast.js';
 import { getProfile } from './favorites.js';
-import { sizeFor, orderText, wayOf, wayProfile } from './plan.js';
+import { sizeFor, orderText, wayOf, wayProfile, forMode } from './plan.js';
 
 const DEFAULT_WATCH = {
   fx: ['USDJPY', 'EURJPY', 'GBPJPY', 'AUDJPY', 'NZDJPY', 'CADJPY', 'CHFJPY', 'ZARJPY', 'MXNJPY', 'EURUSD', 'GBPUSD', 'AUDUSD'].join('\n'),
@@ -21,7 +21,7 @@ let usdjpy = null;
 
 // あなたの設定なら「どれだけ・いくらで」入るか
 function sizeNote(r) {
-  const pf = getProfile();
+  const pf = forMode(getProfile(), listMode);
   if (!pf.budget || Math.abs(r.total) <= 10 || !r.atr) return '';
   const side = r.total > 0 ? 1 : -1;
   if (side < 0 && listMode === 'us') return '<div class="small">あなたの設定なら：持っていたら売る候補（米国株は空売りしない計算）</div>';

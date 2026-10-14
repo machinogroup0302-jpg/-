@@ -97,6 +97,8 @@ async function openSettings() {
   $('pf-email').value = pf.email || '';
   $('pf-budget').value = pf.budget ? String(pf.budget) : '';
   $('pf-margin-budget2').value = pf.marginBudget ? String(pf.marginBudget) : '';
+  $('pf-fx-budget').value = pf.fxBudget ? String(pf.fxBudget) : '';
+  $('pf-us-budget').value = pf.usBudget ? String(pf.usBudget) : '';
   showBudget();
   seg($('pf-risk'), [['1', '1%（慎重）'], ['2', '2%（ふつう）'], ['3', '3%（積極的）']], String(pf.riskPct));
   seg($('pf-maxpos'), [['1', '1つ'], ['2', '2つ'], ['3', '3つ'], ['5', '5つ']], String(pf.maxPos));
@@ -155,7 +157,7 @@ function saveSettings() {
   if (email && !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email)) { toast('メールアドレスの形が正しくありません'); $('pf-email').focus(); return; }
   const notify = {};
   $('pf-notify').querySelectorAll('button').forEach((b) => { notify[b.dataset.k] = b.getAttribute('aria-pressed') === 'true'; });
-  setProfile({ ...getProfile(), email, budget: parseYen($('pf-budget').value), marginBudget: parseYen($('pf-margin-budget2').value), riskPct: Number(segValue($('pf-risk')) || 2), maxPos: Number(segValue($('pf-maxpos')) || 3), notify, notifyDay: $('pf-day').checked, fxLots: Math.max(0, Number($('pf-fx-lots').value) || 0), fxLotSize: Number(segValue($('pf-fx-lotsize')) || 10000) });
+  setProfile({ ...getProfile(), email, budget: parseYen($('pf-budget').value), marginBudget: parseYen($('pf-margin-budget2').value), fxBudget: parseYen($('pf-fx-budget').value), usBudget: parseYen($('pf-us-budget').value), riskPct: Number(segValue($('pf-risk')) || 2), maxPos: Number(segValue($('pf-maxpos')) || 3), notify, notifyDay: $('pf-day').checked, fxLots: Math.max(0, Number($('pf-fx-lots').value) || 0), fxLotSize: Number(segValue($('pf-fx-lotsize')) || 10000) });
   const favs = parseFavs($('fav-edit').value);
   setFavs(getMode(), favs.length ? favs : DEFAULT_FAVS[getMode()]);
   store.set('candle', segValue($('candle-seg')) || 'jp');

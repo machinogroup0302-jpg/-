@@ -133,6 +133,9 @@ function cleanProfile(v) {
     email,
     budget: Math.round(num(v.budget, 0, 1e10, 0)),
     marginBudget: Math.round(num(v.marginBudget, 0, 1e10, 0)),
+    // 為替・米国株の予算（日本株とは別）
+    fxBudget: Math.round(num(v.fxBudget, 0, 1e10, 0)),
+    usBudget: Math.round(num(v.usBudget, 0, 1e10, 0)),
     riskPct: num(v.riskPct, 0.5, 10, 2),
     maxPos: Math.round(num(v.maxPos, 1, 10, 3)),
     swingDays: Math.round(num(v.swingDays, 1, 120, 30)),

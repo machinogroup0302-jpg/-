@@ -4,7 +4,7 @@ import { api, $, esc, store, fmtPrice, fmtYen } from './util.js';
 import { runStrategy, signalOdds, oddsLabel, oddsText } from './strategies.js';
 import { pagedList } from './stockscreener.js';
 import { getProfile, setProfile, getHoldings, setHoldings, syncState } from './favorites.js';
-import { replayWithBudget, kindText, sizeFor, orderText, WAYS, wayOf, waySides, wayProfile, compareWays, wayNotes, replayOpts, budgets, pipsOf, pipsText, CARRY, searchCustom, walkForward, afterTax, setupFromCsv, heldUse, leftBudget, marginHealth, marginBook, calibrateMargin, SUBST, keepWay, keepDays, monthKey } from './plan.js';
+import { replayWithBudget, kindText, sizeFor, orderText, WAYS, wayOf, waySides, wayProfile, compareWays, wayNotes, replayOpts, budgets, pipsOf, pipsText, CARRY, searchCustom, walkForward, afterTax, setupFromCsv, forMode, heldUse, leftBudget, marginHealth, marginBook, calibrateMargin, SUBST, keepWay, keepDays, monthKey } from './plan.js';
 import { loadRegime, loadCandles, universe, kindOf } from './labview.js';
 import { baseUniverse } from './universe.js';
 import { adviseHolding, exitTiming, longTermView, addOnAdvice } from './holdingadvice.js';
@@ -177,7 +177,7 @@ function setLock(mode, patch) {
   setProfile({ ...pf, planLock: { ...(pf.planLock || {}), [mode]: { ...(pf.planLock?.[mode] || {}), ...patch } } });
 }
 function viewOf(r, mode) {
-  const pf = getProfile();
+  const pf = forMode(getProfile(), mode);
   // 比べる基準：株は現物と信用の予算の合計、為替は予算
   const bg = budgets(pf);
   const budget = mode === 'fx' ? bg.cash : bg.total;
@@ -706,7 +706,7 @@ async function fillRecord(mode) {
   let rec;
   try { rec = await api('/api/record'); } catch { el.innerHTML = ''; return; }
   if (!$('real-record')) return;
-  const pf = getProfile();
+  const pf = forMode(getProfile(), mode);
   const b = budgets(pf);
   const per = (mode === 'fx' ? b.cash : b.cash) / (pf.maxPos || 3);
   const log = rec.log.filter((t) => t.mode === mode).sort((a, c) => (c.exitTime || 0) - (a.exitTime || 0));
@@ -878,7 +878,7 @@ async function adviceFor(mode, list) {
       ev?.items?.forEach((x) => { earnings[x.code] ||= x.date; });
     } catch { /* 決算の予定がなくても続ける */ }
   }
-  const profile = getProfile();
+  const profile = forMode(getProfile(), mode);
   return list.map((h) => {
     try { return adviceOne(h); } catch (e) { report('あなた専用・持っている株（1銘柄）', e); return { h, adv: null }; }
   });
@@ -1184,7 +1184,8 @@ function initHoldForm() {
         const num = (id) => { const t = String($(id)?.value ?? '').normalize('NFKC').replace(/[,，円\s]/g, ''); return t === '' || !Number.isFinite(Number(t)) ? null : Number(t); };
         const st = setupFromCsv(getHoldings('stock'), { rate, cashDeposit: num('imp-dep'), cashFree: num('imp-free') || 0 });
         const p0 = getProfile();
-        const next = { ...p0, budget: st.budget };
+        // 為替・米国株の予算が別になっていなければ、今までの予算をそちらに残しておく
+        const next = { ...p0, budget: st.budget, fxBudget: p0.fxBudget || p0.budget || 0, usBudget: p0.usBudget || p0.budget || 0 };
         if (st.marginBudget != null) next.marginBudget = st.marginBudget;
         if (st.cal) next.marginCal = { ...(p0.marginCal || {}), stock: { date: todayJst(), ...st.cal } };
         setProfile(next);
@@ -1234,7 +1235,7 @@ let holdRunning = null;
 async function updateHoldDays(mode, r) {
   const el = $('swing-days-best');
   if (!r?.list || r.style !== 'swing') return;
-  const pf = getProfile();
+  const pf = forMode(getProfile(), mode);
   const v = viewOf(r, mode);
   const way = v.best.base || v.best;
   const key = JSON.stringify([mode, r.count, Math.floor(r.at / 3600000), way.key, pf.budget, pf.marginBudget, pf.riskPct, pf.maxPos, pf.fxLots]);
