@@ -337,6 +337,9 @@ function renderPlan(r0, mode) {
   let topUp = 0;
   if (auto) {
     left.margin = book.room;
+    // 楽天証券の「現物買付時の自動振替：信用代用」と同じ：保証金の余りで現物を買うと、その株が担保（8割）になるので、
+    // 余り ÷ 2割 まで現物が買える（例：余り31万円 → 現物は約156万円まで）。現物と信用は同じ余りから出すので、片方を使うともう片方は減る
+    if (mode === 'stock' && book.room > 0) { left.free = left.cash; left.cash += book.room / (1 - SUBST); left.shared = true; }
     topUp = budgets(pf).sep || book.cal ? book.topUp : 0;
   } else {
     const mh0 = mode !== 'fx' && budgets(pf).sep ? marginHealth(pf, use, mode) : null;
@@ -517,10 +520,12 @@ function moneySummary(mode, r, use, left, book, topUp) {
     cards.push(big('新しく使える証拠金', yen0(left.cash), '持っているポジションの証拠金と含み損益を引いた残り'));
     return `<div class="grid2">${cards.join('')}</div>`;
   }
-  cards.push(big('現物で買えるお金', yen0(left.cash), topUp ? `追証のために約${yen0(topUp)}を先に取っておいた残り` : ''));
-  const L = mode === 'us' ? 2 : 3.3;
+  cards.push(big('現物で買えるお金', yen0(left.cash), topUp ? `追証のために約${yen0(topUp)}を先に取っておいた残り` : left.shared ? '信用の保証金の余りで買う分も入っています（買った株は担保になります）' : ''));
+  // 信用で建てられる金額：保証金の余り ÷ 必要な保証金の割合（日本株30%・米国株50%）
+  const L = mode === 'us' ? 2 : 1 / 0.3;
   if (book && book.N > 0 && book.ratio < book.NEW) cards.push(big('信用で新しく買えるお金', '0円', '保証金が足りないので、今は信用で新しく買えません（持っている信用の株の損が減るか、決済すると使えるようになります）', 'minus'));
-  else if (left.margin > 0 && (book || budgets(r.pf).sep)) cards.push(big('信用で新しく買えるお金', `約${yen0(left.margin * L)}`, `保証金 約${yen0(left.margin)} × ${L}倍まで`));
+  else if (left.margin > 0 && (book || budgets(r.pf).sep)) cards.push(big('信用で新しく買えるお金', `約${yen0(left.margin * L)}`, `保証金の余り 約${yen0(left.margin)} の約${(Math.round(L * 10) / 10)}倍まで`));
+  if (left.shared) cards.push(`<p class="small muted" style="grid-column:1/-1;margin:0">※ 現物と信用は、同じ保証金の余りから出します。現物を買うと信用で買える分が減り、信用で買うと現物で買える分が減ります（楽天証券の「現物買付可能額」「信用新規建余力」と同じ考え方です）。</p>`);
   // 追証まで：信用の株が1銘柄なら「○円まで下がると追証」、いくつかなら「そろって○%下がると」
   if (book && book.N > 0) {
     const ms = use.rows.filter((x) => x.h.side < 0 || x.h.acct === 'margin');
