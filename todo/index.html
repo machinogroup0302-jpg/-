@@ -256,7 +256,7 @@
 <header>
   <h1>やることボード <span class="sync" id="sync"></span></h1>
   <nav>
-    <button data-view="todo" class="active">やること</button>
+    <button data-view="todo" class="active">ToDoリスト</button>
     <button data-view="sched">スケジュール</button>
     <button data-view="money">固定費</button>
     <button data-view="check">チェック</button>
@@ -269,7 +269,7 @@
   <!-- やること（メモ） -->
   <section id="view-todo" class="grid">
     <div class="card">
-      <h2>やること</h2>
+      <h2>ToDoリスト</h2>
       <div class="tabs" id="tabs"></div>
       <div class="filters">
         <label>並び順
@@ -728,11 +728,11 @@
   const daySort = p => !p.day ? 999 : (+p.shift ? 40 : 0) + (p.day === 'end' ? 31 : +p.day);
 
   // ---------- やること（メモ） ----------
-  let cat = 'all', editingTask = null;
+  let cat = 'now', editingTask = null;
   const taskForm = $('add-form');
   function resetTaskForm() {
     taskForm.reset(); taskForm.priority.value = '中';
-    if (cat !== 'all') taskForm.category.value = cat;
+    taskForm.category.value = cat;
     editingTask = null; formMode(taskForm, false, $('task-form-title'), 'やることを追加', 'やることを編集');
   }
   taskForm.addEventListener('submit', e => {
@@ -764,17 +764,17 @@
 
   function renderTodo() {
     const open = tasks.filter(t => !t.done);
-    $('tabs').innerHTML = [['all', 'すべて'], ...Object.entries(CATS)].map(([k, label]) => {
-      const n = k === 'all' ? open.length : open.filter(t => t.category === k).length;
+    $('tabs').innerHTML = Object.entries(CATS).map(([k, label]) => {
+      const n = open.filter(t => t.category === k).length;
       return `<button data-cat="${k}" class="${cat === k ? 'active' : ''}">${label}<span class="count">${n}</span></button>`;
     }).join('');
     $('tabs').querySelectorAll('button').forEach(b => b.onclick = () => {
       cat = b.dataset.cat;
-      if (cat !== 'all' && !editingTask) taskForm.category.value = cat;
+      if (!editingTask) taskForm.category.value = cat;
       renderTodo();
     });
     const showDone = $('show-done').checked, sort = $('sort').value;
-    const list = tasks.filter(t => (cat === 'all' || t.category === cat) && (showDone || !t.done));
+    const list = tasks.filter(t => t.category === cat && (showDone || !t.done));
     list.sort((a, b) => (a.done - b.done) || (sort === 'priority' ? PRI[a.priority] - PRI[b.priority] : 0) || a.created - b.created);
     $('list').innerHTML = list.length ? list.map(t => `<li class="task ${t.category} ${t.done ? 'done' : ''}" data-id="${t.id}">
         <input type="checkbox" ${t.done ? 'checked' : ''} aria-label="終わった">
@@ -1117,7 +1117,7 @@
       const payees = sec.cols.map(j => {
         let name = head[j]; seen[name] = (seen[name] || 0) + 1;
         if (seen[name] > 1) name += `(${seen[name]})`;
-        let p = fixed.payees.find(x => x.owner === sec.owner && x.name === name), isNew = false;
+        let p = fixed.payees.find(x => x.owner === sec.owner && (x.sheetName || x.name) === name), isNew = false;
         if (!p) { fixed.payees.push(p = { id: uid(), name, owner: sec.owner, day: '', shift: 0, method: '' }); payeesAdded++; isNew = true; }
         return { j, p, isNew, votes: { early: 0, late: 0 } };
       });
