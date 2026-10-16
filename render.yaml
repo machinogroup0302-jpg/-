@@ -1,0 +1,18 @@
+# やることボード（相場分析サイトとは別のサイト）
+# Render の「New → Blueprint」でこのリポジトリを選ぶと、この設定で作られます
+services:
+  - type: web
+    name: yarukoto-board
+    runtime: node
+    plan: free
+    branch: claude/jolly-goldberg-1a7dqb
+    buildCommand: echo "build なし"
+    startCommand: node board-server/server.js
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: BOARD_PASSWORD   # ログインのパスワード（自分で決める）
+        sync: false
+      - key: GITHUB_TOKEN     # データのコピーを非公開 Gist に置くための鍵（gist の権限だけ）
+        sync: false

@@ -615,8 +615,8 @@
 <dialog id="login-dialog">
   <form id="login-form">
     <h3>やることボード</h3>
-    <p class="note" style="margin-bottom:10px">相場分析サイトと同じ ID・パスワードでログインしてください。持ち主は ID を空のままで大丈夫です。</p>
-    <div class="row"><label for="login-id">ID（持ち主は空のまま）</label><input id="login-id" autocomplete="username" autocapitalize="none"></div>
+    <p class="note" style="margin-bottom:10px">パスワードを入れてください。一度ログインすると、この端末では90日間そのまま使えます。</p>
+    <input type="text" name="username" value="やることボード" autocomplete="username" hidden>
     <div class="row"><label for="login-pass">パスワード</label><input id="login-pass" type="password" autocomplete="current-password" required></div>
     <p class="note" id="login-err" style="color:var(--now);min-height:1.2em"></p>
     <div class="btns"><button class="btn primary" type="submit">ログイン</button></div>
@@ -723,7 +723,7 @@
   const save = name => { store(DOCS[name].key, localValue(name)); sync.push(name); };
   function status(msg) { $('sync').textContent = msg; }
 
-  // ---- 相場分析サイトの /board/ で開いたとき：データはそのサイトのサーバーに保存 ----
+  // ---- 自分のサーバー（Render）で開いたとき：データはそのサーバーに保存 ----
   const loginError = () => Object.assign(new Error('login'), { code: 'login' });
   async function api(path, opts = {}) {
     const r = await fetch(path, { credentials: 'same-origin', ...opts, headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) } });
@@ -732,13 +732,9 @@
     return r.json();
   }
   if (window.BOARD_SERVER) {
-    // 相場分析サイトの「設定」の保存場所に board_◯◯ として入れる（サイトのパスワードで守られる）
     sync.remote = {
-      async load() {
-        const { items } = await api('/api/prefs');
-        return Object.fromEntries(Object.keys(DOCS).map(n => [n, items['board_' + n]?.value ?? null]));
-      },
-      save: (name, body) => api('/api/prefs', { method: 'PUT', body: JSON.stringify({ key: 'board_' + name, value: body }) }),
+      async load() { return (await api('/api/board')).docs; },
+      save: (name, body) => api('/api/board/' + name, { method: 'PUT', body: JSON.stringify(body) }),
     };
   }
   async function pullRemote(first) {
@@ -755,7 +751,7 @@
       if (!Object.values(sync.writing).some(Boolean)) status('');
     } catch (err) { status(err?.code === 'login' ? 'ログインしてください' : '読み込めませんでした。通信を確認してください'); }
   }
-  // ログイン（相場分析サイトと同じ ID・パスワード）
+  // ログイン（サーバーの BOARD_PASSWORD）
   function showLogin() {
     const d = $('login-dialog');
     if (!d || d.open) return;
@@ -766,8 +762,8 @@
     e.preventDefault();
     try {
       const r = await fetch('/api/login', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: $('login-id').value.trim(), password: $('login-pass').value }) });
-      if (!r.ok) { $('login-err').textContent = 'IDかパスワードが違います'; return; }
+        body: JSON.stringify({ password: $('login-pass').value }) });
+      if (!r.ok) { $('login-err').textContent = 'パスワードが違います'; return; }
       $('login-pass').value = ''; $('login-dialog').close(); pullRemote(true);
     } catch { $('login-err').textContent = '通信できませんでした'; }
   });
