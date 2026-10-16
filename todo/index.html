@@ -1,46 +1,85 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex">
 <title>やることボード</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="robots" content="noindex">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
+  /* 左にカレンダー、右に操作パネル。紺のヘッダーと黄色の現在地で事務所の掲示板のように */
   :root {
     --bg: #f4f6f9;
     --card: #ffffff;
+    --field: #ffffff;
+    --soft: #f8f9fb;
     --text: #1d2733;
     --muted: #5b6776;
+    --faint: #aab3be;
     --line: #e1e6ec;
-    --navy: #0d1b2a;
+    --bar: #0d1b2a;
+    --bar-text: #cfd8e3;
+    --bar-line: #33465e;
+    --primary: #0d1b2a;
+    --on-primary: #ffffff;
+    --on-color: #ffffff;
     --accent: #f5c518;
+    --on-accent: #0d1b2a;
+    --hl: #fff8d6;
     --now: #e5484d;
     --wait: #3e7bfa;
     --share: #2f9e6e;
     --corp: #6741d9;
     --personal: #d9480f;
+    --corp-ink: #6741d9;
+    --personal-ink: #d9480f;
+    --orange: #f08c00;
+    --grey-badge: #8a96a3;
+    --early: #e03131;
+    --late: #c98a00;
     --todo: #fff3bf;
+    --ok-bg: #e6fcf5;
+    --bad-bg: #ffe3e3;
+    --backdrop: rgba(13, 27, 42, .45);
     --radius: 12px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f1620; --card: #17212d; --field: #1d2937; --soft: #1a2430; --text: #e6ebf1; --muted: #9aa8b8; --faint: #5d6b7b;
+      --line: #2a3747; --bar: #0a1018; --bar-text: #b8c4d2; --bar-line: #2a3a4e; --primary: #e6ebf1; --on-primary: #0f1620;
+      --hl: #3a3415; --now: #ff6b6f; --wait: #6d9bff; --share: #3fbf89; --corp-ink: #b3a1ff; --personal-ink: #ff9a63;
+      --late: #e0a400; --todo: #3b3518; --ok-bg: #12352b; --bad-bg: #4a1f22; --backdrop: rgba(0, 0, 0, .6);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f1620; --card: #17212d; --field: #1d2937; --soft: #1a2430; --text: #e6ebf1; --muted: #9aa8b8; --faint: #5d6b7b;
+    --line: #2a3747; --bar: #0a1018; --bar-text: #b8c4d2; --bar-line: #2a3a4e; --primary: #e6ebf1; --on-primary: #0f1620;
+    --hl: #3a3415; --now: #ff6b6f; --wait: #6d9bff; --share: #3fbf89; --corp-ink: #b3a1ff; --personal-ink: #ff9a63;
+    --late: #e0a400; --todo: #3b3518; --ok-bg: #12352b; --bad-bg: #4a1f22; --backdrop: rgba(0, 0, 0, .6);
+    color-scheme: dark;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
+    margin: 0;
     font-family: "Zen Kaku Gothic New", "Hiragino Sans", "Noto Sans JP", sans-serif;
     background: var(--bg); color: var(--text); line-height: 1.6;
   }
   header {
-    background: var(--navy); color: #fff; padding: 14px 16px;
+    background: var(--bar); color: #fff; padding-block: 14px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
     display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
   }
   header h1 { font-size: 1.15rem; font-weight: 700; }
   nav { display: flex; gap: 6px; flex-wrap: wrap; }
+  @media (max-width: 700px) {
+    nav { flex-wrap: nowrap; overflow-x: auto; max-width: 100%; scrollbar-width: none; }
+    nav button { flex-shrink: 0; }
+  }
   nav button {
-    background: transparent; color: #cfd8e3; border: 1px solid #33465e;
+    background: transparent; color: var(--bar-text); border: 1px solid var(--bar-line);
     padding: 6px 14px; border-radius: 999px; font: inherit; cursor: pointer;
   }
-  nav button.active { background: var(--accent); color: var(--navy); border-color: var(--accent); font-weight: 700; }
-  main { max-width: 1200px; margin: 0 auto; padding: 16px; }
+  nav button.active { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 700; }
+  main { max-width: 1200px; margin: 0 auto; padding-block: 16px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  .sync { font-size: .75rem; color: var(--bar-text); }
   .grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 16px; align-items: start; }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
   .stack { display: flex; flex-direction: column; gap: 16px; }
@@ -49,10 +88,10 @@
   .card h2 { font-size: 1rem; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
   .note { font-size: .8rem; color: var(--muted); }
   .btn {
-    border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 4px 12px;
+    border: 1px solid var(--line); background: var(--field); border-radius: 8px; padding: 4px 12px;
     font: inherit; font-size: .85rem; cursor: pointer; color: var(--text);
   }
-  .btn.primary { background: var(--navy); color: #fff; border-color: var(--navy); font-weight: 700; }
+  .btn.primary { background: var(--primary); color: var(--on-primary); border-color: var(--primary); font-weight: 700; }
   .btn.danger { color: var(--now); border-color: var(--now); }
   .btn.small { padding: 1px 8px; font-size: .75rem; }
   .scroll { overflow-x: auto; }
@@ -65,44 +104,44 @@
   .cal .dow:last-child { color: var(--wait); }
   .day {
     min-height: 86px; border: 1px solid var(--line); border-radius: 8px; padding: 4px;
-    font-size: .75rem; cursor: pointer; background: #fff; overflow: hidden; min-width: 0;
+    font-size: .75rem; cursor: pointer; background: var(--card); overflow: hidden; min-width: 0;
   }
-  .day.other { background: #fafbfc; color: #aab3be; }
+  .day.other { background: var(--soft); color: var(--faint); }
   .day.today { border: 2px solid var(--accent); }
-  .day.selected { background: #fff8d6; }
+  .day.selected { background: var(--hl); }
   .day .num { font-weight: 700; margin-bottom: 2px; }
   .chip {
-    display: block; border-radius: 4px; padding: 0 4px; margin-top: 2px; color: #fff;
+    display: block; border-radius: 4px; padding: 0 4px; margin-top: 2px; color: var(--on-color);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: .7rem;
   }
   .chip.done { opacity: .4; text-decoration: line-through; }
-  .chip.pay { background: #fff; border: 1px solid var(--c); color: var(--c); font-weight: 700; }
+  .chip.pay { background: var(--card); border: 1px solid var(--c); color: var(--c); font-weight: 700; }
   @media (max-width: 600px) { .day { min-height: 58px; } .chip { font-size: .6rem; } }
   .legend { display: flex; gap: 10px; font-size: .75rem; color: var(--muted); flex-wrap: wrap; }
   .legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; background: var(--c); }
-  .legend span.outline::before { background: #fff; border: 2px solid var(--c); width: 6px; height: 6px; }
+  .legend span.outline::before { background: var(--card); border: 2px solid var(--c); width: 6px; height: 6px; }
 
   /* フォーム */
   form.add { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; }
   form.add .full { grid-column: 1 / -1; }
   form.add label { font-size: .75rem; color: var(--muted); display: flex; flex-direction: column; gap: 2px; }
   form.add input, form.add select, form.add textarea, textarea.paste, input.search, dialog input, dialog textarea {
-    font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; width: 100%; color: var(--text);
+    font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--field); width: 100%; color: var(--text);
   }
   form.add textarea { min-height: 44px; resize: vertical; }
   form.add .actions { grid-column: 1 / -1; display: flex; gap: 8px; }
   form.add .actions button[type=submit] {
-    flex: 1; background: var(--navy); color: #fff; border: 0; border-radius: 8px;
+    flex: 1; background: var(--primary); color: var(--on-primary); border: 0; border-radius: 8px;
     padding: 10px; font: inherit; font-weight: 700; cursor: pointer;
   }
 
   /* タブ */
   .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
   .tabs button {
-    border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 4px 12px;
+    border: 1px solid var(--line); background: var(--field); color: var(--text); border-radius: 999px; padding: 4px 12px;
     font: inherit; font-size: .85rem; cursor: pointer;
   }
-  .tabs button.active { background: var(--navy); color: #fff; border-color: var(--navy); }
+  .tabs button.active { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
   .tabs .count { font-size: .75rem; opacity: .7; margin-left: 4px; }
   .filters { display: flex; gap: 8px; align-items: center; font-size: .85rem; color: var(--muted); margin-bottom: 10px; flex-wrap: wrap; }
   .filters select { font: inherit; padding: 2px 6px; border: 1px solid var(--line); border-radius: 6px; }
@@ -125,10 +164,10 @@
   .t-title a { color: inherit; }
   .t-meta { font-size: .75rem; color: var(--muted); display: flex; gap: 8px; flex-wrap: wrap; margin-top: 2px; align-items: center; }
   .t-memo { font-size: .8rem; color: var(--muted); margin-top: 4px; white-space: pre-wrap; word-break: break-word; }
-  .badge { border-radius: 4px; padding: 0 6px; color: #fff; font-size: .7rem; font-weight: 700; white-space: nowrap; }
-  .pri-高 { background: var(--now); } .pri-中 { background: #f08c00; } .pri-低 { background: #8a96a3; }
+  .badge { border-radius: 4px; padding: 0 6px; color: var(--on-color); font-size: .7rem; font-weight: 700; white-space: nowrap; }
+  .pri-高 { background: var(--now); } .pri-中 { background: var(--orange); } .pri-低 { background: var(--grey-badge); }
   .b-corp { background: var(--corp); } .b-personal { background: var(--personal); }
-  .b-early { background: #e03131; } .b-late { background: #e8a200; } .b-tbd { background: #8a96a3; }
+  .b-early { background: var(--early); } .b-late { background: var(--late); } .b-tbd { background: var(--grey-badge); }
   .overdue { color: var(--now); font-weight: 700; }
   .t-actions { display: flex; gap: 4px; }
   .t-actions button { border: 0; background: transparent; cursor: pointer; color: var(--muted); font-size: .8rem; padding: 2px 4px; }
@@ -138,7 +177,7 @@
   /* 固定費 */
   .totals { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
   @media (max-width: 700px) { .totals { grid-template-columns: 1fr; } }
-  .total { border-radius: 10px; padding: 12px; color: #fff; background: var(--navy); }
+  .total { border-radius: 10px; padding: 12px; color: #fff; background: var(--bar); border: 1px solid var(--bar-line); }
   .total.corp { background: var(--corp); } .total.personal { background: var(--personal); }
   .total .label { font-size: .8rem; opacity: .9; }
   .total .yen { font-size: 1.4rem; font-weight: 700; }
@@ -151,9 +190,10 @@
   table.pay tr.sum.last td { border-bottom: 0; }
   table.pay input.amt { width: 110px; text-align: right; font: inherit; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; }
   table.pay tr.clickable { cursor: pointer; }
-  table.pay tr.clickable:hover td { background: #fafbfc; }
-  table.pay tr.cur td { background: #fff8d6; }
-  table.pay .zero { color: #b5bdc7; }
+  table.pay tr.clickable:hover td { background: var(--soft); }
+  table.pay tr.cur td { background: var(--hl); }
+  table.pay .zero { color: var(--faint); }
+  table.pay input.amt { background: var(--field); color: var(--text); }
   .soon { color: var(--now); font-weight: 700; }
   .linkbtn { border: 0; background: none; font: inherit; cursor: pointer; color: var(--text); text-align: left; padding: 0; }
   .linkbtn:hover { text-decoration: underline; }
@@ -161,19 +201,19 @@
   /* 引き落としチェック */
   table.check { border-collapse: separate; border-spacing: 0; font-size: .8rem; min-width: 100%; }
   table.check th, table.check td { border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 4px 6px; text-align: center; white-space: nowrap; }
-  table.check thead th { background: #f08c00; color: #fff; position: sticky; top: 0; }
-  table.check thead th.cur { background: var(--navy); }
-  table.check th.name { position: sticky; left: 0; background: #fff; text-align: left; z-index: 1; min-width: 120px; }
-  table.check thead th.name { background: #f08c00; z-index: 2; }
+  table.check thead th { background: var(--orange); color: #fff; position: sticky; top: 0; }
+  table.check thead th.cur { background: var(--bar); }
+  table.check th.name { position: sticky; left: 0; background: var(--card); text-align: left; z-index: 1; min-width: 120px; }
+  table.check thead th.name { background: var(--orange); z-index: 2; }
   table.check td { cursor: pointer; min-width: 64px; height: 30px; }
   table.check td.todo { background: var(--todo); }
-  table.check td.ok { background: #fff; }
-  table.check td.paid { background: #e6fcf5; }
-  table.check td.issue { background: #ffe3e3; color: var(--now); font-weight: 700; }
-  table.check td.future { background: #f8f9fa; cursor: default; }
-  table.check td:not(.future):hover { outline: 2px solid var(--navy); outline-offset: -2px; }
-  dialog { border: 0; border-radius: var(--radius); padding: 20px; width: min(380px, calc(100vw - 32px)); }
-  dialog::backdrop { background: rgba(13, 27, 42, .45); }
+  table.check td.ok { background: var(--card); }
+  table.check td.paid { background: var(--ok-bg); }
+  table.check td.issue { background: var(--bad-bg); color: var(--now); font-weight: 700; }
+  table.check td.future { background: var(--soft); cursor: default; }
+  table.check td:not(.future):hover { outline: 2px solid var(--primary); outline-offset: -2px; }
+  dialog { border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: var(--radius); padding: 20px; width: min(380px, calc(100vw - 32px)); }
+  dialog::backdrop { background: var(--backdrop); }
   dialog h3 { margin-bottom: 10px; }
   dialog .row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; font-size: .85rem; }
   dialog .row.inline { flex-direction: row; align-items: center; gap: 8px; }
@@ -182,7 +222,7 @@
 
   /* パスワード */
   .lock-box { max-width: 420px; margin: 20px auto; display: flex; flex-direction: column; gap: 10px; }
-  .lock-box input { font: inherit; padding: 10px; border: 1px solid var(--line); border-radius: 8px; }
+  .lock-box input { font: inherit; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--field); color: var(--text); }
   .lock-box .err { color: var(--now); font-size: .85rem; min-height: 1.2em; }
   .cred-row { display: flex; align-items: center; gap: 6px; font-size: .85rem; margin-top: 4px; flex-wrap: wrap; }
   .cred-row .k { color: var(--muted); font-size: .75rem; width: 64px; flex-shrink: 0; }
@@ -191,17 +231,17 @@
   .pw-wrap input { flex: 1; min-width: 0; }
 
   .toast {
-    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
-    background: var(--navy); color: #fff; padding: 8px 16px; border-radius: 999px; font-size: .85rem;
+    position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+    background: var(--primary); color: var(--on-primary); padding: 8px 16px; border-radius: 999px; font-size: .85rem;
     opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 10;
   }
   .toast.show { opacity: 1; }
   .hidden { display: none !important; }
+  :focus-visible { outline: 2px solid var(--wait); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
 </style>
-</head>
-<body>
 <header>
-  <h1>やることボード</h1>
+  <h1>やることボード <span class="sync" id="sync"></span></h1>
   <nav>
     <button data-view="home" class="active">スケジュール・やること</button>
     <button data-view="money">固定費</button>
@@ -227,8 +267,8 @@
             <span style="--c:var(--now)">すぐやる</span>
             <span style="--c:var(--wait)">返事待ち</span>
             <span style="--c:var(--share)">山川共有</span>
-            <span class="outline" style="--c:var(--corp)">法人引落</span>
-            <span class="outline" style="--c:var(--personal)">個人引落</span>
+            <span class="outline" style="--c:var(--corp-ink)">法人引落</span>
+            <span class="outline" style="--c:var(--personal-ink)">個人引落</span>
           </span>
         </h2>
         <div class="cal" id="cal"></div>
@@ -358,9 +398,9 @@
           </span>
           <span class="legend">
             <span style="--c:var(--todo)">まだ</span>
-            <span style="--c:#fff;outline:1px solid var(--line)">確認済み</span>
-            <span style="--c:#c3fae8">確認済み・支払いあり</span>
-            <span style="--c:#ffc9c9">おかしい引き落としあり</span>
+            <span style="--c:var(--card);outline:1px solid var(--line)">確認済み</span>
+            <span style="--c:var(--ok-bg)">確認済み・支払いあり</span>
+            <span style="--c:var(--bad-bg)">おかしい引き落としあり</span>
           </span>
         </h2>
         <p class="note" style="margin-bottom:8px">マスを押すと、確認した日・支払いの有無・おかしな引き落としがあったかを記録できます。黄色はまだ確認していない月です。<span id="ck-summary"></span></p>
@@ -480,6 +520,14 @@
   </div>
 </dialog>
 
+<dialog id="ask-dialog">
+  <p id="ask-msg" style="margin-bottom:14px"></p>
+  <div class="btns">
+    <button class="btn" id="ask-no">やめる</button>
+    <button class="btn primary" id="ask-yes">はい</button>
+  </div>
+</dialog>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -490,7 +538,7 @@
   const K_CHECKS = 'yarukoto-checks-v1';
   const K_VAULT = 'yarukoto-vault-v1';
   const CATS = { now: 'すぐやる', wait: '返事待ち', share: '山川共有' };
-  const COLORS = { now: 'var(--now)', wait: 'var(--wait)', share: 'var(--share)', corp: 'var(--corp)', personal: 'var(--personal)' };
+  const COLORS = { now: 'var(--now)', wait: 'var(--wait)', share: 'var(--share)', corp: 'var(--corp-ink)', personal: 'var(--personal-ink)' };
   const OWNERS = { corp: '法人', personal: '個人' };
   const HALVES = { early: '前半', late: '後半', tbd: '未定' };
   const PRI = { '高': 0, '中': 1, '低': 2 };
@@ -508,17 +556,77 @@
   const store = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
   const addDays = (s, n) => { const d = new Date(s + 'T00:00:00'); d.setDate(d.getDate() + n); return ymd(d); };
   const sum = (arr, f) => arr.reduce((s, x) => s + f(x), 0);
+  // 確認ダイアログ（ブラウザの confirm は使えない環境があるのでページ内で出す）
+  function ask(msg, yes = '削除する') {
+    return new Promise(res => {
+      const d = $('ask-dialog');
+      $('ask-msg').textContent = msg; $('ask-yes').textContent = yes;
+      $('ask-yes').onclick = () => { d.close(); res(true); };
+      $('ask-no').onclick = () => { d.close(); res(false); };
+      d.oncancel = () => res(false);
+      d.showModal();
+    });
+  }
   function toast(msg) {
     const t = $('toast'); t.textContent = msg; t.classList.add('show');
     clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 1800);
   }
 
+  // ---------- 保存先：claude.ai で開いたときはどの端末でも同じデータ（db）、それ以外はこのブラウザ ----------
+  // board/tasks・board/fixed・board/checks の3つの文書に丸ごと入れる。パスワードは db に入れない。
+  const sync = {
+    db: null, writing: {}, dirty: {}, last: {},
+    body: name => name === 'tasks' ? { list: tasks } : name === 'fixed' ? fixed : checks,
+    async push(name) {
+      if (!this.db) return;
+      if (this.writing[name]) { this.dirty[name] = true; return; }
+      this.writing[name] = true;
+      try {
+        do {
+          this.dirty[name] = false;
+          const body = JSON.parse(JSON.stringify(this.body(name)));
+          this.last[name] = JSON.stringify(body);
+          await this.db.doc('board/' + name).set(body);
+        } while (this.dirty[name]);
+        status('');
+      } catch (err) {
+        status(err?.code === 'quota_exceeded' ? '保存容量がいっぱいです' : 'クラウドに保存できませんでした');
+      } finally { this.writing[name] = false; }
+    },
+    apply(name, data) {
+      const json = JSON.stringify(data);
+      if (json === this.last[name] || json === JSON.stringify(this.body(name))) return false;
+      this.last[name] = json;
+      if (name === 'tasks') { tasks = data.list || []; store(K_TASKS, tasks); }
+      else if (name === 'fixed') { fixed = { payees: data.payees || [], amounts: data.amounts || {} }; store(K_FIXED, fixed); }
+      else { checks = { items: data.items || [], cells: data.cells || {} }; store(K_CHECKS, checks); }
+      return true;
+    },
+  };
+  function status(msg) { $('sync').textContent = msg; }
+  (async () => {
+    const db = await window.claude?.use?.('db');
+    if (!db) return;
+    sync.db = db;
+    ['tasks', 'fixed', 'checks'].forEach(name => {
+      let first = true;
+      db.doc('board/' + name).onSnapshot(snap => {
+        if (snap.metadata.fromCache && !snap.exists) return;
+        if (!snap.exists) {
+          // まだクラウドに無ければ、このブラウザの分を上げる
+          if (first && JSON.stringify(sync.body(name)) !== JSON.stringify(name === 'tasks' ? { list: [] } : name === 'fixed' ? { payees: [], amounts: {} } : { items: [], cells: {} })) sync.push(name);
+        } else if (sync.apply(name, structuredClone(snap.data()))) renderAll();
+        first = false;
+      }, () => status('同期が止まりました。再読み込みしてください'));
+    });
+  })();
+
   let tasks = load(K_TASKS, []);
   let fixed = load(K_FIXED, null) || migrateFixed();
   let checks = load(K_CHECKS, { items: [], cells: {} });
-  const saveTasks = () => store(K_TASKS, tasks);
-  const saveFixed = () => store(K_FIXED, fixed);
-  const saveChecks = () => store(K_CHECKS, checks);
+  const saveTasks = () => { store(K_TASKS, tasks); sync.push('tasks'); };
+  const saveFixed = () => { store(K_FIXED, fixed); sync.push('fixed'); };
+  const saveChecks = () => { store(K_CHECKS, checks); sync.push('checks'); };
 
   // 旧形式（1件ごとに金額と日付）からの移行：今月から12か月分に同じ金額を入れる
   function migrateFixed() {
@@ -601,11 +709,11 @@
   });
   taskForm.querySelector('.cancel').onclick = resetTaskForm;
 
-  $('list').addEventListener('click', e => {
+  $('list').addEventListener('click', async e => {
     const li = e.target.closest('.task'); if (!li) return;
     const t = tasks.find(x => x.id === li.dataset.id);
     if (e.target.matches('input[type=checkbox]')) { t.done = e.target.checked; saveTasks(); renderHome(); }
-    if (e.target.dataset.act === 'del' && confirm(`「${t.title}」を削除しますか？`)) {
+    if (e.target.dataset.act === 'del' && await ask(`「${t.title}」を削除しますか？`)) {
       tasks = tasks.filter(x => x !== t); saveTasks(); renderHome();
     }
     if (e.target.dataset.act === 'edit') {
@@ -772,9 +880,9 @@
     saveFixed(); resetFcForm(); renderAll(); toast('保存しました');
   });
   fcForm.querySelector('.cancel').onclick = resetFcForm;
-  fcForm.querySelector('.del').onclick = () => {
+  fcForm.querySelector('.del').onclick = async () => {
     const p = fixed.payees.find(x => x.id === editingFc);
-    if (!p || !confirm(`「${p.name}」を削除しますか？（全部の月の金額も消えます）`)) return;
+    if (!p || !await ask(`「${p.name}」を削除しますか？（全部の月の金額も消えます）`)) return;
     fixed.payees = fixed.payees.filter(x => x !== p);
     Object.values(fixed.amounts).forEach(a => delete a[p.id]);
     saveFixed(); resetFcForm(); renderAll();
@@ -1010,9 +1118,9 @@
     if (name) it.name = name; it.url = $('cki-url').value.trim();
     saveChecks(); $('ck-item-dialog').close(); renderChecks();
   };
-  $('cki-del').onclick = () => {
+  $('cki-del').onclick = async () => {
     const it = checks.items.find(x => x.id === ckItem);
-    if (!confirm(`「${it.name}」を削除しますか？（記録も消えます）`)) return;
+    if (!await ask(`「${it.name}」を削除しますか？（記録も消えます）`)) return;
     checks.items = checks.items.filter(x => x !== it);
     Object.keys(checks.cells).forEach(k => { if (k.startsWith(it.id + '|')) delete checks.cells[k]; });
     saveChecks(); $('ck-item-dialog').close(); renderChecks(); renderHome();
@@ -1136,7 +1244,7 @@
       c.textContent = shown ? '••••••••' : v.password; c.dataset.shown = shown ? '0' : '1';
       e.target.textContent = shown ? '表示' : '隠す';
     }
-    if (act === 'del' && confirm(`「${v.site}」を削除しますか？`)) {
+    if (act === 'del' && await ask(`「${v.site}」を削除しますか？`)) {
       vault = vault.filter(x => x !== v); await saveVault(); renderVault();
     }
     if (act === 'edit') {
@@ -1175,12 +1283,19 @@
   }
 
   // ---------- バックアップ ----------
-  $('export-btn').onclick = () => {
+  $('export-btn').onclick = async () => {
     const data = { app: 'yarukoto', version: 2, savedAt: new Date().toISOString(), tasks, fixed, checks, vault: load(K_VAULT, null) };
+    const json = JSON.stringify(data, null, 2), filename = `yarukoto-backup-${todayStr()}.json`;
+    const downloads = await window.claude?.use?.('downloads');
+    if (downloads) {
+      try { await downloads.save({ filename, data: json }); toast('保存しました'); }
+      catch (err) { if (err?.code !== 'declined') toast('保存できませんでした'); }
+      return;
+    }
+    // claude.ai の外で開いたとき
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
-    a.download = `yarukoto-backup-${todayStr()}.json`;
-    a.click(); URL.revokeObjectURL(a.href);
+    a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+    a.download = filename; a.click(); URL.revokeObjectURL(a.href);
   };
   $('import-file').onchange = async e => {
     const file = e.target.files[0]; e.target.value = ''; if (!file) return;
@@ -1188,7 +1303,7 @@
       const data = JSON.parse(await file.text());
       if (data.app !== 'yarukoto') throw 0;
       const parts = [data.tasks && 'やること', data.fixed && '固定費', data.checks && '引き落としチェック', data.vault && 'ID・パスワード'].filter(Boolean);
-      if (!parts.length || !confirm(`「${parts.join('・')}」をファイルの内容で置き換えます。よろしいですか？`)) return;
+      if (!parts.length || !await ask(`「${parts.join('・')}」をファイルの内容で置き換えます。よろしいですか？`, '置き換える')) return;
       if (data.tasks) { tasks = data.tasks; saveTasks(); }
       if (data.fixed) { fixed = Array.isArray(data.fixed) ? (store(K_FIXED_OLD, data.fixed), migrateFixed()) : data.fixed; saveFixed(); }
       if (data.checks) { checks = data.checks; saveChecks(); }
@@ -1197,10 +1312,13 @@
     } catch { toast('このファイルは読み込めませんでした'); }
   };
 
-  function renderAll() { renderHome(); renderMoney(); renderChecks(); }
-  saveFixed();
+  function renderAll() {
+    // 金額を入力している途中で描き直さない
+    const a = document.activeElement;
+    renderHome(); renderChecks();
+    if (!a?.matches?.('input.amt')) renderMoney(); else renderMoneySummary();
+  }
+  store(K_FIXED, fixed);
   renderAll();
 })();
 </script>
-</body>
-</html>
