@@ -75,13 +75,14 @@ const saveLocal = () => fs.writeFile(LOCAL, JSON.stringify(data)).catch((e) => c
 let gistId = process.env.GIST_ID || '';
 let backupTimer = null;
 let restored = !GITHUB_TOKEN; // コピーを読めるまでは上書きしない（空っぽで上書きして消えるのを防ぐ）
+let lastBackupAt = 0, lastBackupError = '';
 async function gh(url, opts = {}) {
   const res = await fetch((process.env.GITHUB_API || 'https://api.github.com') + url, {
     ...opts,
     headers: { Authorization: `Bearer ${GITHUB_TOKEN}`, Accept: 'application/vnd.github+json', 'User-Agent': 'yarukoto-board', ...(opts.body ? { 'Content-Type': 'application/json' } : {}) },
     signal: AbortSignal.timeout(20000),
   });
-  if (!res.ok) throw new Error(`GitHub ${res.status}`);
+  if (!res.ok) throw Object.assign(new Error(`GitHub ${res.status}`), { status: res.status });
   return res.json();
 }
 async function findGist() {
@@ -108,8 +109,15 @@ async function restoreFromGist() {
     }
     restored = true;
   } catch (e) {
-    console.error('GitHub のコピーを読めませんでした（1分後にもう一度）:', e.message);
-    setTimeout(restoreFromGist, 60 * 1000);
+    if (e.status === 401 || e.status === 403) {
+      // 鍵（GITHUB_TOKEN）が違う：読み直しても無理なので、コピーなしで動かす（画面の「設定」に注意を出す）
+      lastBackupError = 'GITHUB_TOKEN が正しくありません';
+      restored = true;
+      console.error('GITHUB_TOKEN が正しくないため、GitHub のコピーを使えません');
+      return;
+    }
+    console.error('GitHub のコピーを読めませんでした（30秒後にもう一度）:', e.message);
+    setTimeout(restoreFromGist, 30 * 1000);
   }
 }
 function scheduleBackup() {
@@ -124,7 +132,9 @@ async function backup() {
     const id = await findGist();
     if (id) await gh(`/gists/${id}`, { method: 'PATCH', body: JSON.stringify({ files: { [GIST_FILE]: { content } } }) });
     else gistId = (await gh('/gists', { method: 'POST', body: JSON.stringify({ description: 'やることボードのデータ（暗号化）', public: false, files: { [GIST_FILE]: { content } } }) })).id;
+    lastBackupAt = Date.now(); lastBackupError = '';
   } catch (e) {
+    lastBackupError = e.status === 401 || e.status === 403 ? 'GITHUB_TOKEN が正しくないか、gist の権限がありません' : e.message;
     console.error('GitHub にコピーを置けませんでした（あとでもう一度）:', e.message);
     backupTimer = setTimeout(backup, 5 * 60 * 1000);
   }
@@ -171,7 +181,7 @@ function readBody(req) {
 
 async function handleApi(req, res, url) {
   const route = `${req.method} ${url.pathname}`;
-  if (route === 'GET /api/status') return json(res, 200, { ok: true, loginRequired: !!PASSWORD, loggedIn: loggedIn(req), backup: !!GITHUB_TOKEN, restored });
+  if (route === 'GET /api/status') return json(res, 200, { ok: true, loginRequired: !!PASSWORD, loggedIn: loggedIn(req), backup: !!GITHUB_TOKEN, restored, lastBackupAt, lastBackupError });
   if (route === 'POST /api/login') {
     const body = await readBody(req);
     if (!PASSWORD || samePassword(body.password || '')) {
@@ -196,8 +206,13 @@ async function handleApi(req, res, url) {
   }
   if (!loggedIn(req)) return json(res, 401, { error: 'ログインしてください' });
 
+  // GitHub のコピーを読み込むまでは、読み書きさせない（空っぽの状態で端末の古いデータが上書きしないように）
+  if (url.pathname.startsWith('/api/board') && !restored) return json(res, 503, { error: 'データを読み込み中です' });
   if (route === 'GET /api/board') {
-    return json(res, 200, { docs: Object.fromEntries(DOCS.map((n) => [n, data[n]?.value ?? null])) });
+    return json(res, 200, {
+      docs: Object.fromEntries(DOCS.map((n) => [n, data[n]?.value ?? null])),
+      ts: Object.fromEntries(DOCS.map((n) => [n, data[n]?.ts || 0])),
+    });
   }
   const m = url.pathname.match(/^\/api\/board\/([a-z]+)$/);
   if (m && req.method === 'PUT') {
@@ -205,6 +220,11 @@ async function handleApi(req, res, url) {
     const value = await readBody(req);
     if (!value || typeof value !== 'object' || Array.isArray(value)) return json(res, 400, { error: '保存する内容が正しくありません' });
     const ts = Math.max(Date.now(), (data[m[1]]?.ts || 0) + 1);
+    // 端末が見ていた版（x-base-ts）より新しい版がサーバーにあれば、上書きせずに最新を返す
+    const base = Number(req.headers['x-base-ts'] || 0);
+    if (data[m[1]] && req.headers['x-base-ts'] != null && data[m[1]].ts > base) {
+      return json(res, 409, { ts: data[m[1]].ts, value: data[m[1]].value });
+    }
     data[m[1]] = { value, ts };
     saveLocal(); scheduleBackup();
     return json(res, 200, { ts });

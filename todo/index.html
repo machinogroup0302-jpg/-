@@ -580,6 +580,10 @@
       </form>
       <p class="note" id="mail-note"></p>
     </div>
+    <div class="card" id="sync-card" hidden>
+      <h2>パソコン・スマホの同期 <button class="btn small" id="sync-now">今すぐ同期</button></h2>
+      <p class="note" id="sync-info"></p>
+    </div>
     <div class="card">
       <h2>バックアップ</h2>
       <p class="note">ToDoリスト・スケジュール・支払い・チェックは、どの端末でも同じ内容になります。ID・パスワードだけはこのブラウザの中に暗号化して保存しているので、別の端末で使うときや念のための控えに、ファイルに保存しておいてください。</p>
@@ -707,7 +711,7 @@
   };
   const localValue = name => name === 'tasks' ? tasks : name === 'schedule' ? schedule : DOCS[name].get();
   const sync = {
-    db: null, remote: null, writing: {}, dirty: {}, last: {},
+    db: null, remote: null, writing: {}, dirty: {}, last: {}, ts: {},
     async push(name) {
       if (!this.db && !this.remote) return;
       if (this.writing[name]) { this.dirty[name] = true; return; }
@@ -718,8 +722,17 @@
           this.dirty[name] = false;
           const body = JSON.parse(JSON.stringify(DOCS[name].get()));
           this.last[name] = JSON.stringify(body);
-          if (this.db) await this.db.doc('board/' + name).set(body);
-          else await this.remote.save(name, body);
+          if (this.db) { await this.db.doc('board/' + name).set(body); continue; }
+          const r = await this.remote.save(name, body);
+          if (r.conflict) {
+            // ほかの端末が先に変えていた → 上書きせず、サーバーの最新に入れ替える
+            this.ts[name] = r.ts; this.last[name] = JSON.stringify(r.value);
+            DOCS[name].put(r.value); store(DOCS[name].key, localValue(name));
+            this.dirty[name] = false; renderAll();
+            toast('ほかの端末で変更があったので、最新の内容を読み込みました。もう一度入力してください');
+            break;
+          }
+          this.ts[name] = r.ts;
         } while (this.dirty[name]);
         status('');
       } catch (err) {
@@ -747,23 +760,37 @@
   }
   if (window.BOARD_SERVER) {
     sync.remote = {
-      async load() { return (await api('/api/board')).docs; },
-      save: (name, body) => api('/api/board/' + name, { method: 'PUT', body: JSON.stringify(body) }),
+      load: () => api('/api/board'),
+      // 何番目の内容をもとに変えたか（x-base-ts）を送る。サーバーの方が新しければ 409 で最新が返る
+      async save(name, body) {
+        const r = await fetch('/api/board/' + name, { method: 'PUT', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'x-base-ts': String(sync.ts[name] || 0) }, body: JSON.stringify(body) });
+        if (r.status === 401) { showLogin(); throw loginError(); }
+        if (r.status === 409) return { conflict: true, ...(await r.json()) };
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      },
     };
   }
   async function pullRemote(first) {
     try {
-      const all = await sync.remote.load();
+      const { docs: all, ts = {} } = await sync.remote.load();
       let changed = false;
       Object.keys(DOCS).forEach(name => {
         if (sync.writing[name]) return;
-        if (all[name]) { if (sync.apply(name, all[name])) changed = true; }
+        if (all[name]) { sync.ts[name] = ts[name] || 0; if (sync.apply(name, all[name])) changed = true; }
         // まだサーバーに無ければ、このブラウザの分を上げる
         else if (first && JSON.stringify(DOCS[name].get()) !== JSON.stringify(DOCS[name].empty)) sync.push(name);
       });
       if (changed) renderAll();
       if (!Object.values(sync.writing).some(Boolean)) status('');
-    } catch (err) { status(err?.code === 'login' ? 'ログインしてください' : '読み込めませんでした。通信を確認してください'); }
+      sync.lastPull = Date.now(); sync.pullError = '';
+    } catch (err) {
+      sync.pullError = err?.code === 'login' ? 'ログインしてください' : err?.message === 'HTTP 503' ? 'サーバーがデータを読み込み中です。少し待ってください' : '読み込めませんでした。通信を確認してください';
+      status(sync.pullError);
+      // 最初の読み込みに失敗したときは、早めにもう一度
+      if (first && err?.code !== 'login') setTimeout(() => pullRemote(true), 5000);
+    }
   }
   // ログイン（サーバーの BOARD_PASSWORD）
   function showLogin() {
@@ -784,9 +811,13 @@
   if (sync.remote) {
     status('読み込み中…');
     pullRemote(true);
-    // ほかの端末で変えた分を取り込む（画面に戻ったとき・1分ごと）
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) pullRemote(false); });
-    setInterval(() => { if (!document.hidden) pullRemote(false); }, 60000);
+    // ほかの端末で変えた分を取り込む（画面に戻ったとき・通信が戻ったとき・15秒ごと）
+    const pullNow = () => { if (!document.hidden) pullRemote(false); };
+    document.addEventListener('visibilitychange', pullNow);
+    window.addEventListener('focus', pullNow);
+    window.addEventListener('online', pullNow);
+    window.addEventListener('pageshow', pullNow);
+    setInterval(pullNow, 15000);
   }
 
   (async () => {
@@ -1584,6 +1615,23 @@
       ? 'メールは、Render に置いた やることボード で開いているときだけ届きます。'
       : settings.notify && settings.email ? `今は ${settings.email} に届く設定です。` : '今はメールを送らない設定です。';
   }
+  async function renderSyncInfo() {
+    if (!window.BOARD_SERVER) return;
+    $('sync-card').hidden = false;
+    const t = ms => ms ? new Date(ms).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+    let st = null;
+    try { st = await (await fetch('/api/status', { credentials: 'same-origin' })).json(); } catch {}
+    const lines = [
+      sync.pullError ? `⚠ ${sync.pullError}` : `最後に同期した時刻：${t(sync.lastPull)}（15秒ごとに自動で同期します）`,
+    ];
+    if (st && !st.backup) lines.push('⚠ データのコピー（GitHub）が設定されていません。Render の GITHUB_TOKEN を入れないと、サーバーが眠ったときにデータが消えます。');
+    else if (st?.lastBackupError) lines.push(`⚠ データのコピーに失敗しています（${st.lastBackupError}）。Render の GITHUB_TOKEN を確認してください。`);
+    else if (st) lines.push(`データのコピー（GitHub）：${st.lastBackupAt ? t(st.lastBackupAt) + ' に保存済み' : 'まだ変更がありません'}`);
+    $('sync-info').innerHTML = lines.map(esc).join('<br>');
+  }
+  $('sync-now').onclick = async () => { await pullRemote(false); renderSyncInfo(); toast('同期しました'); };
+  document.querySelector('nav button[data-view=backup]').addEventListener('click', renderSyncInfo);
+
   $('mail-form').addEventListener('submit', e => {
     e.preventDefault();
     const email = $('mail-email').value.trim(), notify = $('mail-on').checked;
