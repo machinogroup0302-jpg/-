@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>やることボード</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f4f6f9;
+    --card: #ffffff;
+    --text: #1d2733;
+    --muted: #5b6776;
+    --line: #e1e6ec;
+    --navy: #0d1b2a;
+    --accent: #f5c518;
+    --now: #e5484d;
+    --wait: #3e7bfa;
+    --share: #2f9e6e;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Zen Kaku Gothic New", "Hiragino Sans", "Noto Sans JP", sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.6;
+  }
+  header {
+    background: var(--navy); color: #fff; padding: 14px 16px;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  }
+  header h1 { font-size: 1.15rem; font-weight: 700; }
+  nav { display: flex; gap: 6px; }
+  nav button {
+    background: transparent; color: #cfd8e3; border: 1px solid #33465e;
+    padding: 6px 14px; border-radius: 999px; font: inherit; cursor: pointer;
+  }
+  nav button.active { background: var(--accent); color: var(--navy); border-color: var(--accent); font-weight: 700; }
+  main { max-width: 1200px; margin: 0 auto; padding: 16px; }
+  .grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 16px; align-items: start; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; }
+  .card h2 { font-size: 1rem; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
+  /* カレンダー */
+  .cal-head { display: flex; align-items: center; gap: 8px; }
+  .cal-head button { border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 2px 10px; cursor: pointer; font: inherit; }
+  .cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .cal .dow { font-size: .75rem; color: var(--muted); text-align: center; padding: 2px 0; }
+  .cal .dow:first-child { color: var(--now); }
+  .cal .dow:last-child { color: var(--wait); }
+  .day {
+    min-height: 82px; border: 1px solid var(--line); border-radius: 8px; padding: 4px;
+    font-size: .75rem; cursor: pointer; background: #fff; overflow: hidden;
+  }
+  .day.other { background: #fafbfc; color: #aab3be; }
+  .day.today { border: 2px solid var(--accent); }
+  .day.selected { background: #fff8d6; }
+  .day .num { font-weight: 700; margin-bottom: 2px; }
+  .chip {
+    display: block; border-radius: 4px; padding: 0 4px; margin-top: 2px; color: #fff;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: .7rem;
+  }
+  .chip.done { opacity: .4; text-decoration: line-through; }
+  @media (max-width: 600px) { .day { min-height: 56px; } .chip { font-size: .6rem; } }
+
+  /* フォーム */
+  form.add { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; }
+  form.add input[name=title] { grid-column: 1 / -1; }
+  form.add input, form.add select, form.add textarea {
+    font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; width: 100%;
+  }
+  form.add textarea { grid-column: 1 / -1; min-height: 44px; resize: vertical; }
+  form.add button {
+    grid-column: 1 / -1; background: var(--navy); color: #fff; border: 0; border-radius: 8px;
+    padding: 10px; font: inherit; font-weight: 700; cursor: pointer;
+  }
+
+  /* 種類タブ */
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .tabs button {
+    border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 4px 12px;
+    font: inherit; font-size: .85rem; cursor: pointer;
+  }
+  .tabs button.active { background: var(--navy); color: #fff; border-color: var(--navy); }
+  .tabs .count { font-size: .75rem; opacity: .7; margin-left: 4px; }
+  .filters { display: flex; gap: 8px; align-items: center; font-size: .85rem; color: var(--muted); margin-bottom: 10px; flex-wrap: wrap; }
+  .filters select { font: inherit; padding: 2px 6px; border: 1px solid var(--line); border-radius: 6px; }
+
+  /* リスト */
+  ul.tasks { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+  .task {
+    display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: start;
+    border: 1px solid var(--line); border-left: 5px solid var(--muted); border-radius: 8px; padding: 10px;
+  }
+  .task.now { border-left-color: var(--now); }
+  .task.wait { border-left-color: var(--wait); }
+  .task.share { border-left-color: var(--share); }
+  .task.done .t-title { text-decoration: line-through; color: var(--muted); }
+  .task input[type=checkbox] { width: 18px; height: 18px; margin-top: 3px; cursor: pointer; }
+  .t-title { font-weight: 700; word-break: break-word; }
+  .t-meta { font-size: .75rem; color: var(--muted); display: flex; gap: 8px; flex-wrap: wrap; margin-top: 2px; }
+  .t-memo { font-size: .8rem; color: var(--muted); margin-top: 4px; white-space: pre-wrap; }
+  .badge { border-radius: 4px; padding: 0 6px; color: #fff; font-size: .7rem; font-weight: 700; }
+  .pri-高 { background: var(--now); } .pri-中 { background: #f08c00; } .pri-低 { background: #8a96a3; }
+  .overdue { color: var(--now); font-weight: 700; }
+  .t-actions { display: flex; gap: 4px; }
+  .t-actions button { border: 0; background: transparent; cursor: pointer; color: var(--muted); font-size: .8rem; padding: 2px 4px; }
+  .t-actions button:hover { color: var(--text); }
+  .empty { color: var(--muted); font-size: .9rem; text-align: center; padding: 20px 0; }
+
+  .legend { display: flex; gap: 10px; font-size: .75rem; color: var(--muted); }
+  .legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; background: var(--c); }
+
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>やることボード</h1>
+  <nav>
+    <button data-view="home" class="active">スケジュール・やること</button>
+    <button data-view="money">お金管理</button>
+  </nav>
+</header>
+
+<main>
+  <!-- トップ：カレンダー＋やることリスト -->
+  <section id="view-home" class="grid">
+    <div class="card">
+      <h2>
+        <span class="cal-head">
+          <button id="prev" aria-label="前の月">‹</button>
+          <span id="month-label"></span>
+          <button id="next" aria-label="次の月">›</button>
+          <button id="today-btn">今日</button>
+        </span>
+        <span class="legend">
+          <span style="--c:var(--now)">すぐやる</span>
+          <span style="--c:var(--wait)">返事待ち</span>
+          <span style="--c:var(--share)">山川共有</span>
+        </span>
+      </h2>
+      <div class="cal" id="cal"></div>
+    </div>
+
+    <div class="card">
+      <h2>やることリスト</h2>
+      <form class="add" id="add-form">
+        <input name="title" placeholder="やることを入力" required>
+        <select name="category">
+          <option value="now">すぐやる</option>
+          <option value="wait">返事待ち</option>
+          <option value="share">山川共有</option>
+        </select>
+        <select name="priority">
+          <option value="高">優先度：高</option>
+          <option value="中" selected>優先度：中</option>
+          <option value="低">優先度：低</option>
+        </select>
+        <input name="due" type="date" title="期限（カレンダーに表示されます）" style="grid-column:1/-1">
+        <textarea name="memo" placeholder="メモ（任意）"></textarea>
+        <button type="submit" id="submit-btn">追加する</button>
+      </form>
+
+      <div class="tabs" id="tabs"></div>
+      <div class="filters">
+        <label>並び順
+          <select id="sort">
+            <option value="priority">優先度順</option>
+            <option value="due">期限が近い順</option>
+            <option value="created">追加した順</option>
+          </select>
+        </label>
+        <label><input type="checkbox" id="show-done"> 完了したものも表示</label>
+        <span id="day-filter"></span>
+      </div>
+      <ul class="tasks" id="list"></ul>
+    </div>
+  </section>
+
+  <!-- お金管理（準備中） -->
+  <section id="view-money" class="hidden">
+    <div class="card">
+      <h2>お金管理</h2>
+      <p class="empty">Googleスプレッドシートとの連携内容を確認中です。</p>
+    </div>
+  </section>
+</main>
+
+<script>
+(() => {
+  const KEY = 'yarukoto-tasks-v1';
+  const CATS = { now: 'すぐやる', wait: '返事待ち', share: '山川共有' };
+  const COLORS = { now: 'var(--now)', wait: 'var(--wait)', share: 'var(--share)' };
+  const PRI = { '高': 0, '中': 1, '低': 2 };
+
+  let tasks = load();
+  let cat = 'all';
+  let selectedDay = null;
+  let editingId = null;
+  const now = new Date();
+  let viewY = now.getFullYear(), viewM = now.getMonth();
+
+  const $ = id => document.getElementById(id);
+
+  function load() {
+    try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch { return []; }
+  }
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(tasks)); } catch {}
+  }
+  const ymd = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const todayStr = () => ymd(new Date());
+  const esc = s => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  // 画面切り替え
+  document.querySelectorAll('nav button').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('nav button').forEach(x => x.classList.toggle('active', x === b));
+    $('view-home').classList.toggle('hidden', b.dataset.view !== 'home');
+    $('view-money').classList.toggle('hidden', b.dataset.view !== 'money');
+  }));
+
+  // 追加・編集
+  $('add-form').addEventListener('submit', e => {
+    e.preventDefault();
+    const f = e.target;
+    const data = {
+      title: f.title.value.trim(),
+      category: f.category.value,
+      priority: f.priority.value,
+      due: f.due.value,
+      memo: f.memo.value.trim(),
+    };
+    if (!data.title) return;
+    if (editingId) {
+      Object.assign(tasks.find(t => t.id === editingId), data);
+      editingId = null;
+      $('submit-btn').textContent = '追加する';
+    } else {
+      tasks.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), done: false, created: Date.now(), ...data });
+    }
+    f.reset();
+    f.priority.value = '中';
+    if (cat !== 'all') f.category.value = cat;
+    if (selectedDay) f.due.value = selectedDay;
+    save(); render();
+  });
+
+  $('list').addEventListener('click', e => {
+    const li = e.target.closest('.task'); if (!li) return;
+    const t = tasks.find(x => x.id === li.dataset.id);
+    if (e.target.matches('input[type=checkbox]')) { t.done = e.target.checked; save(); render(); }
+    if (e.target.dataset.act === 'del' && confirm(`「${t.title}」を削除しますか？`)) {
+      tasks = tasks.filter(x => x !== t); save(); render();
+    }
+    if (e.target.dataset.act === 'edit') {
+      const f = $('add-form');
+      f.title.value = t.title; f.category.value = t.category; f.priority.value = t.priority;
+      f.due.value = t.due || ''; f.memo.value = t.memo || '';
+      editingId = t.id; $('submit-btn').textContent = '変更を保存';
+      f.title.focus();
+    }
+  });
+
+  $('sort').addEventListener('change', render);
+  $('show-done').addEventListener('change', render);
+  $('prev').addEventListener('click', () => { viewM--; if (viewM < 0) { viewM = 11; viewY--; } renderCal(); });
+  $('next').addEventListener('click', () => { viewM++; if (viewM > 11) { viewM = 0; viewY++; } renderCal(); });
+  $('today-btn').addEventListener('click', () => { const d = new Date(); viewY = d.getFullYear(); viewM = d.getMonth(); renderCal(); });
+
+  $('cal').addEventListener('click', e => {
+    const day = e.target.closest('.day'); if (!day) return;
+    selectedDay = selectedDay === day.dataset.date ? null : day.dataset.date;
+    $('add-form').due.value = selectedDay || '';
+    render();
+  });
+  $('day-filter').addEventListener('click', e => {
+    if (e.target.tagName === 'BUTTON') { selectedDay = null; $('add-form').due.value = ''; render(); }
+  });
+
+  function renderTabs() {
+    const open = tasks.filter(t => !t.done);
+    const items = [['all', 'すべて'], ...Object.entries(CATS)];
+    $('tabs').innerHTML = items.map(([k, label]) => {
+      const n = k === 'all' ? open.length : open.filter(t => t.category === k).length;
+      return `<button data-cat="${k}" class="${cat === k ? 'active' : ''}">${label}<span class="count">${n}</span></button>`;
+    }).join('');
+    $('tabs').querySelectorAll('button').forEach(b => b.onclick = () => {
+      cat = b.dataset.cat;
+      if (cat !== 'all') $('add-form').category.value = cat;
+      render();
+    });
+  }
+
+  function renderList() {
+    const showDone = $('show-done').checked;
+    const sort = $('sort').value;
+    let list = tasks.filter(t =>
+      (cat === 'all' || t.category === cat) &&
+      (showDone || !t.done) &&
+      (!selectedDay || t.due === selectedDay));
+    const dueKey = t => t.due || '9999-12-31';
+    list.sort((a, b) => {
+      if (a.done !== b.done) return a.done ? 1 : -1;
+      if (sort === 'priority') return PRI[a.priority] - PRI[b.priority] || dueKey(a).localeCompare(dueKey(b));
+      if (sort === 'due') return dueKey(a).localeCompare(dueKey(b)) || PRI[a.priority] - PRI[b.priority];
+      return a.created - b.created;
+    });
+
+    $('day-filter').innerHTML = selectedDay
+      ? `${selectedDay.replace(/-/g, '/')} の分だけ表示中 <button style="border:0;background:none;color:var(--wait);cursor:pointer;font:inherit">解除</button>`
+      : '';
+
+    const today = todayStr();
+    $('list').innerHTML = list.length ? list.map(t => {
+      const over = t.due && !t.done && t.due < today;
+      const dueTxt = t.due ? `期限 ${t.due.slice(5).replace('-', '/')}${t.due === today ? '（今日）' : ''}` : '期限なし';
+      return `<li class="task ${t.category} ${t.done ? 'done' : ''}" data-id="${t.id}">
+        <input type="checkbox" ${t.done ? 'checked' : ''} aria-label="完了">
+        <div>
+          <div class="t-title">${esc(t.title)}</div>
+          <div class="t-meta">
+            <span class="badge pri-${t.priority}">${t.priority}</span>
+            <span>${CATS[t.category]}</span>
+            <span class="${over ? 'overdue' : ''}">${over ? '⚠ ' : ''}${dueTxt}</span>
+          </div>
+          ${t.memo ? `<div class="t-memo">${esc(t.memo)}</div>` : ''}
+        </div>
+        <div class="t-actions">
+          <button data-act="edit">編集</button>
+          <button data-act="del">削除</button>
+        </div>
+      </li>`;
+    }).join('') : '<li class="empty">やることはありません</li>';
+  }
+
+  function renderCal() {
+    $('month-label').textContent = `${viewY}年${viewM + 1}月`;
+    const first = new Date(viewY, viewM, 1);
+    const start = new Date(viewY, viewM, 1 - first.getDay());
+    const today = todayStr();
+    let html = '日月火水木金土'.split('').map(d => `<div class="dow">${d}</div>`).join('');
+    for (let i = 0; i < 42; i++) {
+      const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+      const ds = ymd(d);
+      const dayTasks = tasks.filter(t => t.due === ds)
+        .sort((a, b) => a.done - b.done || PRI[a.priority] - PRI[b.priority]);
+      const chips = dayTasks.slice(0, 3).map(t =>
+        `<span class="chip ${t.done ? 'done' : ''}" style="background:${COLORS[t.category]}" title="${esc(t.title)}">${esc(t.title)}</span>`).join('');
+      const more = dayTasks.length > 3 ? `<span style="color:var(--muted)">+${dayTasks.length - 3}</span>` : '';
+      const cls = ['day', d.getMonth() !== viewM && 'other', ds === today && 'today', ds === selectedDay && 'selected'].filter(Boolean).join(' ');
+      html += `<div class="${cls}" data-date="${ds}"><div class="num">${d.getDate()}</div>${chips}${more}</div>`;
+    }
+    $('cal').innerHTML = html;
+  }
+
+  function render() { renderTabs(); renderList(); renderCal(); }
+  render();
+})();
+</script>
+</body>
+</html>
