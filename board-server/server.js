@@ -9,6 +9,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { buildDigest, tomorrowJst } from './digest.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 3000;
@@ -17,7 +18,7 @@ const SECRET = process.env.SESSION_SECRET || crypto.createHash('sha256').update(
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN || '';
 const GIST_FILE = 'yarukoto-board.enc.json';
 const LOCAL = process.env.DATA_FILE || path.join(os.tmpdir(), 'yarukoto-board.json');
-const DOCS = ['tasks', 'schedule', 'fixed', 'checks'];
+const DOCS = ['tasks', 'schedule', 'fixed', 'checks', 'settings'];
 const MAX_DOC = 1024 * 1024;
 
 // ---------------- 画面 ----------------
@@ -184,6 +185,14 @@ async function handleApi(req, res, url) {
   if (route === 'POST /api/logout') {
     res.setHeader('Set-Cookie', 'yb_session=; Path=/; Max-Age=0');
     return json(res, 200, { ok: true });
+  }
+  // 毎朝のメール用（GitHub Actions がパスワードを x-board-key に入れて呼ぶ）
+  if (route === 'GET /api/digest') {
+    if (!PASSWORD || !samePassword(req.headers['x-board-key'] || '')) return json(res, 401, { error: 'パスワードが違います' });
+    if (!restored) return json(res, 503, { error: 'データをまだ読み込めていません' });
+    const ds = /^\d{4}-\d{2}-\d{2}$/.test(url.searchParams.get('date') || '') ? url.searchParams.get('date') : tomorrowJst();
+    const site = `${req.headers['x-forwarded-proto'] || 'http'}://${req.headers.host}/`;
+    return json(res, 200, buildDigest(Object.fromEntries(DOCS.map((n) => [n, data[n]?.value])), ds, site));
   }
   if (!loggedIn(req)) return json(res, 401, { error: 'ログインしてください' });
 

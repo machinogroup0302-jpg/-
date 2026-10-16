@@ -282,7 +282,7 @@
     <button data-view="money">支払い</button>
     <button data-view="check">チェック</button>
     <button data-view="vault"><span class="lg">ID・パスワード</span><span class="sm">パス</span></button>
-    <button data-view="backup"><span class="lg">バックアップ</span><span class="sm">保存</span></button>
+    <button data-view="backup"><span class="lg">設定</span><span class="sm">設定</span></button>
   </nav>
 </header>
 
@@ -569,7 +569,18 @@
 
   <!-- バックアップ -->
   <section id="view-backup" class="hidden">
-    <div class="card" style="max-width:640px">
+    <div class="stack" style="max-width:640px">
+    <div class="card">
+      <h2>メールでお知らせ</h2>
+      <p class="note">毎朝7時ごろ、<b>次の日に予定や引き落としがあるとき</b>だけ、このアドレスにメールが届きます。</p>
+      <form class="add" id="mail-form" style="margin-top:10px">
+        <input name="email" id="mail-email" class="full" type="email" placeholder="例：yourname@gmail.com" autocomplete="email">
+        <label class="full" style="flex-direction:row;align-items:center;gap:8px;font-size:.9rem;color:var(--text)"><input type="checkbox" id="mail-on" style="width:auto"> メールで知らせる</label>
+        <div class="actions"><button type="submit">保存する</button></div>
+      </form>
+      <p class="note" id="mail-note"></p>
+    </div>
+    <div class="card">
       <h2>バックアップ</h2>
       <p class="note">ToDoリスト・スケジュール・支払い・チェックは、どの端末でも同じ内容になります。ID・パスワードだけはこのブラウザの中に暗号化して保存しているので、別の端末で使うときや念のための控えに、ファイルに保存しておいてください。</p>
       <p class="note" style="margin-top:6px">読み込むと、ファイルに入っている項目だけが置き換わります。</p>
@@ -577,6 +588,7 @@
         <button class="btn primary" id="export-btn">ファイルに保存</button>
         <label class="btn">ファイルから読み込む<input type="file" id="import-file" accept="application/json,.json" class="hidden"></label>
       </div>
+    </div>
     </div>
   </section>
 </main>
@@ -682,6 +694,7 @@
   let fixed = load(K_FIXED, { payees: [], amounts: {} });
   fixed.oneoffs ||= [];
   let checks = load(K_CHECKS, { items: [], cells: {} });
+  let settings = load('yarukoto-settings-v1', { email: '', notify: false });
 
   // ---------- 保存先：claude.ai で開いたときはどの端末でも同じデータ（db）、それ以外はこのブラウザ ----------
   // board/tasks・schedule・fixed・checks の4つの文書に丸ごと入れる。パスワードは db に入れない。
@@ -690,6 +703,7 @@
     schedule: { key: K_SCHED, get: () => ({ list: schedule }), put: d => { schedule = d.list || []; }, empty: { list: [] } },
     fixed: { key: K_FIXED, get: () => fixed, put: d => { fixed = { payees: d.payees || [], amounts: d.amounts || {}, oneoffs: d.oneoffs || [] }; }, empty: { payees: [], amounts: {}, oneoffs: [] } },
     checks: { key: K_CHECKS, get: () => checks, put: d => { checks = { items: d.items || [], cells: d.cells || {} }; }, empty: { items: [], cells: {} } },
+    settings: { key: 'yarukoto-settings-v1', get: () => settings, put: d => { settings = { email: d.email || '', notify: !!d.notify }; }, empty: { email: '', notify: false } },
   };
   const localValue = name => name === 'tasks' ? tasks : name === 'schedule' ? schedule : DOCS[name].get();
   const sync = {
@@ -1562,6 +1576,22 @@
     }).join('') : '<li class="empty">まだ登録がありません</li>';
   }
 
+  // ---------- メールでお知らせ ----------
+  function renderSettings() {
+    if (document.activeElement !== $('mail-email')) $('mail-email').value = settings.email;
+    $('mail-on').checked = settings.notify;
+    $('mail-note').textContent = !window.BOARD_SERVER
+      ? 'メールは、Render に置いた やることボード で開いているときだけ届きます。'
+      : settings.notify && settings.email ? `今は ${settings.email} に届く設定です。` : '今はメールを送らない設定です。';
+  }
+  $('mail-form').addEventListener('submit', e => {
+    e.preventDefault();
+    const email = $('mail-email').value.trim(), notify = $('mail-on').checked;
+    if (notify && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return toast('メールアドレスを確認してください');
+    settings = { email, notify };
+    save('settings'); renderSettings(); toast('保存しました');
+  });
+
   // ---------- バックアップ ----------
   $('export-btn').onclick = async () => {
     const data = { app: 'yarukoto', version: 3, savedAt: new Date().toISOString(), tasks, schedule, fixed, checks, vault: load(K_VAULT, null) };
@@ -1596,7 +1626,7 @@
   function renderAll() {
     // 金額を入力している途中で描き直さない
     const a = document.activeElement;
-    renderTodo(); renderSched(); renderChecks();
+    renderTodo(); renderSched(); renderChecks(); renderSettings();
     if (!a?.matches?.('input.amt')) renderMoney(); else renderMoneySummary();
   }
   resetEvForm();
