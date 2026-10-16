@@ -258,7 +258,7 @@
   <nav>
     <button data-view="todo" class="active">ToDoリスト</button>
     <button data-view="sched">スケジュール</button>
-    <button data-view="money">固定費</button>
+    <button data-view="money">支払い</button>
     <button data-view="check">チェック</button>
     <button data-view="vault">ID・パスワード</button>
     <button data-view="backup">バックアップ</button>
@@ -382,6 +382,31 @@
       <div class="grid2">
         <div class="card"><h2>法人<span class="note">金額はここで直接入力できます</span></h2><div class="scroll" id="fm-corp"></div></div>
         <div class="card"><h2>個人<span class="note">金額はここで直接入力できます</span></h2><div class="scroll" id="fm-personal"></div></div>
+      </div>
+      <div class="card">
+        <h2 id="oo-form-title">日にちが決まっている支払い（1回だけ）</h2>
+        <form class="add" id="oo-form">
+          <input name="name" id="oo-name" class="full" placeholder="例：自動車税、車検代" required>
+          <label>区分
+            <select name="owner" id="oo-owner"><option value="corp">法人</option><option value="personal">個人</option></select>
+          </label>
+          <label>日付
+            <input name="date" id="oo-date" type="date" required>
+          </label>
+          <label>金額（円）
+            <input name="amount" id="oo-amount" type="number" min="0" step="1" inputmode="numeric" required>
+          </label>
+          <label>支払い方法・メモ（任意）
+            <input name="method" id="oo-method">
+          </label>
+          <div class="actions">
+            <button type="submit">追加する</button>
+            <button type="button" class="btn danger del hidden">削除</button>
+            <button type="button" class="btn cancel hidden">やめる</button>
+          </div>
+        </form>
+        <div class="filters"><label><input type="checkbox" id="oo-show-past"> 過ぎたものも表示</label></div>
+        <div class="scroll" id="oo-list"></div>
       </div>
       <div>
         <button class="btn" id="fm-more-btn" aria-expanded="false">引き落とし予定と月ごとの一覧を表示</button>
@@ -525,7 +550,7 @@
   <section id="view-backup" class="hidden">
     <div class="card" style="max-width:640px">
       <h2>バックアップ</h2>
-      <p class="note">claude.ai で開いているときは、やること・スケジュール・固定費・チェックはどの端末でも同じ内容になります。ID・パスワードだけはこのブラウザの中に暗号化して保存しているので、別の端末で使うときや念のための控えに、ファイルに保存しておいてください。</p>
+      <p class="note">claude.ai で開いているときは、ToDoリスト・スケジュール・支払い・チェックはどの端末でも同じ内容になります。ID・パスワードだけはこのブラウザの中に暗号化して保存しているので、別の端末で使うときや念のための控えに、ファイルに保存しておいてください。</p>
       <p class="note" style="margin-top:6px">読み込むと、ファイルに入っている項目だけが置き換わります。</p>
       <div class="filters" style="margin-top:12px">
         <button class="btn primary" id="export-btn">ファイルに保存</button>
@@ -623,6 +648,7 @@
   let tasks = load(K_TASKS, []);
   let schedule = load(K_SCHED, []);
   let fixed = load(K_FIXED, { payees: [], amounts: {} });
+  fixed.oneoffs ||= [];
   let checks = load(K_CHECKS, { items: [], cells: {} });
 
   // ---------- 保存先：claude.ai で開いたときはどの端末でも同じデータ（db）、それ以外はこのブラウザ ----------
@@ -630,7 +656,7 @@
   const DOCS = {
     tasks: { key: K_TASKS, get: () => ({ list: tasks }), put: d => { tasks = d.list || []; }, empty: { list: [] } },
     schedule: { key: K_SCHED, get: () => ({ list: schedule }), put: d => { schedule = d.list || []; }, empty: { list: [] } },
-    fixed: { key: K_FIXED, get: () => fixed, put: d => { fixed = { payees: d.payees || [], amounts: d.amounts || {} }; }, empty: { payees: [], amounts: {} } },
+    fixed: { key: K_FIXED, get: () => fixed, put: d => { fixed = { payees: d.payees || [], amounts: d.amounts || {}, oneoffs: d.oneoffs || [] }; }, empty: { payees: [], amounts: {}, oneoffs: [] } },
     checks: { key: K_CHECKS, get: () => checks, put: d => { checks = { items: d.items || [], cells: d.cells || {} }; }, empty: { items: [], cells: {} } },
   };
   const localValue = name => name === 'tasks' ? tasks : name === 'schedule' ? schedule : DOCS[name].get();
@@ -722,6 +748,10 @@
         if (date && date >= from && date <= to) out.push({ date, p, amount });
       });
     }
+    // 1回だけの支払い
+    fixed.oneoffs.forEach(o => {
+      if (o.date >= from && o.date <= to && +o.amount) out.push({ date: o.date, p: { name: o.name, owner: o.owner, method: o.method }, amount: +o.amount, oneoff: true });
+    });
     return out.sort((x, y) => x.date.localeCompare(y.date) || y.amount - x.amount);
   }
   const dayLabel = p => !p.day ? '日付未定' : (+p.shift ? '翌月' : '') + (p.day === 'end' ? '末日' : `${p.day}日`);
@@ -937,7 +967,7 @@
     const today = todayStr();
     $('sched-upcoming').innerHTML = fixed.payees.length
       ? payTable(paymentsBetween(today, addDays(today, 13)), true)
-      : '<p class="empty">固定費が未登録です。「固定費」から登録してください。</p>';
+      : '<p class="empty">支払いが未登録です。「支払い」から登録してください。</p>';
     const k = mkey(now.getFullYear(), now.getMonth());
     const todo = checks.items.filter(it => !checks.cells[`${it.id}|${k}`]).length;
     $('sched-check').innerHTML = checks.items.length
@@ -1006,15 +1036,17 @@
     f.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
   const isFixed = p => +p.fixedAmount > 0;
+  const oneoffsIn = k => fixed.oneoffs.filter(x => x.date.slice(0, 7) === k).sort((a, b) => a.date.localeCompare(b.date));
   function monthTotals(k) {
     const t = {};
     ['corp', 'personal'].forEach(o => {
       const ps = fixed.payees.filter(p => p.owner === o);
       t[o + 'Fixed'] = sum(ps.filter(isFixed), p => amountOf(p, k));
       t[o + 'Var'] = sum(ps.filter(p => !isFixed(p)), p => amountOf(p, k));
-      t[o] = t[o + 'Fixed'] + t[o + 'Var'];
+      t[o + 'Once'] = sum(oneoffsIn(k).filter(x => x.owner === o), x => +x.amount);
+      t[o] = t[o + 'Fixed'] + t[o + 'Var'] + t[o + 'Once'];
     });
-    t.allFixed = t.corpFixed + t.personalFixed; t.allVar = t.corpVar + t.personalVar;
+    t.allFixed = t.corpFixed + t.personalFixed; t.allVar = t.corpVar + t.personalVar; t.allOnce = t.corpOnce + t.personalOnce;
     t.all = t.corp + t.personal;
     return t;
   }
@@ -1035,6 +1067,12 @@
           <td class="num"><input class="amt ${set == null && !isFixed(p) ? 'missing' : ''}" inputmode="numeric" data-id="${p.id}" value="${set != null ? set : ''}" placeholder="${p.fixedAmount && k >= (p.fixedFrom || '') ? p.fixedAmount : 0}" aria-label="${esc(p.name)}の金額"></td>
         </tr>`;
       }).join('') +
+      (() => {
+        const os = oneoffsIn(k).filter(x => x.owner === owner);
+        return os.length ? `<tr><td colspan="3" class="note" style="padding-top:10px"><b>1回だけ</b></td></tr>` + os.map(x => `<tr>
+          <td><button class="linkbtn" data-oo="${x.id}">${esc(x.name)}</button>${x.method ? `<div class="note">${esc(x.method)}</div>` : ''}</td>
+          <td>${md(x.date)}</td><td class="num">${yen(x.amount)}</td></tr>`).join('') : '';
+      })() +
       `<tr class="sum last"><td colspan="2">${OWNERS[owner]} 合計</td><td class="num" id="fs-${owner}"></td></tr></tbody></table>`;
   }
   ['fm-corp', 'fm-personal'].forEach(id => {
@@ -1048,23 +1086,29 @@
       e.target.classList.toggle('missing', raw === '' && !isFixed(p));
       save('fixed'); renderMoneySummary(); renderSched();
     });
-    $(id).addEventListener('click', e => { if (e.target.dataset.edit) editPayee(e.target.dataset.edit); });
+    $(id).addEventListener('click', e => {
+      if (e.target.dataset.edit) editPayee(e.target.dataset.edit);
+      if (e.target.dataset.oo) editOneoff(e.target.dataset.oo);
+    });
   });
   // 入力欄はそのままにして、合計や一覧だけ描き直す
   function renderMoneySummary() {
     const k = mkey(fmY, fmM), t = monthTotals(k), today = todayStr();
     // この月の分のうち、まだ引き落とされていないもの（翌月払いを含む）
-    const rest = fixed.payees.filter(p => amountOf(p, k) && (payDate(p, fmY, fmM) || '9999') >= today);
+    const rest = [
+      ...fixed.payees.filter(p => amountOf(p, k) && (payDate(p, fmY, fmM) || '9999') >= today).map(p => ({ owner: p.owner, amount: amountOf(p, k) })),
+      ...oneoffsIn(k).filter(x => x.date >= today).map(x => ({ owner: x.owner, amount: +x.amount })),
+    ];
     const showRest = k <= mkey(now.getFullYear(), now.getMonth());
-    const card = (cls, label, total, fixedPart, varPart, owner) => {
+    const card = (cls, label, total, fixedPart, varPart, oncePart, owner) => {
       const r = rest.filter(p => !owner || p.owner === owner);
       return `<div class="total ${cls}"><div class="label">${label}</div><div class="yen">${yen(total)}</div>
-        <div class="sub">毎月固定 ${yen(fixedPart)} ／ 変動 ${yen(varPart)}</div>
-        ${showRest && r.length ? `<div class="sub">この月の分で まだ引き落とされていない：${yen(sum(r, p => amountOf(p, k)))}</div>` : ''}</div>`;
+        <div class="sub">毎月固定 ${yen(fixedPart)} ／ 変動 ${yen(varPart)}${oncePart ? ` ／ 1回だけ ${yen(oncePart)}` : ''}</div>
+        ${showRest && r.length ? `<div class="sub">この月の分で まだ引き落とされていない：${yen(sum(r, p => p.amount))}</div>` : ''}</div>`;
     };
-    $('fm-totals').innerHTML = card('corp', '法人 合計', t.corp, t.corpFixed, t.corpVar, 'corp') +
-      card('personal', '個人 合計', t.personal, t.personalFixed, t.personalVar, 'personal') +
-      card('', '法人・個人 合計', t.all, t.allFixed, t.allVar, '');
+    $('fm-totals').innerHTML = card('corp', '法人 合計', t.corp, t.corpFixed, t.corpVar, t.corpOnce, 'corp') +
+      card('personal', '個人 合計', t.personal, t.personalFixed, t.personalVar, t.personalOnce, 'personal') +
+      card('', '法人・個人 合計', t.all, t.allFixed, t.allVar, t.allOnce, '');
     ['corp', 'personal'].forEach(o => { const el = $('fs-' + o); if (el) el.textContent = yen(t[o]); });
     const up = paymentsBetween(today, addDays(today, 29));
     $('up-corp').innerHTML = payTable(up.filter(p => p.p.owner === 'corp'));
@@ -1082,7 +1126,50 @@
     const tr = e.target.closest('tr[data-m]'); if (!tr) return;
     fmM = +tr.dataset.m; renderMoney(); window.scrollTo({ top: 0, behavior: 'smooth' });
   });
+  // ---- 1回だけの支払い ----
+  const ooForm = $('oo-form');
+  let editingOo = null;
+  function resetOoForm() {
+    ooForm.reset(); editingOo = null;
+    formMode(ooForm, false, $('oo-form-title'), '日にちが決まっている支払い（1回だけ）', '1回だけの支払いを編集');
+  }
+  function editOneoff(id) {
+    const x = fixed.oneoffs.find(o => o.id === id), f = ooForm;
+    ['name', 'owner', 'date', 'amount', 'method'].forEach(k => f[k].value = x[k] ?? '');
+    editingOo = id; formMode(f, true, $('oo-form-title'), '日にちが決まっている支払い（1回だけ）', '1回だけの支払いを編集');
+    f.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+  ooForm.addEventListener('submit', e => {
+    e.preventDefault();
+    const f = ooForm;
+    const data = { name: f.name.value.trim(), owner: f.owner.value, date: f.date.value, amount: Math.round(+f.amount.value || 0), method: f.method.value.trim() };
+    if (!data.name || !data.date) return;
+    if (editingOo) Object.assign(fixed.oneoffs.find(o => o.id === editingOo), data);
+    else fixed.oneoffs.push({ id: uid(), ...data });
+    save('fixed'); resetOoForm(); renderAll(); toast('保存しました');
+  });
+  ooForm.querySelector('.cancel').onclick = resetOoForm;
+  ooForm.querySelector('.del').onclick = async () => {
+    const x = fixed.oneoffs.find(o => o.id === editingOo);
+    if (!x || !await ask(`「${x.name}」を削除しますか？`)) return;
+    fixed.oneoffs = fixed.oneoffs.filter(o => o !== x);
+    save('fixed'); resetOoForm(); renderAll();
+  };
+  $('oo-show-past').addEventListener('change', () => renderOneoffs());
+  $('oo-list').addEventListener('click', e => { if (e.target.dataset.oo) editOneoff(e.target.dataset.oo); });
+  function renderOneoffs() {
+    const today = todayStr(), showPast = $('oo-show-past').checked;
+    const list = fixed.oneoffs.filter(x => showPast || x.date >= today).sort((a, b) => a.date.localeCompare(b.date));
+    $('oo-list').innerHTML = list.length
+      ? `<table class="pay"><thead><tr><th>日付</th><th>区分</th><th>支払い</th><th class="num">金額</th></tr></thead><tbody>${list.map(x => `<tr>
+          <td>${x.date.slice(0, 4)}/${md(x.date)}</td><td><span class="badge b-${x.owner}">${OWNERS[x.owner]}</span></td>
+          <td><button class="linkbtn" data-oo="${x.id}">${esc(x.name)}</button>${x.method ? `<div class="note">${esc(x.method)}</div>` : ''}</td>
+          <td class="num">${yen(x.amount)}</td></tr>`).join('')}</tbody></table>`
+      : '<p class="empty">これからの1回だけの支払いはありません</p>';
+  }
+
   function renderMoney() {
+    renderOneoffs();
     $('fm-label').textContent = `${fmY}年${fmM + 1}月`;
     $('fm-corp').innerHTML = renderOwnerTable('corp');
     $('fm-personal').innerHTML = renderOwnerTable('personal');
@@ -1407,7 +1494,7 @@
     try {
       const data = JSON.parse(await file.text());
       if (data.app !== 'yarukoto') throw 0;
-      const parts = [data.tasks && 'やること', data.schedule && 'スケジュール', data.fixed && '固定費', data.checks && 'チェック', data.vault && 'ID・パスワード'].filter(Boolean);
+      const parts = [data.tasks && 'ToDoリスト', data.schedule && 'スケジュール', data.fixed && '支払い', data.checks && 'チェック', data.vault && 'ID・パスワード'].filter(Boolean);
       if (!parts.length || !await ask(`「${parts.join('・')}」をファイルの内容で置き換えます。よろしいですか？`, '置き換える')) return;
       if (data.tasks) { tasks = data.tasks.filter(t => !t.due); save('tasks'); }
       if (data.schedule) { schedule = data.schedule; save('schedule'); }
