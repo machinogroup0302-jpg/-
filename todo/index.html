@@ -1108,7 +1108,7 @@
         <ul class="ck-list">${items.map(it => {
           const c = checks.cells[`${it.id}|${k}`], url = safeUrl(it.url);
           const cls = !c ? 'todo' : c.issue ? 'issue' : c.paid ? 'paid' : 'ok';
-          const label = !c ? 'まだ' : `${c.issue ? '⚠ ' : '✓ '}${c.date ? md(c.date) : ''}${c.paid ? ' 支払いあり' : ''}`;
+          const label = !c ? 'まだ' : `${c.issue ? '⚠ ' : '✓ '}${c.date ? md(c.date) : '確認済み'}${c.paid ? ' 支払いあり' : ''}`;
           return `<li class="ck-row">
             <div class="ck-name"><button class="linkbtn" data-item="${it.id}">${esc(it.name)}</button>${url ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">ログイン ↗</a>` : ''}</div>
             <button class="pill ${cls}" data-cell="${it.id}|${k}">${label}</button>
