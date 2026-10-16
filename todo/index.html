@@ -70,29 +70,6 @@
   header h1 { font-size: 1.15rem; font-weight: 700; }
   nav { display: flex; gap: 6px; flex-wrap: wrap; }
   nav .sm { display: none; }
-  /* スマホ：メニューは画面の下に固定（親指で押せるように） */
-  @media (max-width: 700px) {
-    header { padding-block: 10px; }
-    nav {
-      position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
-      display: grid; grid-template-columns: repeat(6, 1fr); gap: 2px;
-      background: var(--bar); border-top: 1px solid var(--bar-line);
-      padding: 6px max(4px, env(safe-area-inset-right, 0px)) calc(6px + env(safe-area-inset-bottom, 0px)) max(4px, env(safe-area-inset-left, 0px));
-    }
-    header nav button { border: 0; border-radius: 8px; padding: 9px 0; font-size: .72rem; white-space: nowrap; min-width: 0; overflow: hidden; }
-    nav .lg { display: none; }
-    nav .sm { display: inline; }
-    main { padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
-    .toast { bottom: calc(80px + env(safe-area-inset-bottom, 0px)); }
-    /* iPhone で入力欄を押したときに画面が拡大されないように */
-    input, select, textarea { font-size: 16px !important; }
-    .card { padding: 14px; }
-    .total { padding: 10px 12px; }
-    .total .yen { font-size: 1.25rem; }
-    /* ToDoリストは追加欄を上に */
-    #view-todo > .card:last-child { order: -1; }
-    #view-todo { display: flex; flex-direction: column; align-items: stretch; }
-  }
   nav button {
     background: transparent; color: var(--bar-text); border: 1px solid var(--bar-line);
     padding: 6px 14px; border-radius: 999px; font: inherit; cursor: pointer;
@@ -273,6 +250,29 @@
   .hidden { display: none !important; }
   :focus-visible { outline: 2px solid var(--wait); outline-offset: 2px; }
   @media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
+  /* スマホ：メニューは画面の下に固定（親指で押せるように） */
+  @media (max-width: 700px) {
+    header { padding-block: 10px; }
+    nav {
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+      display: grid; grid-template-columns: repeat(6, 1fr); gap: 2px;
+      background: var(--bar); border-top: 1px solid var(--bar-line);
+      padding: 6px max(4px, env(safe-area-inset-right, 0px)) calc(6px + env(safe-area-inset-bottom, 0px)) max(4px, env(safe-area-inset-left, 0px));
+    }
+    header nav button { border: 0; border-radius: 8px; padding: 9px 0; font-size: .72rem; white-space: nowrap; min-width: 0; overflow: hidden; }
+    nav .lg { display: none; }
+    nav .sm { display: inline; }
+    main { padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
+    .toast { bottom: calc(80px + env(safe-area-inset-bottom, 0px)); }
+    /* iPhone で入力欄を押したときに画面が拡大されないように */
+    input, select, textarea { font-size: 16px !important; }
+    .card { padding: 14px; }
+    .total { padding: 10px 12px; }
+    .total .yen { font-size: 1.25rem; }
+    /* ToDoリストは追加欄を上に */
+    #view-todo > .card:last-child { order: -1; }
+    #view-todo { display: flex; flex-direction: column; align-items: stretch; }
+  }
 </style>
 <header>
   <h1>やることボード <span class="sync" id="sync"></span></h1>
