@@ -1165,12 +1165,14 @@ function initHoldForm() {
     if (!files.length) return;
     // 「保有商品一覧（現物）」と「信用建玉一覧」のように、いくつかのCSVをまとめて読める
     const found = { stock: [], us: [], fx: [] };
-    let rate = null;
+    let rate = null, marginCash = null, freeCash = null;
     try {
       for (const f of files) {
         const one = parseHoldingsCsv(decodeFile(await f.arrayBuffer()), { lotSize: getProfile().fxLotSize || 10000 });
         for (const m of Object.keys(found)) found[m].push(...(one[m] || []));
         if (one.marginRate != null) rate = one.marginRate;
+        if (one.marginCash != null) marginCash = one.marginCash;
+        if (one.freeCash != null) freeCash = one.freeCash;
       }
     } catch (err) { box.innerHTML = `<p class="small error">読み込めませんでした（${esc(err.message)}）</p>`; return; }
     const NAME = { stock: '日本株', us: '米国株', fx: '為替' };
@@ -1178,7 +1180,7 @@ function initHoldForm() {
     if (!modes.length) { box.innerHTML = '<p class="small error">持っている銘柄が見つかりませんでした。「保有商品一覧」や「建玉一覧」のCSVか確かめてください。</p>'; return; }
     box.innerHTML = `${modes.map((m) => `<p class="small" style="margin:4px 0"><b>${NAME[m]}：${found[m].length}銘柄</b><br>${found[m].map((x) => `${esc(x.name)}${m === 'fx' ? '' : `（${esc(x.code)}）`} ${x.side < 0 ? '売り' : ''}${x.acct === 'margin' ? '信用' : ''} ${Number(x.price).toLocaleString()} × ${Number(x.qty).toLocaleString()}`).join('<br>')}</p>`).join('')}
       ${found.stock.length ? `<div class="stat" style="margin-top:8px">
-        <label class="plan-buy-check"><input type="checkbox" id="imp-budget" checked><span><b>予算も、このCSVに合わせて自動で決める</b>（日本株）${rate != null ? `<br><span class="small muted">保証金率 ${rate}% も読み取りました。信用の保証金は、これから毎日自動で計算します。</span>` : ''}</span></label>
+        <label class="plan-buy-check"><input type="checkbox" id="imp-budget" checked><span><b>予算も、このCSVに合わせて自動で決める</b>（日本株）${rate != null ? `<br><span class="small muted">保証金率 ${rate}%${marginCash != null ? `・保証金の現金 ${Number(marginCash).toLocaleString()}円` : ''} も読み取りました。信用の保証金は、これから毎日自動で計算します。</span>` : ''}</span></label>
         <p class="small muted" style="margin:6px 0 0">何も入れなくてOKです。CSVだけで、予算・保証金・今使えるお金を計算します。</p>
         <details class="small" style="margin-top:4px"><summary class="muted">現物用の現金を、保証金とは別に置いているとき</summary>
           <div class="row" style="margin-top:6px"><label class="small muted" style="min-width:8em">現物で使える現金</label><input class="input grow" id="imp-free" inputmode="numeric" value="0"><span class="small muted">円</span></div>
@@ -1200,7 +1202,8 @@ function initHoldForm() {
       let msg = '';
       if (found.stock.length && $('imp-budget')?.checked) {
         const num = (id) => { const t = String($(id)?.value ?? '').normalize('NFKC').replace(/[,，円\s]/g, ''); return t === '' || !Number.isFinite(Number(t)) ? null : Number(t); };
-        const st = setupFromCsv(getHoldings('stock'), { rate, cashDeposit: num('imp-dep'), cashFree: num('imp-free') || 0 });
+        // 「資産残高（全体）」CSVがあれば、保証金の現金と預り金はそこから（ピッタリ合う）
+        const st = setupFromCsv(getHoldings('stock'), { rate, cashDeposit: marginCash ?? num('imp-dep'), cashFree: freeCash ?? (num('imp-free') || 0) });
         const p0 = getProfile();
         // 為替・米国株の予算が別になっていなければ、今までの予算をそちらに残しておく
         const next = { ...p0, budget: st.budget };

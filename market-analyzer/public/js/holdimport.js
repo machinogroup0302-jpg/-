@@ -85,6 +85,12 @@ export function parseHoldingsCsv(text, { lotSize = 10000 } = {}) {
     }
     out[m] = [...map.values()];
   }
+  // 楽天証券の「資産残高（全体）」CSVにある、保証金の現金と預り金（現物で使える現金）
+  for (const row of rows) {
+    const c0 = String(row[0] || '').trim();
+    if (c0 === '国内株式信用保証金' && Number.isFinite(toNumber(row[1]))) out.marginCash = toNumber(row[1]);
+    if (c0 === '預り金' && Number.isFinite(toNumber(row[1]))) out.freeCash = toNumber(row[1]);
+  }
   // 楽天証券の信用建玉一覧の上の方にある「保証金率［％］,"37.09"」
   for (const row of rows) {
     const cells = row.map((c) => String(c || '').trim());
