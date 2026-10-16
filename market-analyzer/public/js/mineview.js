@@ -522,7 +522,8 @@ function calcBasis(mode, r, use) {
   const cal = getProfile().marginCal?.[mode];
   const parts = ms.map((x) => `${esc(x.h.name)} ${fmtPrice(x.now, mode === 'stock' ? 0 : digitsOf(mode))}円${at(x.h) ? `（${md(at(x.h))}の終値）` : ''}`);
   if (!parts.length && !cal) return '';
-  return `<p class="small muted" style="margin:6px 0 0">🔎 計算に使った値段：${parts.join('・') || '—'}${cal ? `／CSVを読み込んだ日：${esc(cal.date.slice(5).replace('-', '/'))}（そのあと楽天証券で売買・入金・出金したら、CSVを読み込み直すと合います）` : ''}</p>`;
+  const old = cal && (Date.now() - Date.parse(`${cal.date}T00:00:00+09:00`)) / 86400000 >= 7;
+  return `${old ? `<p class="small" style="margin:6px 0 0;color:var(--warn)">📅 CSVを読み込んでから1週間以上たっています。楽天証券で売買や入出金をしていたら、CSVを2つ読み込み直してください（ズレがなくなります）。</p>` : ''}<p class="small muted" style="margin:6px 0 0">🔎 計算に使った値段：${parts.join('・') || '—'}${cal ? `／CSVを読み込んだ日：${esc(cal.date.slice(5).replace('-', '/'))}（そのあと楽天証券で売買・入金・出金したら、CSVを読み込み直すと合います）` : ''}</p>`;
 }
 
 // 💰 今使えるお金：むずかしい計算は裏でやって、わかりやすい数字だけ出す
