@@ -72,7 +72,9 @@
      "signalTime": 1791849600,
      "signalPrice": 6280,
      "sentAt": "2026-10-13T07:58:42.655Z",
-     "how": "信用で買う：100株"
+     "how": "信用で買う：100株",
+     "entryPrice": 6320,
+     "entryTime": 1792022400
     },
     "swing|5537.T": {
      "kind": "swing",
