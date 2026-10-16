@@ -194,6 +194,7 @@
   table.pay tr.cur td { background: var(--hl); }
   table.pay .zero { color: var(--faint); }
   table.pay input.amt { background: var(--field); color: var(--text); }
+  table.pay input.amt.missing { background: var(--todo); border-color: var(--orange); }
   .soon { color: var(--now); font-weight: 700; }
 
   /* カレンダーの引き落とし（法人・個人の合計） */
@@ -376,7 +377,7 @@
           <button class="btn" id="fm-copy">前の月と同じ金額を入れる（空欄だけ）</button>
         </h2>
         <div class="totals" id="fm-totals"></div>
-        <p class="note" style="margin-top:8px">金額はシートの行（月）ごとに入れます。「翌月」の支払先は、次の月の引き落とし日でカレンダーに出ます（例：10月分の家賃 → 11/3）。「毎月固定」の支払先は、空欄の月にもその金額が入ります。</p>
+        <p class="note" style="margin-top:8px">黄色の欄は、この月の金額がまだ入っていない支払先です。金額はシートの行（月）ごとに入れます。「翌月」の支払先は、次の月の引き落とし日でカレンダーに出ます（例：10月分の家賃 → 11/3）。「毎月固定」の支払先は、空欄の月にもその金額が入ります。</p>
       </div>
       <div class="grid2">
         <div class="card"><h2>法人<span class="note">金額はここで直接入力できます</span></h2><div class="scroll" id="fm-corp"></div></div>
@@ -1019,7 +1020,7 @@
   }
   function renderOwnerTable(owner) {
     const k = mkey(fmY, fmM);
-    const list = fixed.payees.filter(p => p.owner === owner).sort((a, b) => isFixed(b) - isFixed(a) || daySort(a) - daySort(b));
+    const list = fixed.payees.filter(p => p.owner === owner).sort((a, b) => isFixed(a) - isFixed(b) || daySort(a) - daySort(b));
     if (!list.length) return '<p class="empty">支払先がありません</p>';
     let lastGroup = null;
     return `<table class="pay"><thead><tr><th>支払先</th><th>引き落とし日</th><th class="num">金額</th></tr></thead><tbody>` +
@@ -1031,7 +1032,7 @@
         return head + `<tr>
           <td><button class="linkbtn" data-edit="${p.id}">${esc(p.name)}</button>${p.method ? `<div class="note">${esc(p.method)}</div>` : ''}</td>
           <td><span class="${p.day ? '' : 'note'}">${dayLabel(p)}</span></td>
-          <td class="num"><input class="amt" inputmode="numeric" data-id="${p.id}" value="${set != null ? set : ''}" placeholder="${p.fixedAmount && k >= (p.fixedFrom || '') ? p.fixedAmount : 0}" aria-label="${esc(p.name)}の金額"></td>
+          <td class="num"><input class="amt ${set == null && !isFixed(p) ? 'missing' : ''}" inputmode="numeric" data-id="${p.id}" value="${set != null ? set : ''}" placeholder="${p.fixedAmount && k >= (p.fixedFrom || '') ? p.fixedAmount : 0}" aria-label="${esc(p.name)}の金額"></td>
         </tr>`;
       }).join('') +
       `<tr class="sum last"><td colspan="2">${OWNERS[owner]} 合計</td><td class="num" id="fs-${owner}"></td></tr></tbody></table>`;
@@ -1043,6 +1044,8 @@
       const a = fixed.amounts[mkey(fmY, fmM)] ||= {};
       if (raw === '') delete a[e.target.dataset.id]; else a[e.target.dataset.id] = +raw;
       e.target.value = raw;
+      const p = fixed.payees.find(x => x.id === e.target.dataset.id);
+      e.target.classList.toggle('missing', raw === '' && !isFixed(p));
       save('fixed'); renderMoneySummary(); renderSched();
     });
     $(id).addEventListener('click', e => { if (e.target.dataset.edit) editPayee(e.target.dataset.edit); });
