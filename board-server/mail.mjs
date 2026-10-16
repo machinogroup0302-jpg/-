@@ -1,5 +1,5 @@
 // 毎朝のメール（GitHub Actions から動かす）
-// やることボードのサイトに「明日の予定・引き落とし」を聞いて、あればメールで送る
+// やることボードのサイトに「2日後の予定・引き落とし」を聞いて、あればメールで送る
 // 必要な GitHub Secrets:
 //   BOARD_URL      … やることボードのURL（例 https://yarukoto-board.onrender.com）
 //   BOARD_PASSWORD … やることボードのパスワード（Render と同じもの）
@@ -35,7 +35,7 @@ async function getDigest() {
 const d = await getDigest();
 console.log(`${d.date}: 予定・引き落とし ${d.count}件 / 宛先 ${d.to ? 'あり' : 'なし'}`);
 if (!d.to) { console.log('サイトの「設定」でメールが登録されていないか、オフになっています'); process.exit(0); }
-if (!d.count && !TEST_MAIL) { console.log('明日は何もないので送りません'); process.exit(0); }
+if (!d.count && !TEST_MAIL) { console.log('2日後は何もないので送りません'); process.exit(0); }
 if (!MAIL_USER || !MAIL_PASS) { console.log('MAIL_USER・MAIL_PASS が登録されていないため送れません'); process.exit(1); }
 
 const nodemailer = (await import('nodemailer')).default;

@@ -1,4 +1,4 @@
-// 「明日の予定・引き落とし」のまとめ（毎朝のメール用）
+// 「2日後の予定・引き落とし」のまとめ（毎朝のメール用）
 // 画面（todo/index.html）と同じ決まりで計算する
 const YEN = (n) => '¥' + Math.round(n).toLocaleString('ja-JP');
 const OWNERS = { corp: '法人', personal: '個人' };
@@ -9,9 +9,11 @@ const mkey = (y, m) => `${y}-${pad(m + 1)}`;
 const parse = (s) => new Date(s + 'T00:00:00Z');
 const lastOf = (y, m) => new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
 
-export function tomorrowJst(now = Date.now()) {
+// 何日後の日付か（日本時間）。メールは2日前に知らせる
+export const DAYS_AHEAD = 2;
+export function aheadJst(days = DAYS_AHEAD, now = Date.now()) {
   const d = new Date(now + 9 * 3600 * 1000);
-  d.setUTCDate(d.getUTCDate() + 1);
+  d.setUTCDate(d.getUTCDate() + days);
   return ymd(d);
 }
 
@@ -66,7 +68,7 @@ export function buildDigest({ schedule, fixed, settings }, ds, siteUrl = '') {
   const pays = paymentsOn(fixed || {}, ds);
   const d = parse(ds);
   const label = `${d.getUTCMonth() + 1}月${d.getUTCDate()}日（${'日月火水木金土'[d.getUTCDay()]}）`;
-  const lines = [`明日 ${label} のお知らせです。`, ''];
+  const lines = [`2日後（あさって）${label} のお知らせです。`, ''];
   if (evs.length) {
     lines.push('■ 予定');
     for (const ev of evs) lines.push(`・${ev.time ? ev.time + ' ' : ''}${ev.title}${ev.memo ? `（${ev.memo}）` : ''}`);
@@ -82,10 +84,10 @@ export function buildDigest({ schedule, fixed, settings }, ds, siteUrl = '') {
     }
     lines.push('');
   }
-  if (!evs.length && !pays.length) lines.push('明日は予定も引き落としもありません。', '');
+  if (!evs.length && !pays.length) lines.push('この日は予定も引き落としもありません。', '');
   if (siteUrl) lines.push(siteUrl);
   const total = pays.reduce((s, p) => s + p.amount, 0);
-  const subject = `【やることボード】明日${label}：` +
+  const subject = `【やることボード】あさって${label}：` +
     ([evs.length && `予定${evs.length}件`, pays.length && `引き落とし ${YEN(total)}`].filter(Boolean).join('・') || '予定・引き落としなし');
   return {
     date: ds,
