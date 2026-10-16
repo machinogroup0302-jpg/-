@@ -13,11 +13,10 @@ const BRANCH = process.env.PREFS_BRANCH || 'claude/trusting-planck-dsasvf';
 const BACKUP_PATH = 'alerts/prefs.json';
 const LOCAL = path.join(os.tmpdir(), 'ma-prefs.json');
 const SECRET = process.env.PREFS_KEY || process.env.SITE_PASSWORD || '';
-export const SYNC_KEY = /^(favs_(fx|stock|us)|holdings_(fx|stock|us)|trades_(fx|stock|us)|profile|push|board_(tasks|schedule|fixed|checks))$/;
+export const SYNC_KEY = /^(favs_(fx|stock|us)|holdings_(fx|stock|us)|trades_(fx|stock|us)|profile|push)$/;
 const USERS = '__users';
 const MAX_SIZE = 200 * 1024;
 const MAX_TRADES_SIZE = 4 * 1024 * 1024;
-const MAX_BOARD_SIZE = 1024 * 1024; // やることボード（/board/）の1項目あたり
 export const ADMIN = 'admin';
 
 // { 保存キー: { value, ts } }  保存キーは admin なら "profile"、ほかの人は "taro|profile"
@@ -174,13 +173,6 @@ const numOrNull = (x) => (x == null || x === '' || !Number.isFinite(Number(x)) ?
 
 function cleanValue(key, value) {
   if (key === 'profile') return cleanProfile(value);
-  if (key.startsWith('board_')) {
-    // やることボード：画面が作った JSON の形をそのまま保存する（中身は画面側で扱う）
-    if (!value || typeof value !== 'object' || Array.isArray(value)) throw bad('保存する内容が正しくありません');
-    const s = JSON.stringify(value);
-    if (s.length > MAX_BOARD_SIZE) throw bad('保存する量が多すぎます');
-    return JSON.parse(s);
-  }
   if (key === 'push') {
     // 通知を送る先（スマホ・パソコンのブラウザ）：https の宛先と、暗号の鍵だけを保存（10台まで）
     if (!Array.isArray(value)) throw bad('保存する内容が正しくありません');
