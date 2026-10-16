@@ -571,7 +571,7 @@
   <section id="view-backup" class="hidden">
     <div class="card" style="max-width:640px">
       <h2>バックアップ</h2>
-      <p class="note">claude.ai で開いているときは、ToDoリスト・スケジュール・支払い・チェックはどの端末でも同じ内容になります。ID・パスワードだけはこのブラウザの中に暗号化して保存しているので、別の端末で使うときや念のための控えに、ファイルに保存しておいてください。</p>
+      <p class="note">ToDoリスト・スケジュール・支払い・チェックは、どの端末でも同じ内容になります。ID・パスワードだけはこのブラウザの中に暗号化して保存しているので、別の端末で使うときや念のための控えに、ファイルに保存しておいてください。</p>
       <p class="note" style="margin-top:6px">読み込むと、ファイルに入っている項目だけが置き換わります。</p>
       <div class="filters" style="margin-top:12px">
         <button class="btn primary" id="export-btn">ファイルに保存</button>
@@ -610,6 +610,17 @@
     <button class="btn" id="cki-cancel">閉じる</button>
     <button class="btn primary" id="cki-save">保存</button>
   </div>
+</dialog>
+
+<dialog id="login-dialog">
+  <form id="login-form">
+    <h3>やることボード</h3>
+    <p class="note" style="margin-bottom:10px">相場分析サイトと同じ ID・パスワードでログインしてください。持ち主は ID を空のままで大丈夫です。</p>
+    <div class="row"><label for="login-id">ID（持ち主は空のまま）</label><input id="login-id" autocomplete="username" autocapitalize="none"></div>
+    <div class="row"><label for="login-pass">パスワード</label><input id="login-pass" type="password" autocomplete="current-password" required></div>
+    <p class="note" id="login-err" style="color:var(--now);min-height:1.2em"></p>
+    <div class="btns"><button class="btn primary" type="submit">ログイン</button></div>
+  </form>
 </dialog>
 
 <dialog id="ask-dialog">
@@ -682,23 +693,23 @@
   };
   const localValue = name => name === 'tasks' ? tasks : name === 'schedule' ? schedule : DOCS[name].get();
   const sync = {
-    db: null, gas: false, writing: {}, dirty: {}, last: {},
+    db: null, remote: null, writing: {}, dirty: {}, last: {},
     async push(name) {
-      if (!this.db && !this.gas) return;
+      if (!this.db && !this.remote) return;
       if (this.writing[name]) { this.dirty[name] = true; return; }
       this.writing[name] = true;
-      if (this.gas) status('保存中…');
+      if (this.remote) status('保存中…');
       try {
         do {
           this.dirty[name] = false;
           const body = JSON.parse(JSON.stringify(DOCS[name].get()));
           this.last[name] = JSON.stringify(body);
           if (this.db) await this.db.doc('board/' + name).set(body);
-          else await gasRun('saveDoc', name, this.last[name]);
+          else await this.remote.save(name, body);
         } while (this.dirty[name]);
         status('');
       } catch (err) {
-        status(err?.code === 'quota_exceeded' ? '保存容量がいっぱいです' : '保存できませんでした。通信を確認してください');
+        status(err?.code === 'quota_exceeded' ? '保存容量がいっぱいです' : err?.code === 'login' ? 'ログインしてください' : '保存できませんでした。通信を確認してください');
       } finally { this.writing[name] = false; }
     },
     apply(name, data) {
@@ -712,34 +723,64 @@
   const save = name => { store(DOCS[name].key, localValue(name)); sync.push(name); };
   function status(msg) { $('sync').textContent = msg; }
 
-  // Google Apps Script（スプレッドシート）で開いたとき：データはそのスプレッドシートに保存
-  const gasRun = (fn, ...args) => new Promise((res, rej) =>
-    google.script.run.withSuccessHandler(res).withFailureHandler(rej)[fn](...args));
-  async function pullGas(first) {
+  // ---- 相場分析サイトの /board/ で開いたとき：データはそのサイトのサーバーに保存 ----
+  const loginError = () => Object.assign(new Error('login'), { code: 'login' });
+  async function api(path, opts = {}) {
+    const r = await fetch(path, { credentials: 'same-origin', ...opts, headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) } });
+    if (r.status === 401) { showLogin(); throw loginError(); }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.json();
+  }
+  if (window.BOARD_SERVER) {
+    // 相場分析サイトの「設定」の保存場所に board_◯◯ として入れる（サイトのパスワードで守られる）
+    sync.remote = {
+      async load() {
+        const { items } = await api('/api/prefs');
+        return Object.fromEntries(Object.keys(DOCS).map(n => [n, items['board_' + n]?.value ?? null]));
+      },
+      save: (name, body) => api('/api/prefs', { method: 'PUT', body: JSON.stringify({ key: 'board_' + name, value: body }) }),
+    };
+  }
+  async function pullRemote(first) {
     try {
-      const all = await gasRun('loadAll');
+      const all = await sync.remote.load();
       let changed = false;
       Object.keys(DOCS).forEach(name => {
         if (sync.writing[name]) return;
-        if (all[name]) { if (sync.apply(name, JSON.parse(all[name]))) changed = true; }
-        // まだスプレッドシートに無ければ、このブラウザの分を上げる
+        if (all[name]) { if (sync.apply(name, all[name])) changed = true; }
+        // まだサーバーに無ければ、このブラウザの分を上げる
         else if (first && JSON.stringify(DOCS[name].get()) !== JSON.stringify(DOCS[name].empty)) sync.push(name);
       });
       if (changed) renderAll();
       if (!Object.values(sync.writing).some(Boolean)) status('');
-    } catch { status('スプレッドシートに接続できませんでした'); }
+    } catch (err) { status(err?.code === 'login' ? 'ログインしてください' : '読み込めませんでした。通信を確認してください'); }
   }
-  if (window.google?.script?.run) {
-    sync.gas = true;
+  // ログイン（相場分析サイトと同じ ID・パスワード）
+  function showLogin() {
+    const d = $('login-dialog');
+    if (!d || d.open) return;
+    $('login-err').textContent = '';
+    d.showModal(); $('login-pass').focus();
+  }
+  $('login-form')?.addEventListener('submit', async e => {
+    e.preventDefault();
+    try {
+      const r = await fetch('/api/login', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: $('login-id').value.trim(), password: $('login-pass').value }) });
+      if (!r.ok) { $('login-err').textContent = 'IDかパスワードが違います'; return; }
+      $('login-pass').value = ''; $('login-dialog').close(); pullRemote(true);
+    } catch { $('login-err').textContent = '通信できませんでした'; }
+  });
+  if (sync.remote) {
     status('読み込み中…');
-    pullGas(true);
+    pullRemote(true);
     // ほかの端末で変えた分を取り込む（画面に戻ったとき・1分ごと）
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) pullGas(false); });
-    setInterval(() => { if (!document.hidden) pullGas(false); }, 60000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) pullRemote(false); });
+    setInterval(() => { if (!document.hidden) pullRemote(false); }, 60000);
   }
 
   (async () => {
-    if (sync.gas) return;
+    if (sync.remote) return;
     const db = await window.claude?.use?.('db');
     if (!db) return;
     sync.db = db;
