@@ -740,6 +740,9 @@
   fcForm.day.innerHTML = '<option value="">未定</option>' +
     Array.from({ length: 31 }, (_, i) => `<option value="${i + 1}">${i + 1}日</option>`).join('') + '<option value="end">月末</option>';
 
+  // 前半はその月、後半は翌月に引き落とされるのが基本
+  fcForm.half.addEventListener('change', () => { fcForm.shift.value = fcForm.half.value === 'late' ? 1 : 0; });
+
   const shiftMonth = n => { const d = new Date(fmY, fmM + n, 1); fmY = d.getFullYear(); fmM = d.getMonth(); renderMoney(); };
   $('fm-prev').onclick = () => shiftMonth(-1);
   $('fm-next').onclick = () => shiftMonth(1);
@@ -902,7 +905,7 @@
         if (seen[name] > 1) name += `(${seen[name]})`;
         let p = fixed.payees.find(x => x.owner === sec.owner && x.name === name);
         if (!p) { fixed.payees.push(p = { id: uid(), name, owner: sec.owner, half: 'early', day: '', shift: 0, method: '' }); payeesAdded++; }
-        return { j, p, votes: { early: 0, late: 0 } };
+        return { j, p, isNew: !p.day && !p.shift, votes: { early: 0, late: 0 } };
       });
       rows.slice(hi + 1).forEach(r => {
         const mm = (r[sec.monthCol] || '').match(/(\d{4})\D+(\d{1,2})/);
@@ -924,7 +927,10 @@
         if (count !== 1) return;
         nz.forEach(([, i], b) => payees[i].votes[(found & (1 << b)) ? 'early' : 'late']++);
       });
-      payees.forEach(x => { if ((x.votes.early || x.votes.late) && x.p.half !== 'tbd') x.p.half = x.votes.late > x.votes.early ? 'late' : 'early'; });
+      payees.forEach(x => { if ((x.votes.early || x.votes.late) && x.p.half !== 'tbd') {
+        x.p.half = x.votes.late > x.votes.early ? 'late' : 'early';
+        if (x.isNew) x.p.shift = x.p.half === 'late' ? 1 : 0;
+      } });
     });
     return { months, payeesAdded };
   }
