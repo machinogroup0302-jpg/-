@@ -682,21 +682,23 @@
   };
   const localValue = name => name === 'tasks' ? tasks : name === 'schedule' ? schedule : DOCS[name].get();
   const sync = {
-    db: null, writing: {}, dirty: {}, last: {},
+    db: null, gas: false, writing: {}, dirty: {}, last: {},
     async push(name) {
-      if (!this.db) return;
+      if (!this.db && !this.gas) return;
       if (this.writing[name]) { this.dirty[name] = true; return; }
       this.writing[name] = true;
+      if (this.gas) status('保存中…');
       try {
         do {
           this.dirty[name] = false;
           const body = JSON.parse(JSON.stringify(DOCS[name].get()));
           this.last[name] = JSON.stringify(body);
-          await this.db.doc('board/' + name).set(body);
+          if (this.db) await this.db.doc('board/' + name).set(body);
+          else await gasRun('saveDoc', name, this.last[name]);
         } while (this.dirty[name]);
         status('');
       } catch (err) {
-        status(err?.code === 'quota_exceeded' ? '保存容量がいっぱいです' : 'クラウドに保存できませんでした');
+        status(err?.code === 'quota_exceeded' ? '保存容量がいっぱいです' : '保存できませんでした。通信を確認してください');
       } finally { this.writing[name] = false; }
     },
     apply(name, data) {
@@ -709,7 +711,35 @@
   };
   const save = name => { store(DOCS[name].key, localValue(name)); sync.push(name); };
   function status(msg) { $('sync').textContent = msg; }
+
+  // Google Apps Script（スプレッドシート）で開いたとき：データはそのスプレッドシートに保存
+  const gasRun = (fn, ...args) => new Promise((res, rej) =>
+    google.script.run.withSuccessHandler(res).withFailureHandler(rej)[fn](...args));
+  async function pullGas(first) {
+    try {
+      const all = await gasRun('loadAll');
+      let changed = false;
+      Object.keys(DOCS).forEach(name => {
+        if (sync.writing[name]) return;
+        if (all[name]) { if (sync.apply(name, JSON.parse(all[name]))) changed = true; }
+        // まだスプレッドシートに無ければ、このブラウザの分を上げる
+        else if (first && JSON.stringify(DOCS[name].get()) !== JSON.stringify(DOCS[name].empty)) sync.push(name);
+      });
+      if (changed) renderAll();
+      if (!Object.values(sync.writing).some(Boolean)) status('');
+    } catch { status('スプレッドシートに接続できませんでした'); }
+  }
+  if (window.google?.script?.run) {
+    sync.gas = true;
+    status('読み込み中…');
+    pullGas(true);
+    // ほかの端末で変えた分を取り込む（画面に戻ったとき・1分ごと）
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) pullGas(false); });
+    setInterval(() => { if (!document.hidden) pullGas(false); }, 60000);
+  }
+
   (async () => {
+    if (sync.gas) return;
     const db = await window.claude?.use?.('db');
     if (!db) return;
     sync.db = db;
