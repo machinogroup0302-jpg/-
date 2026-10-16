@@ -258,7 +258,7 @@
     <button data-view="todo" class="active">やること</button>
     <button data-view="sched">スケジュール</button>
     <button data-view="money">固定費</button>
-    <button data-view="check">引き落としチェック</button>
+    <button data-view="check">チェック</button>
     <button data-view="vault">ID・パスワード</button>
     <button data-view="backup">バックアップ</button>
   </nav>
@@ -335,6 +335,15 @@
             <label>時間（任意）
               <input name="time" id="ev-time" type="time">
             </label>
+            <label class="full">くり返し
+              <select name="repeat" id="ev-repeat">
+                <option value="">なし</option>
+                <option value="weekly">毎週（同じ曜日）</option>
+                <option value="monthly">毎月（同じ日）</option>
+                <option value="monthend">毎月（月末）</option>
+                <option value="yearly">毎年（同じ日）</option>
+              </select>
+            </label>
             <textarea name="memo" id="ev-memo" class="full" placeholder="メモ（任意）"></textarea>
             <div class="actions">
               <button type="submit">追加する</button>
@@ -345,8 +354,8 @@
           <ul class="tasks" id="ev-list"></ul>
         </div>
         <div class="card">
-          <h2>これからの引き落とし（2週間）<button class="btn small" data-goto="money">固定費を見る</button></h2>
-          <div id="sched-upcoming"></div>
+          <h2>これからの引き落とし（2週間）<button class="btn small" id="sched-up-btn" aria-expanded="false">表示する</button></h2>
+          <div id="sched-upcoming" class="hidden"></div>
           <p class="note" id="sched-check" style="margin-top:10px"></p>
         </div>
       </div>
@@ -788,7 +797,7 @@
   evForm.addEventListener('submit', e => {
     e.preventDefault();
     const f = evForm;
-    const data = { title: f.title.value.trim(), date: f.date.value, time: f.time.value, memo: f.memo.value.trim() };
+    const data = { title: f.title.value.trim(), date: f.date.value, time: f.time.value, repeat: f.repeat.value, memo: f.memo.value.trim() };
     if (!data.title || !data.date) return;
     if (editingEv) Object.assign(schedule.find(x => x.id === editingEv), data);
     else schedule.push({ id: uid(), done: false, created: Date.now(), ...data });
@@ -799,13 +808,22 @@
   async function onEvClick(e) {
     const li = e.target.closest('.task'); if (!li) return;
     const ev = schedule.find(x => x.id === li.dataset.id);
-    if (e.target.matches('input[type=checkbox]')) { ev.done = e.target.checked; save('schedule'); renderSched(); }
-    if (e.target.dataset.act === 'del' && await ask(`「${ev.title}」を削除しますか？`)) {
+    if (e.target.matches('input[type=checkbox]')) {
+      // くり返しの予定は、その日の分だけ「終わった」にする
+      const on = li.dataset.on;
+      if (ev.repeat && on) {
+        const set = new Set(ev.doneDates || []);
+        e.target.checked ? set.add(on) : set.delete(on);
+        ev.doneDates = [...set];
+      } else ev.done = e.target.checked;
+      save('schedule'); renderSched();
+    }
+    if (e.target.dataset.act === 'del' && await ask(ev.repeat ? `くり返しの予定「${ev.title}」を全部削除しますか？` : `「${ev.title}」を削除しますか？`)) {
       schedule = schedule.filter(x => x !== ev); save('schedule'); renderSched();
     }
     if (e.target.dataset.act === 'edit') {
       const f = evForm;
-      ['title', 'date', 'time', 'memo'].forEach(k => f[k].value = ev[k] || '');
+      ['title', 'date', 'time', 'repeat', 'memo'].forEach(k => f[k].value = ev[k] || '');
       editingEv = ev.id; formMode(f, true, $('ev-form-title'), '予定を追加', '予定を編集');
       f.scrollIntoView({ behavior: 'smooth', block: 'center' }); f.title.focus();
     }
@@ -822,13 +840,37 @@
     renderSched();
   });
 
-  const evItem = ev => {
-    const today = todayStr(), over = !ev.done && ev.date < today;
-    return `<li class="task ${ev.done ? 'done' : ''}" data-id="${ev.id}" style="border-left-color:var(--wait)">
-      <input type="checkbox" ${ev.done ? 'checked' : ''} aria-label="終わった">
+  // くり返しの予定がその日にあるか
+  function occursOn(ev, ds) {
+    if (!ev.repeat) return ev.date === ds;
+    if (ds < ev.date) return false;
+    const a = new Date(ev.date + 'T00:00:00'), b = new Date(ds + 'T00:00:00');
+    const lastOf = d => new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+    if (ev.repeat === 'weekly') return a.getDay() === b.getDay();
+    if (ev.repeat === 'monthend') return b.getDate() === lastOf(b);
+    if (ev.repeat === 'yearly' && a.getMonth() !== b.getMonth()) return false;
+    // 31日などがない月は末日にする
+    return b.getDate() === Math.min(a.getDate(), lastOf(b));
+  }
+  const isDone = (ev, ds) => ev.repeat ? (ev.doneDates || []).includes(ds) : !!ev.done;
+  const eventsOn = ds => schedule.filter(ev => occursOn(ev, ds))
+    .sort((a, b) => isDone(a, ds) - isDone(b, ds) || (a.time || '').localeCompare(b.time || ''));
+  const repeatLabel = ev => {
+    const d = new Date(ev.date + 'T00:00:00');
+    return { weekly: `毎週${'日月火水木金土'[d.getDay()]}曜`, monthly: `毎月${d.getDate()}日`, monthend: '毎月末', yearly: `毎年${d.getMonth() + 1}/${d.getDate()}` }[ev.repeat] || '';
+  };
+  // on：その日の分として出すとき（くり返しの予定はその日だけ終わりにできる）
+  const evItem = (ev, on) => {
+    const today = todayStr(), done = on ? isDone(ev, on) : !!ev.done, over = !ev.repeat && !done && ev.date < today;
+    const check = ev.repeat && !on ? '<span></span>' : `<input type="checkbox" ${done ? 'checked' : ''} aria-label="終わった">`;
+    const when = ev.repeat
+      ? `🔁 ${repeatLabel(ev)}${on ? '' : `（${md(ev.date)}から）`}`
+      : `${over ? '⚠ ' : ''}${md(ev.date)}${ev.date === today ? '（今日）' : ''}`;
+    return `<li class="task ${done ? 'done' : ''}" data-id="${ev.id}" ${on ? `data-on="${on}"` : ''} style="border-left-color:var(--wait)">
+      ${check}
       <div>
         <div class="t-title">${esc(ev.title)}</div>
-        <div class="t-meta"><span class="${over ? 'overdue' : ''}">${over ? '⚠ ' : ''}${md(ev.date)}${ev.date === today ? '（今日）' : ''}${ev.time ? ' ' + ev.time : ''}</span></div>
+        <div class="t-meta"><span class="${over ? 'overdue' : ''}">${when}${ev.time ? ' ' + ev.time : ''}</span></div>
         ${ev.memo ? `<div class="t-memo">${esc(ev.memo)}</div>` : ''}
       </div>
       <div class="t-actions"><button data-act="edit">編集</button><button data-act="del">削除</button></div>
@@ -853,8 +895,8 @@
       const t = dayTotals(pays.filter(p => p.date === ds));
       const lines = ['corp', 'personal'].filter(o => t[o].total).map(o =>
         `<div class="payline" style="--c:${INK[o]}" title="${esc(t[o].names.join('\n'))}"><span class="full">${OWNERS[o]}</span><span class="short">${OWNERS[o][0]}</span><span class="full">${yen(t[o].total)}</span><span class="short">${man(t[o].total)}</span></div>`).join('');
-      const evs = schedule.filter(ev => ev.date === ds).sort((a, b) => a.done - b.done || (a.time || '').localeCompare(b.time || ''));
-      const chips = evs.slice(0, 2).map(ev => `<span class="chip ev ${ev.done ? 'done' : ''}" title="${esc(ev.title)}">${esc(ev.title)}</span>`).join('') +
+      const evs = eventsOn(ds);
+      const chips = evs.slice(0, 2).map(ev => `<span class="chip ev ${isDone(ev, ds) ? 'done' : ''}" title="${esc(ev.title)}">${esc(ev.title)}</span>`).join('') +
         (evs.length > 2 ? `<span style="color:var(--muted)">+${evs.length - 2}</span>` : '');
       const cls = ['day', d.getMonth() !== viewM && 'other', ds === today && 'today', ds === selectedDay && 'selected'].filter(Boolean).join(' ');
       html += `<div class="${cls}" data-date="${ds}"><div class="num">${d.getDate()}</div>${lines}${chips}</div>`;
@@ -866,13 +908,13 @@
     box.classList.toggle('hidden', !selectedDay);
     if (selectedDay) {
       const dp = paymentsBetween(selectedDay, selectedDay);
-      const evs = schedule.filter(ev => ev.date === selectedDay);
+      const evs = eventsOn(selectedDay);
       box.innerHTML = `<b>${md(selectedDay)} の予定と引き落とし</b>` +
         ['corp', 'personal'].map(o => {
           const ps = dp.filter(p => p.p.owner === o);
           return ps.length ? `<div><span class="badge b-${o}">${OWNERS[o]}</span> <b>${yen(sum(ps, p => p.amount))}</b>　<span class="note">${ps.map(p => `${esc(p.p.name)} ${yen(p.amount)}`).join('、')}</span></div>` : '';
         }).join('') +
-        (evs.length ? `<ul class="tasks" style="margin-top:6px">${evs.map(evItem).join('')}</ul>` : (dp.length ? '' : '<span class="note">予定も引き落としもありません</span>'));
+        (evs.length ? `<ul class="tasks" style="margin-top:6px">${evs.map(ev => evItem(ev, selectedDay)).join('')}</ul>` : (dp.length ? '' : '<span class="note">予定も引き落としもありません</span>'));
     }
   }
   function payTable(pays, withOwner) {
@@ -887,8 +929,10 @@
   function renderSched() {
     renderCal();
     const showDone = $('ev-show-done').checked;
-    const list = schedule.filter(ev => showDone || !ev.done).sort((a, b) => a.done - b.done || a.date.localeCompare(b.date) || (a.time || '').localeCompare(b.time || ''));
-    $('ev-list').innerHTML = list.length ? list.map(evItem).join('') : '<li class="empty">予定はありません</li>';
+    const once = schedule.filter(ev => !ev.repeat && (showDone || !ev.done)).sort((a, b) => a.done - b.done || a.date.localeCompare(b.date) || (a.time || '').localeCompare(b.time || ''));
+    const rep = schedule.filter(ev => ev.repeat).sort((a, b) => a.date.localeCompare(b.date));
+    $('ev-list').innerHTML = (once.length ? once.map(ev => evItem(ev)).join('') : '<li class="empty">予定はありません</li>') +
+      (rep.length ? `<li class="note" style="margin-top:6px">くり返しの予定</li>${rep.map(ev => evItem(ev)).join('')}` : '');
     const today = todayStr();
     $('sched-upcoming').innerHTML = fixed.payees.length
       ? payTable(paymentsBetween(today, addDays(today, 13)), true)
@@ -896,9 +940,14 @@
     const k = mkey(now.getFullYear(), now.getMonth());
     const todo = checks.items.filter(it => !checks.cells[`${it.id}|${k}`]).length;
     $('sched-check').innerHTML = checks.items.length
-      ? `今月の引き落としチェック：${todo ? `<b class="overdue">まだ ${todo}件</b>` : '全部確認済み ✓'}　<button class="btn small" data-goto2="check">チェックを開く</button>`
+      ? `今月のチェック：${todo ? `<b class="overdue">まだ ${todo}件</b>` : '全部確認済み ✓'}　<button class="btn small" data-goto2="check">チェックを開く</button>`
       : '';
   }
+  $('sched-up-btn').onclick = () => {
+    const open = $('sched-upcoming').classList.toggle('hidden') === false;
+    $('sched-up-btn').textContent = open ? '隠す' : '表示する';
+    $('sched-up-btn').setAttribute('aria-expanded', open);
+  };
   $('sched-check').addEventListener('click', e => { if (e.target.dataset.goto2) show('check'); });
 
   // ---------- 固定費 ----------
@@ -955,22 +1004,33 @@
     editingFc = id; formMode(f, true, $('fc-form-title'), '支払先を追加', '支払先を編集');
     f.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
+  const isFixed = p => +p.fixedAmount > 0;
   function monthTotals(k) {
     const t = {};
-    ['corp', 'personal'].forEach(o => t[o] = sum(fixed.payees.filter(p => p.owner === o), p => amountOf(p, k)));
+    ['corp', 'personal'].forEach(o => {
+      const ps = fixed.payees.filter(p => p.owner === o);
+      t[o + 'Fixed'] = sum(ps.filter(isFixed), p => amountOf(p, k));
+      t[o + 'Var'] = sum(ps.filter(p => !isFixed(p)), p => amountOf(p, k));
+      t[o] = t[o + 'Fixed'] + t[o + 'Var'];
+    });
+    t.allFixed = t.corpFixed + t.personalFixed; t.allVar = t.corpVar + t.personalVar;
     t.all = t.corp + t.personal;
     return t;
   }
   function renderOwnerTable(owner) {
     const k = mkey(fmY, fmM);
-    const list = fixed.payees.filter(p => p.owner === owner).sort((a, b) => daySort(a) - daySort(b));
+    const list = fixed.payees.filter(p => p.owner === owner).sort((a, b) => isFixed(b) - isFixed(a) || daySort(a) - daySort(b));
     if (!list.length) return '<p class="empty">支払先がありません</p>';
+    let lastGroup = null;
     return `<table class="pay"><thead><tr><th>支払先</th><th>引き落とし日</th><th class="num">金額</th></tr></thead><tbody>` +
       list.map(p => {
+        const g = isFixed(p) ? '毎月固定' : '毎月入力（変動）';
+        const head = g !== lastGroup ? `<tr><td colspan="3" class="note" style="padding-top:10px"><b>${g}</b></td></tr>` : '';
+        lastGroup = g;
         const set = fixed.amounts[k]?.[p.id];
-        return `<tr>
+        return head + `<tr>
           <td><button class="linkbtn" data-edit="${p.id}">${esc(p.name)}</button>${p.method ? `<div class="note">${esc(p.method)}</div>` : ''}</td>
-          <td><span class="${p.day ? '' : 'note'}">${dayLabel(p)}</span>${p.fixedAmount ? '<div class="note">毎月固定</div>' : ''}</td>
+          <td><span class="${p.day ? '' : 'note'}">${dayLabel(p)}</span></td>
           <td class="num"><input class="amt" inputmode="numeric" data-id="${p.id}" value="${set != null ? set : ''}" placeholder="${p.fixedAmount && k >= (p.fixedFrom || '') ? p.fixedAmount : 0}" aria-label="${esc(p.name)}の金額"></td>
         </tr>`;
       }).join('') +
@@ -993,12 +1053,15 @@
     // この月の分のうち、まだ引き落とされていないもの（翌月払いを含む）
     const rest = fixed.payees.filter(p => amountOf(p, k) && (payDate(p, fmY, fmM) || '9999') >= today);
     const showRest = k <= mkey(now.getFullYear(), now.getMonth());
-    const card = (cls, label, total, owner) => {
+    const card = (cls, label, total, fixedPart, varPart, owner) => {
       const r = rest.filter(p => !owner || p.owner === owner);
       return `<div class="total ${cls}"><div class="label">${label}</div><div class="yen">${yen(total)}</div>
+        <div class="sub">毎月固定 ${yen(fixedPart)} ／ 変動 ${yen(varPart)}</div>
         ${showRest && r.length ? `<div class="sub">この月の分で まだ引き落とされていない：${yen(sum(r, p => amountOf(p, k)))}</div>` : ''}</div>`;
     };
-    $('fm-totals').innerHTML = card('corp', '法人 合計', t.corp, 'corp') + card('personal', '個人 合計', t.personal, 'personal') + card('', '法人・個人 合計', t.all, '');
+    $('fm-totals').innerHTML = card('corp', '法人 合計', t.corp, t.corpFixed, t.corpVar, 'corp') +
+      card('personal', '個人 合計', t.personal, t.personalFixed, t.personalVar, 'personal') +
+      card('', '法人・個人 合計', t.all, t.allFixed, t.allVar, '');
     ['corp', 'personal'].forEach(o => { const el = $('fs-' + o); if (el) el.textContent = yen(t[o]); });
     const up = paymentsBetween(today, addDays(today, 29));
     $('up-corp').innerHTML = payTable(up.filter(p => p.p.owner === 'corp'));
@@ -1341,7 +1404,7 @@
     try {
       const data = JSON.parse(await file.text());
       if (data.app !== 'yarukoto') throw 0;
-      const parts = [data.tasks && 'やること', data.schedule && 'スケジュール', data.fixed && '固定費', data.checks && '引き落としチェック', data.vault && 'ID・パスワード'].filter(Boolean);
+      const parts = [data.tasks && 'やること', data.schedule && 'スケジュール', data.fixed && '固定費', data.checks && 'チェック', data.vault && 'ID・パスワード'].filter(Boolean);
       if (!parts.length || !await ask(`「${parts.join('・')}」をファイルの内容で置き換えます。よろしいですか？`, '置き換える')) return;
       if (data.tasks) { tasks = data.tasks.filter(t => !t.due); save('tasks'); }
       if (data.schedule) { schedule = data.schedule; save('schedule'); }
