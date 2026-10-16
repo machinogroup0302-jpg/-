@@ -69,9 +69,29 @@
   }
   header h1 { font-size: 1.15rem; font-weight: 700; }
   nav { display: flex; gap: 6px; flex-wrap: wrap; }
+  nav .sm { display: none; }
+  /* スマホ：メニューは画面の下に固定（親指で押せるように） */
   @media (max-width: 700px) {
-    nav { flex-wrap: nowrap; overflow-x: auto; max-width: 100%; scrollbar-width: none; }
-    nav button { flex-shrink: 0; }
+    header { padding-block: 10px; }
+    nav {
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+      display: grid; grid-template-columns: repeat(6, 1fr); gap: 2px;
+      background: var(--bar); border-top: 1px solid var(--bar-line);
+      padding: 6px max(4px, env(safe-area-inset-right, 0px)) calc(6px + env(safe-area-inset-bottom, 0px)) max(4px, env(safe-area-inset-left, 0px));
+    }
+    header nav button { border: 0; border-radius: 8px; padding: 9px 0; font-size: .72rem; white-space: nowrap; min-width: 0; overflow: hidden; }
+    nav .lg { display: none; }
+    nav .sm { display: inline; }
+    main { padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
+    .toast { bottom: calc(80px + env(safe-area-inset-bottom, 0px)); }
+    /* iPhone で入力欄を押したときに画面が拡大されないように */
+    input, select, textarea { font-size: 16px !important; }
+    .card { padding: 14px; }
+    .total { padding: 10px 12px; }
+    .total .yen { font-size: 1.25rem; }
+    /* ToDoリストは追加欄を上に */
+    #view-todo > .card:last-child { order: -1; }
+    #view-todo { display: flex; flex-direction: column; align-items: stretch; }
   }
   nav button {
     background: transparent; color: var(--bar-text); border: 1px solid var(--bar-line);
@@ -202,7 +222,8 @@
   .payline .short { display: none; }
   .chip.ev { background: var(--wait); }
   @media (max-width: 760px) {
-    .payline { font-size: .62rem; padding: 0 2px; }
+    .payline { font-size: .62rem; padding: 0 1px; justify-content: center; letter-spacing: -.02em; }
+    .day { padding: 3px 2px; }
     .payline .full { display: none; }
     .payline .short { display: inline; }
   }
@@ -256,12 +277,12 @@
 <header>
   <h1>やることボード <span class="sync" id="sync"></span></h1>
   <nav>
-    <button data-view="todo" class="active">ToDoリスト</button>
-    <button data-view="sched">スケジュール</button>
+    <button data-view="todo" class="active"><span class="lg">ToDoリスト</span><span class="sm">ToDo</span></button>
+    <button data-view="sched"><span class="lg">スケジュール</span><span class="sm">予定</span></button>
     <button data-view="money">支払い</button>
     <button data-view="check">チェック</button>
-    <button data-view="vault">ID・パスワード</button>
-    <button data-view="backup">バックアップ</button>
+    <button data-view="vault"><span class="lg">ID・パスワード</span><span class="sm">パス</span></button>
+    <button data-view="backup"><span class="lg">バックアップ</span><span class="sm">保存</span></button>
   </nav>
 </header>
 
@@ -925,7 +946,7 @@
       const ds = ymd(d);
       const t = dayTotals(pays.filter(p => p.date === ds));
       const lines = ['corp', 'personal'].filter(o => t[o].total).map(o =>
-        `<div class="payline" style="--c:${INK[o]}" title="${esc(t[o].names.join('\n'))}"><span class="full">${OWNERS[o]}</span><span class="short">${OWNERS[o][0]}</span><span class="full">${yen(t[o].total)}</span><span class="short">${man(t[o].total)}</span></div>`).join('');
+        `<div class="payline" style="--c:${INK[o]}" title="${esc(t[o].names.join('\n'))}"><span class="full">${OWNERS[o]}</span><span class="full">${yen(t[o].total)}</span><span class="short">${man(t[o].total)}</span></div>`).join('');
       const evs = eventsOn(ds);
       const chips = evs.slice(0, 2).map(ev => `<span class="chip ev ${isDone(ev, ds) ? 'done' : ''}" title="${esc(ev.title)}">${esc(ev.title)}</span>`).join('') +
         (evs.length > 2 ? `<span style="color:var(--muted)">+${evs.length - 2}</span>` : '');
