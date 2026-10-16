@@ -21,6 +21,7 @@
     --share: #2f9e6e;
     --corp: #6741d9;
     --personal: #d9480f;
+    --todo: #fff3bf;
     --radius: 12px;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -44,16 +45,17 @@
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
   .stack { display: flex; flex-direction: column; gap: 16px; }
   @media (max-width: 900px) { .grid, .grid2 { grid-template-columns: 1fr; } }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; min-width: 0; }
   .card h2 { font-size: 1rem; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
-  .card h3 { font-size: .9rem; margin: 14px 0 6px; }
   .note { font-size: .8rem; color: var(--muted); }
   .btn {
     border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 4px 12px;
     font: inherit; font-size: .85rem; cursor: pointer; color: var(--text);
   }
   .btn.primary { background: var(--navy); color: #fff; border-color: var(--navy); font-weight: 700; }
+  .btn.danger { color: var(--now); border-color: var(--now); }
   .btn.small { padding: 1px 8px; font-size: .75rem; }
+  .scroll { overflow-x: auto; }
 
   /* カレンダー */
   .cal-head { display: flex; align-items: center; gap: 8px; }
@@ -84,7 +86,7 @@
   form.add { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; }
   form.add .full { grid-column: 1 / -1; }
   form.add label { font-size: .75rem; color: var(--muted); display: flex; flex-direction: column; gap: 2px; }
-  form.add input, form.add select, form.add textarea, textarea.paste, input.search {
+  form.add input, form.add select, form.add textarea, textarea.paste, input.search, dialog input, dialog textarea {
     font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; width: 100%; color: var(--text);
   }
   form.add textarea { min-height: 44px; resize: vertical; }
@@ -123,9 +125,10 @@
   .t-title a { color: inherit; }
   .t-meta { font-size: .75rem; color: var(--muted); display: flex; gap: 8px; flex-wrap: wrap; margin-top: 2px; align-items: center; }
   .t-memo { font-size: .8rem; color: var(--muted); margin-top: 4px; white-space: pre-wrap; word-break: break-word; }
-  .badge { border-radius: 4px; padding: 0 6px; color: #fff; font-size: .7rem; font-weight: 700; }
+  .badge { border-radius: 4px; padding: 0 6px; color: #fff; font-size: .7rem; font-weight: 700; white-space: nowrap; }
   .pri-高 { background: var(--now); } .pri-中 { background: #f08c00; } .pri-低 { background: #8a96a3; }
   .b-corp { background: var(--corp); } .b-personal { background: var(--personal); }
+  .b-early { background: #e03131; } .b-late { background: #e8a200; }
   .overdue { color: var(--now); font-weight: 700; }
   .t-actions { display: flex; gap: 4px; }
   .t-actions button { border: 0; background: transparent; cursor: pointer; color: var(--muted); font-size: .8rem; padding: 2px 4px; }
@@ -133,18 +136,49 @@
   .empty { color: var(--muted); font-size: .9rem; text-align: center; padding: 20px 0; }
 
   /* 固定費 */
-  .totals { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .total { border-radius: 10px; padding: 12px; color: #fff; }
+  .totals { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  @media (max-width: 700px) { .totals { grid-template-columns: 1fr; } }
+  .total { border-radius: 10px; padding: 12px; color: #fff; background: var(--navy); }
   .total.corp { background: var(--corp); } .total.personal { background: var(--personal); }
   .total .label { font-size: .8rem; opacity: .9; }
   .total .yen { font-size: 1.4rem; font-weight: 700; }
-  .total .sub { font-size: .75rem; opacity: .9; }
+  .total .sub { font-size: .75rem; opacity: .95; }
   table.pay { width: 100%; border-collapse: collapse; font-size: .85rem; }
   table.pay th, table.pay td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line); }
-  table.pay th { font-size: .75rem; color: var(--muted); font-weight: 500; }
+  table.pay th { font-size: .75rem; color: var(--muted); font-weight: 500; white-space: nowrap; }
   table.pay td.num, table.pay th.num { text-align: right; white-space: nowrap; }
-  table.pay tr.sum td { font-weight: 700; border-bottom: 0; }
+  table.pay tr.sum td { font-weight: 700; }
+  table.pay tr.sum.last td { border-bottom: 0; }
+  table.pay input.amt { width: 110px; text-align: right; font: inherit; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; }
+  table.pay tr.clickable { cursor: pointer; }
+  table.pay tr.clickable:hover td { background: #fafbfc; }
+  table.pay tr.cur td { background: #fff8d6; }
+  table.pay .zero { color: #b5bdc7; }
   .soon { color: var(--now); font-weight: 700; }
+  .linkbtn { border: 0; background: none; font: inherit; cursor: pointer; color: var(--text); text-align: left; padding: 0; }
+  .linkbtn:hover { text-decoration: underline; }
+
+  /* 引き落としチェック */
+  table.check { border-collapse: separate; border-spacing: 0; font-size: .8rem; min-width: 100%; }
+  table.check th, table.check td { border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 4px 6px; text-align: center; white-space: nowrap; }
+  table.check thead th { background: #f08c00; color: #fff; position: sticky; top: 0; }
+  table.check thead th.cur { background: var(--navy); }
+  table.check th.name { position: sticky; left: 0; background: #fff; text-align: left; z-index: 1; min-width: 120px; }
+  table.check thead th.name { background: #f08c00; z-index: 2; }
+  table.check td { cursor: pointer; min-width: 64px; height: 30px; }
+  table.check td.todo { background: var(--todo); }
+  table.check td.ok { background: #fff; }
+  table.check td.paid { background: #e6fcf5; }
+  table.check td.issue { background: #ffe3e3; color: var(--now); font-weight: 700; }
+  table.check td.future { background: #f8f9fa; cursor: default; }
+  table.check td:not(.future):hover { outline: 2px solid var(--navy); outline-offset: -2px; }
+  dialog { border: 0; border-radius: var(--radius); padding: 20px; width: min(380px, calc(100vw - 32px)); }
+  dialog::backdrop { background: rgba(13, 27, 42, .45); }
+  dialog h3 { margin-bottom: 10px; }
+  dialog .row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; font-size: .85rem; }
+  dialog .row.inline { flex-direction: row; align-items: center; gap: 8px; }
+  dialog .row.inline input { width: auto; }
+  dialog .btns { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
 
   /* パスワード */
   .lock-box { max-width: 420px; margin: 20px auto; display: flex; flex-direction: column; gap: 10px; }
@@ -159,7 +193,7 @@
   .toast {
     position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
     background: var(--navy); color: #fff; padding: 8px 16px; border-radius: 999px; font-size: .85rem;
-    opacity: 0; transition: opacity .2s; pointer-events: none;
+    opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 10;
   }
   .toast.show { opacity: 1; }
   .hidden { display: none !important; }
@@ -171,6 +205,7 @@
   <nav>
     <button data-view="home" class="active">スケジュール・やること</button>
     <button data-view="money">固定費</button>
+    <button data-view="check">引き落としチェック</button>
     <button data-view="vault">ID・パスワード</button>
     <button data-view="backup">バックアップ</button>
   </nav>
@@ -201,6 +236,7 @@
       <div class="card">
         <h2>これからの引き落とし（2週間）<button class="btn small" data-goto="money">固定費を見る</button></h2>
         <div id="home-upcoming"></div>
+        <p class="note" id="home-check" style="margin-top:10px"></p>
       </div>
     </div>
 
@@ -246,67 +282,104 @@
   <section id="view-money" class="hidden">
     <div class="stack">
       <div class="card">
-        <h2><span id="money-month-label"></span></h2>
-        <div class="totals" id="money-totals"></div>
+        <h2>
+          <span class="cal-head">
+            <button class="btn" id="fm-prev" aria-label="前の月">‹</button>
+            <span id="fm-label"></span>
+            <button class="btn" id="fm-next" aria-label="次の月">›</button>
+            <button class="btn" id="fm-today">今月</button>
+          </span>
+          <button class="btn" id="fm-copy">前の月と同じ金額を入れる（空欄だけ）</button>
+        </h2>
+        <div class="totals" id="fm-totals"></div>
+        <p class="note" style="margin-top:8px">前半は15日まで、後半は月末までに引き落とされる扱いです。支払先に引き落とし日を入れると、その日でカレンダーに出ます。</p>
+      </div>
+      <div class="grid2">
+        <div class="card"><h2>法人<span class="note">金額はここで直接入力できます</span></h2><div class="scroll" id="fm-corp"></div></div>
+        <div class="card"><h2>個人<span class="note">金額はここで直接入力できます</span></h2><div class="scroll" id="fm-personal"></div></div>
+      </div>
+      <div class="grid2">
+        <div class="card"><h2>法人：これからの引き落とし（30日）</h2><div id="up-corp"></div></div>
+        <div class="card"><h2>個人：これからの引き落とし（30日）</h2><div id="up-personal"></div></div>
+      </div>
+      <div class="card">
+        <h2 id="fm-year-label">月ごとの一覧</h2>
+        <div class="scroll"><table class="pay" id="fm-year"></table></div>
       </div>
       <div class="grid2">
         <div class="card">
-          <h2>法人：これからの引き落とし（30日）</h2>
-          <div id="up-corp"></div>
+          <h2 id="fc-form-title">支払先を追加</h2>
+          <form class="add" id="fc-form">
+            <input name="name" class="full" placeholder="支払先（例：家賃、楽天カード）" required>
+            <label>区分
+              <select name="owner"><option value="corp">法人</option><option value="personal">個人</option></select>
+            </label>
+            <label>前半・後半
+              <select name="half"><option value="early">前半（〜15日）</option><option value="late">後半（〜月末）</option></select>
+            </label>
+            <label>引き落とし日（分かれば）
+              <select name="day"></select>
+            </label>
+            <label>いつもの金額（任意）
+              <input name="amount" type="number" min="0" step="1" inputmode="numeric" placeholder="今月に入ります">
+            </label>
+            <label class="full">支払い方法・口座（任意）
+              <input name="method" placeholder="例：三井住友 法人口座">
+            </label>
+            <div class="actions">
+              <button type="submit">追加する</button>
+              <button type="button" class="btn danger del hidden">削除</button>
+              <button type="button" class="btn cancel hidden">やめる</button>
+            </div>
+          </form>
         </div>
         <div class="card">
-          <h2>個人：これからの引き落とし（30日）</h2>
-          <div id="up-personal"></div>
+          <h2>スプレッドシートから取り込む</h2>
+          <p class="note">「法人個人固定費」のシートで、見出しの行（法人・クリッパー保険…）から下を全部選んでコピーし、ここに貼り付けてください。月ごとの金額をまとめて上書きします。前半・後半は、シートの「前半」「後半」の合計から自動で見分けます。</p>
+          <textarea class="paste" id="paste" rows="5" placeholder="ここに貼り付け" style="margin:8px 0"></textarea>
+          <button class="btn primary" id="paste-btn">取り込む</button>
         </div>
       </div>
-      <div class="grid">
-        <div class="card">
-          <h2>固定費の一覧</h2>
-          <div class="tabs" id="fc-tabs"></div>
-          <ul class="tasks" id="fc-list"></ul>
-        </div>
-        <div class="stack">
-          <div class="card">
-            <h2 id="fc-form-title">固定費を追加</h2>
-            <form class="add" id="fc-form">
-              <input name="name" class="full" placeholder="名前（例：事務所家賃、携帯代）" required>
-              <label>区分
-                <select name="owner"><option value="corp">法人</option><option value="personal">個人</option></select>
-              </label>
-              <label>金額（円）
-                <input name="amount" type="number" min="0" step="1" inputmode="numeric" required>
-              </label>
-              <label>周期
-                <select name="cycle"><option value="monthly">毎月</option><option value="yearly">毎年</option></select>
-              </label>
-              <label>引き落とし日
-                <select name="day"></select>
-              </label>
-              <label class="yearly-only hidden">何月
-                <select name="month"></select>
-              </label>
-              <label class="full">支払い方法・口座（任意）
-                <input name="method" placeholder="例：〇〇銀行、△△カード">
-              </label>
-              <textarea name="memo" class="full" placeholder="メモ（任意）"></textarea>
-              <div class="actions">
-                <button type="submit">追加する</button>
-                <button type="button" class="btn cancel hidden">やめる</button>
-              </div>
-            </form>
+    </div>
+  </section>
+
+  <!-- 引き落としチェック -->
+  <section id="view-check" class="hidden">
+    <div class="stack">
+      <div class="card">
+        <h2>
+          <span class="cal-head">
+            <button class="btn" id="ck-prev" aria-label="前の年">‹</button>
+            <span id="ck-label"></span>
+            <button class="btn" id="ck-next" aria-label="次の年">›</button>
+          </span>
+          <span class="legend">
+            <span style="--c:var(--todo)">まだ</span>
+            <span style="--c:#fff;outline:1px solid var(--line)">確認済み</span>
+            <span style="--c:#c3fae8">確認済み・支払いあり</span>
+            <span style="--c:#ffc9c9">おかしい引き落としあり</span>
+          </span>
+        </h2>
+        <p class="note" style="margin-bottom:8px">マスを押すと、確認した日・支払いの有無・おかしな引き落としがあったかを記録できます。黄色はまだ確認していない月です。<span id="ck-summary"></span></p>
+        <div class="scroll"><table class="check" id="ck-table"></table></div>
+      </div>
+      <div class="card" style="max-width:560px">
+        <h2 id="ck-form-title">確認する口座・カードを追加</h2>
+        <form class="add" id="ck-form">
+          <input name="name" class="full" placeholder="例：楽天カード、川口信用金庫" required>
+          <label>区分
+            <select name="owner"><option value="">指定なし</option><option value="corp">法人</option><option value="personal">個人</option></select>
+          </label>
+          <label>ログインページ（任意）
+            <input name="url" type="url" placeholder="https://">
+          </label>
+          <div class="actions">
+            <button type="submit">追加する</button>
+            <button type="button" class="btn danger del hidden">削除</button>
+            <button type="button" class="btn cancel hidden">やめる</button>
           </div>
-          <div class="card">
-            <h2>スプレッドシートから取り込む</h2>
-            <p class="note">スプレッドシートの「法人個人固定費」で、見出しも含めて範囲を選んでコピーし、下に貼り付けてください。「名前・区分（法人/個人）・金額・引き落とし日」の列を自動で見つけます。区分の列がない場合は、下で選んだ区分になります。</p>
-            <textarea class="paste" id="paste" rows="6" placeholder="ここに貼り付け" style="margin:8px 0"></textarea>
-            <div class="filters" style="margin:0">
-              <label>区分の列がないとき
-                <select id="paste-owner"><option value="corp">法人</option><option value="personal">個人</option></select>
-              </label>
-              <button class="btn primary" id="paste-btn">取り込む</button>
-            </div>
-          </div>
-        </div>
+        </form>
+        <p class="note">左の名前を押すと、名前の変更・並べ替え・削除ができます。</p>
       </div>
     </div>
   </section>
@@ -315,7 +388,7 @@
   <section id="view-vault" class="hidden">
     <div class="card" id="vault-locked">
       <div class="lock-box">
-        <h2 id="lock-title">ID・パスワード管理</h2>
+        <h2>ID・パスワード管理</h2>
         <p class="note" id="lock-note"></p>
         <input type="password" id="master" placeholder="マスターパスワード" autocomplete="current-password">
         <input type="password" id="master2" class="hidden" placeholder="もう一度（確認）" autocomplete="new-password">
@@ -369,81 +442,138 @@
     <div class="card" style="max-width:640px">
       <h2>バックアップ</h2>
       <p class="note">データはこのブラウザの中だけに保存されています。ブラウザのデータを消すと全部消えるので、ときどきファイルに保存しておいてください。別の端末でも、このファイルを読み込めば同じ内容になります（パスワードは暗号化されたまま保存されます）。</p>
+      <p class="note" style="margin-top:6px">読み込むと、ファイルに入っている項目（やること・固定費・チェック・パスワード）だけが置き換わります。</p>
       <div class="filters" style="margin-top:12px">
         <button class="btn primary" id="export-btn">ファイルに保存</button>
-        <label class="btn">ファイルから読み込む<input type="file" id="import-file" accept="application/json" class="hidden"></label>
+        <label class="btn">ファイルから読み込む<input type="file" id="import-file" accept="application/json,.json" class="hidden"></label>
       </div>
     </div>
   </section>
 </main>
+
+<dialog id="ck-dialog">
+  <h3 id="ckd-title"></h3>
+  <div class="row"><label for="ckd-date">確認した日</label><input type="date" id="ckd-date"></div>
+  <div class="row inline"><input type="checkbox" id="ckd-paid"><label for="ckd-paid">支払い（引き落とし）あり</label></div>
+  <div class="row inline"><input type="checkbox" id="ckd-issue"><label for="ckd-issue">おかしい引き落としがあった</label></div>
+  <div class="row"><label for="ckd-memo">メモ</label><textarea id="ckd-memo" rows="2"></textarea></div>
+  <div class="btns">
+    <button class="btn" id="ckd-clear">まだにする</button>
+    <button class="btn" id="ckd-cancel">閉じる</button>
+    <button class="btn primary" id="ckd-save">保存</button>
+  </div>
+</dialog>
+
+<dialog id="ck-item-dialog">
+  <h3>口座・カードの編集</h3>
+  <div class="row"><label for="cki-name">名前</label><input id="cki-name"></div>
+  <div class="row"><label for="cki-url">ログインページ（任意）</label><input id="cki-url" type="url" placeholder="https://"></div>
+  <div class="btns">
+    <button class="btn" id="cki-up">↑ 上へ</button>
+    <button class="btn" id="cki-down">↓ 下へ</button>
+    <button class="btn danger" id="cki-del">削除</button>
+    <button class="btn" id="cki-cancel">閉じる</button>
+    <button class="btn primary" id="cki-save">保存</button>
+  </div>
+</dialog>
+
 <div class="toast" id="toast"></div>
 
 <script>
 (() => {
   const K_TASKS = 'yarukoto-tasks-v1';
-  const K_FIXED = 'yarukoto-fixed-v1';
+  const K_FIXED_OLD = 'yarukoto-fixed-v1';
+  const K_FIXED = 'yarukoto-fixed-v2';
+  const K_CHECKS = 'yarukoto-checks-v1';
   const K_VAULT = 'yarukoto-vault-v1';
   const CATS = { now: 'すぐやる', wait: '返事待ち', share: '山川共有' };
   const COLORS = { now: 'var(--now)', wait: 'var(--wait)', share: 'var(--share)', corp: 'var(--corp)', personal: 'var(--personal)' };
   const OWNERS = { corp: '法人', personal: '個人' };
+  const HALVES = { early: '前半', late: '後半' };
   const PRI = { '高': 0, '中': 1, '低': 2 };
 
   const $ = id => document.getElementById(id);
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const ymd = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const mkey = (y, m) => `${y}-${String(m + 1).padStart(2, '0')}`; // m は 0 始まり
   const todayStr = () => ymd(new Date());
   const yen = n => '¥' + Math.round(n).toLocaleString('ja-JP');
+  const man = n => n >= 10000 ? `${(n / 10000).toFixed(1).replace(/\.0$/, '')}万` : yen(n); // カレンダーの狭いマス用
   const md = s => `${+s.slice(5, 7)}/${+s.slice(8, 10)}`;
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
   const store = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+  const addDays = (s, n) => { const d = new Date(s + 'T00:00:00'); d.setDate(d.getDate() + n); return ymd(d); };
+  const sum = (arr, f) => arr.reduce((s, x) => s + f(x), 0);
   function toast(msg) {
     const t = $('toast'); t.textContent = msg; t.classList.add('show');
-    clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 1600);
+    clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 1800);
   }
 
   let tasks = load(K_TASKS, []);
-  let fixed = load(K_FIXED, []);
+  let fixed = load(K_FIXED, null) || migrateFixed();
+  let checks = load(K_CHECKS, { items: [], cells: {} });
   const saveTasks = () => store(K_TASKS, tasks);
   const saveFixed = () => store(K_FIXED, fixed);
+  const saveChecks = () => store(K_CHECKS, checks);
+
+  // 旧形式（1件ごとに金額と日付）からの移行：今月から12か月分に同じ金額を入れる
+  function migrateFixed() {
+    const old = load(K_FIXED_OLD, []), out = { payees: [], amounts: {} };
+    const d = new Date();
+    old.forEach(o => {
+      const p = { id: o.id, name: o.name, owner: o.owner, day: o.day || '', half: (o.day === 'end' || +o.day > 15) ? 'late' : 'early', method: o.method || '' };
+      out.payees.push(p);
+      for (let i = 0; i < 12; i++) {
+        const t = new Date(d.getFullYear(), d.getMonth() + i, 1);
+        if (o.cycle === 'yearly' && +o.month !== t.getMonth() + 1) continue;
+        const k = mkey(t.getFullYear(), t.getMonth());
+        (out.amounts[k] ||= {})[p.id] = +o.amount || 0;
+      }
+    });
+    return out;
+  }
 
   // ---------- 画面切り替え ----------
   function show(view) {
     document.querySelectorAll('nav button').forEach(x => x.classList.toggle('active', x.dataset.view === view));
-    ['home', 'money', 'vault', 'backup'].forEach(v => $('view-' + v).classList.toggle('hidden', v !== view));
+    ['home', 'money', 'check', 'vault', 'backup'].forEach(v => $('view-' + v).classList.toggle('hidden', v !== view));
     if (view === 'vault') vaultScreen();
+    window.scrollTo(0, 0);
   }
   document.querySelectorAll('nav button, [data-goto]').forEach(b =>
     b.addEventListener('click', () => show(b.dataset.view || b.dataset.goto)));
 
-  // 編集フォームの共通処理
-  function formMode(form, editing, addLabel, titleEl, addTitle, editTitle) {
-    form.querySelector('button[type=submit]').textContent = editing ? '変更を保存' : addLabel;
+  function formMode(form, editing, titleEl, addTitle, editTitle) {
+    form.querySelector('button[type=submit]').textContent = editing ? '変更を保存' : '追加する';
     form.querySelector('.cancel').classList.toggle('hidden', !editing);
+    form.querySelector('.del')?.classList.toggle('hidden', !editing);
     if (titleEl) titleEl.textContent = editing ? editTitle : addTitle;
   }
 
   // ---------- 固定費の日付計算 ----------
-  // 引き落とし日が月末より後（31日など）の場合はその月の末日に寄せる
-  function payDate(fc, y, m) {
-    if (!fc.day) return null;
-    if (fc.cycle === 'yearly' && +fc.month !== m + 1) return null;
+  const amountOf = (p, k) => +(fixed.amounts[k]?.[p.id] || 0);
+  // 引き落とし日が分かればその日、なければ前半＝15日まで・後半＝月末まで
+  function payDate(p, y, m) {
     const last = new Date(y, m + 1, 0).getDate();
-    return ymd(new Date(y, m, fc.day === 'end' ? last : Math.min(+fc.day, last)));
+    const day = p.day === 'end' ? last : p.day ? Math.min(+p.day, last) : (p.half === 'late' ? last : 15);
+    return ymd(new Date(y, m, day));
   }
   function paymentsBetween(from, to) {
     const out = [];
-    const a = new Date(from), b = new Date(to);
-    for (let y = a.getFullYear(), m = a.getMonth(); y < b.getFullYear() || (y === b.getFullYear() && m <= b.getMonth()); m === 11 ? (y++, m = 0) : m++) {
-      fixed.forEach(fc => {
-        const d = payDate(fc, y, m);
-        if (d && d >= from && d <= to) out.push({ date: d, fc });
+    const a = new Date(from + 'T00:00:00'), b = new Date(to + 'T00:00:00');
+    for (let t = new Date(a.getFullYear(), a.getMonth(), 1); t <= b; t = new Date(t.getFullYear(), t.getMonth() + 1, 1)) {
+      const y = t.getFullYear(), m = t.getMonth(), k = mkey(y, m);
+      fixed.payees.forEach(p => {
+        const amount = amountOf(p, k);
+        if (!amount) return;
+        const date = payDate(p, y, m);
+        if (date >= from && date <= to) out.push({ date, p, amount, byDeadline: !p.day });
       });
     }
-    return out.sort((p, q) => p.date.localeCompare(q.date) || q.fc.amount - p.fc.amount);
+    return out.sort((x, y) => x.date.localeCompare(y.date) || y.amount - x.amount);
   }
-  const addDays = (s, n) => { const d = new Date(s + 'T00:00:00'); d.setDate(d.getDate() + n); return ymd(d); };
-  const dayLabel = fc => !fc.day ? '日付未設定' : (fc.cycle === 'yearly' ? `毎年${fc.month}月` : '毎月') + (fc.day === 'end' ? '末日' : `${fc.day}日`);
+  const dayLabel = p => p.day === 'end' ? '月末' : p.day ? `${p.day}日` : (p.half === 'late' ? '〜月末' : '〜15日');
 
   // ---------- やることリスト ----------
   let cat = 'all', selectedDay = null, editingTask = null;
@@ -455,7 +585,7 @@
     taskForm.reset(); taskForm.priority.value = '中';
     if (cat !== 'all') taskForm.category.value = cat;
     if (selectedDay) taskForm.due.value = selectedDay;
-    editingTask = null; formMode(taskForm, false, '追加する');
+    editingTask = null; formMode(taskForm, false);
   }
   taskForm.addEventListener('submit', e => {
     e.preventDefault();
@@ -479,7 +609,7 @@
       const f = taskForm;
       f.title.value = t.title; f.category.value = t.category; f.priority.value = t.priority;
       f.due.value = t.due || ''; f.memo.value = t.memo || '';
-      editingTask = t.id; formMode(f, true, '追加する'); f.title.focus();
+      editingTask = t.id; formMode(f, true); f.title.focus();
     }
   });
 
@@ -525,7 +655,7 @@
     if (selectedDay) {
       const pays = paymentsBetween(selectedDay, selectedDay);
       dayInfo = `${md(selectedDay)} の分だけ表示中 <button style="border:0;background:none;color:var(--wait);cursor:pointer;font:inherit">解除</button>` +
-        (pays.length ? `<br>この日の引き落とし：${pays.map(p => `${esc(p.fc.name)}（${OWNERS[p.fc.owner]} ${yen(p.fc.amount)}）`).join('、')}` : '');
+        (pays.length ? `<br>この日${pays.some(p => p.byDeadline) ? '（まで）' : ''}の引き落とし：${pays.map(p => `${esc(p.p.name)}（${OWNERS[p.p.owner]} ${yen(p.amount)}）`).join('、')}` : '');
     }
     $('day-filter').innerHTML = dayInfo;
     const today = todayStr();
@@ -558,11 +688,19 @@
     for (let i = 0; i < 42; i++) {
       const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
       const ds = ymd(d);
+      const dayPays = pays.filter(p => p.date === ds);
+      // 日付が分かっているものは1件ずつ、前半・後半でまとめているものは「法人 前半」のように合計で出す
+      const groups = {};
+      dayPays.filter(p => p.byDeadline).forEach(p => {
+        const g = groups[p.p.owner + p.p.half] ||= { owner: p.p.owner, half: p.p.half, total: 0, names: [] };
+        g.total += p.amount; g.names.push(`${p.p.name} ${yen(p.amount)}`);
+      });
       const items = [
         ...tasks.filter(t => t.due === ds).sort((a, b) => a.done - b.done || PRI[a.priority] - PRI[b.priority])
           .map(t => `<span class="chip ${t.done ? 'done' : ''}" style="background:${COLORS[t.category]}" title="${esc(t.title)}">${esc(t.title)}</span>`),
-        ...pays.filter(p => p.date === ds)
-          .map(p => `<span class="chip pay" style="--c:${COLORS[p.fc.owner]}" title="${OWNERS[p.fc.owner]}：${esc(p.fc.name)} ${yen(p.fc.amount)}">¥ ${esc(p.fc.name)}</span>`),
+        ...Object.values(groups).map(g => `<span class="chip pay" style="--c:${COLORS[g.owner]}" title="${OWNERS[g.owner]}${HALVES[g.half]}（この日まで）\n${esc(g.names.join('\n'))}">${OWNERS[g.owner]}${HALVES[g.half]} ${man(g.total)}</span>`),
+        ...dayPays.filter(p => !p.byDeadline)
+          .map(p => `<span class="chip pay" style="--c:${COLORS[p.p.owner]}" title="${OWNERS[p.p.owner]}：${esc(p.p.name)} ${yen(p.amount)}">¥ ${esc(p.p.name)}</span>`),
       ];
       const more = items.length > 3 ? `<span style="color:var(--muted)">+${items.length - 3}</span>` : '';
       const cls = ['day', d.getMonth() !== viewM && 'other', ds === today && 'today', ds === selectedDay && 'selected'].filter(Boolean).join(' ');
@@ -574,131 +712,307 @@
   function payTable(pays, withOwner) {
     if (!pays.length) return '<p class="empty">予定はありません</p>';
     const today = todayStr(), soon = addDays(today, 3);
-    const sum = pays.reduce((s, p) => s + +p.fc.amount, 0);
-    return `<table class="pay"><thead><tr><th>日付</th>${withOwner ? '<th>区分</th>' : ''}<th>名前</th><th class="num">金額</th></tr></thead><tbody>` +
-      pays.map(p => `<tr><td class="${p.date <= soon ? 'soon' : ''}">${md(p.date)}${p.date === today ? '（今日）' : ''}</td>` +
-        (withOwner ? `<td><span class="badge b-${p.fc.owner}">${OWNERS[p.fc.owner]}</span></td>` : '') +
-        `<td>${esc(p.fc.name)}${p.fc.method ? `<div class="note">${esc(p.fc.method)}</div>` : ''}</td><td class="num">${yen(p.fc.amount)}</td></tr>`).join('') +
-      `<tr class="sum"><td colspan="${withOwner ? 3 : 2}">合計</td><td class="num">${yen(sum)}</td></tr></tbody></table>`;
+    return `<table class="pay"><thead><tr><th>日付</th>${withOwner ? '<th>区分</th>' : ''}<th>支払先</th><th class="num">金額</th></tr></thead><tbody>` +
+      pays.map(p => `<tr><td class="${p.date <= soon ? 'soon' : ''}">${md(p.date)}${p.byDeadline ? 'まで' : ''}${p.date === today ? '（今日）' : ''}</td>` +
+        (withOwner ? `<td><span class="badge b-${p.p.owner}">${OWNERS[p.p.owner]}</span></td>` : '') +
+        `<td>${esc(p.p.name)}${p.p.method ? `<div class="note">${esc(p.p.method)}</div>` : ''}</td><td class="num">${yen(p.amount)}</td></tr>`).join('') +
+      `<tr class="sum last"><td colspan="${withOwner ? 3 : 2}">合計</td><td class="num">${yen(sum(pays, p => p.amount))}</td></tr></tbody></table>`;
   }
 
   function renderHome() {
     renderTabs(); renderList(); renderCal();
     const today = todayStr();
-    $('home-upcoming').innerHTML = fixed.length
+    $('home-upcoming').innerHTML = fixed.payees.length
       ? payTable(paymentsBetween(today, addDays(today, 13)), true)
       : '<p class="empty">固定費が未登録です。「固定費」から登録してください。</p>';
+    const k = mkey(now.getFullYear(), now.getMonth());
+    const todo = checks.items.filter(it => !checks.cells[`${it.id}|${k}`]).length;
+    $('home-check').innerHTML = checks.items.length
+      ? `今月の引き落としチェック：${todo ? `<b class="overdue">まだ ${todo}件</b>` : '全部確認済み ✓'}　<button class="btn small" data-goto2="check">チェックシートを開く</button>`
+      : '';
   }
+  $('home-check').addEventListener('click', e => { if (e.target.dataset.goto2) show('check'); });
 
   // ---------- 固定費 ----------
   const fcForm = $('fc-form');
-  let fcOwner = 'all', editingFc = null;
-  fcForm.day.innerHTML = '<option value="">未設定</option>' +
+  let fmY = now.getFullYear(), fmM = now.getMonth(), editingFc = null;
+  fcForm.day.innerHTML = '<option value="">分からない（前半・後半で表示）</option>' +
     Array.from({ length: 31 }, (_, i) => `<option value="${i + 1}">${i + 1}日</option>`).join('') + '<option value="end">月末</option>';
-  fcForm.month.innerHTML = Array.from({ length: 12 }, (_, i) => `<option value="${i + 1}">${i + 1}月</option>`).join('');
-  const syncCycle = () => fcForm.querySelector('.yearly-only').classList.toggle('hidden', fcForm.cycle.value !== 'yearly');
-  fcForm.cycle.addEventListener('change', syncCycle);
+
+  const shiftMonth = n => { const d = new Date(fmY, fmM + n, 1); fmY = d.getFullYear(); fmM = d.getMonth(); renderMoney(); };
+  $('fm-prev').onclick = () => shiftMonth(-1);
+  $('fm-next').onclick = () => shiftMonth(1);
+  $('fm-today').onclick = () => { fmY = now.getFullYear(); fmM = now.getMonth(); renderMoney(); };
+  $('fm-copy').onclick = () => {
+    const prev = new Date(fmY, fmM - 1, 1), pk = mkey(prev.getFullYear(), prev.getMonth()), k = mkey(fmY, fmM);
+    const src = fixed.amounts[pk] || {};
+    const dst = fixed.amounts[k] ||= {};
+    let n = 0;
+    Object.entries(src).forEach(([id, v]) => { if (v && !dst[id]) { dst[id] = v; n++; } });
+    saveFixed(); renderAll(); toast(n ? `${n}件 入れました` : '入れるものはありませんでした');
+  };
 
   function resetFcForm() {
-    fcForm.reset(); if (fcOwner !== 'all') fcForm.owner.value = fcOwner;
-    editingFc = null; syncCycle(); formMode(fcForm, false, '追加する', $('fc-form-title'), '固定費を追加', '固定費を編集');
+    fcForm.reset(); editingFc = null;
+    formMode(fcForm, false, $('fc-form-title'), '支払先を追加', '支払先を編集');
   }
   fcForm.addEventListener('submit', e => {
     e.preventDefault();
     const f = fcForm;
-    const data = {
-      name: f.name.value.trim(), owner: f.owner.value, amount: Math.round(+f.amount.value || 0),
-      cycle: f.cycle.value, day: f.day.value, month: +f.month.value, method: f.method.value.trim(), memo: f.memo.value.trim(),
-    };
+    const data = { name: f.name.value.trim(), owner: f.owner.value, half: f.half.value, day: f.day.value, method: f.method.value.trim() };
     if (!data.name) return;
-    if (editingFc) Object.assign(fixed.find(x => x.id === editingFc), data);
-    else fixed.push({ id: uid(), ...data });
-    saveFixed(); resetFcForm(); renderAll();
+    let p;
+    if (editingFc) p = Object.assign(fixed.payees.find(x => x.id === editingFc), data);
+    else fixed.payees.push(p = { id: uid(), ...data });
+    if (f.amount.value !== '') (fixed.amounts[mkey(fmY, fmM)] ||= {})[p.id] = Math.round(+f.amount.value);
+    saveFixed(); resetFcForm(); renderAll(); toast('保存しました');
   });
   fcForm.querySelector('.cancel').onclick = resetFcForm;
+  fcForm.querySelector('.del').onclick = () => {
+    const p = fixed.payees.find(x => x.id === editingFc);
+    if (!p || !confirm(`「${p.name}」を削除しますか？（全部の月の金額も消えます）`)) return;
+    fixed.payees = fixed.payees.filter(x => x !== p);
+    Object.values(fixed.amounts).forEach(a => delete a[p.id]);
+    saveFixed(); resetFcForm(); renderAll();
+  };
+  function editPayee(id) {
+    const p = fixed.payees.find(x => x.id === id), f = fcForm;
+    ['name', 'owner', 'half', 'day', 'method'].forEach(k => f[k].value = p[k] ?? '');
+    f.amount.value = amountOf(p, mkey(fmY, fmM)) || '';
+    editingFc = id; formMode(f, true, $('fc-form-title'), '支払先を追加', '支払先を編集');
+    f.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
 
-  $('fc-list').addEventListener('click', e => {
-    const li = e.target.closest('.task'); if (!li) return;
-    const fc = fixed.find(x => x.id === li.dataset.id);
-    if (e.target.dataset.act === 'del' && confirm(`「${fc.name}」を削除しますか？`)) {
-      fixed = fixed.filter(x => x !== fc); saveFixed(); renderAll();
+  function monthTotals(k) {
+    const t = {};
+    ['corp', 'personal'].forEach(o => ['early', 'late'].forEach(h =>
+      t[o + h] = sum(fixed.payees.filter(p => p.owner === o && p.half === h), p => amountOf(p, k))));
+    t.corp = t.corpearly + t.corplate; t.personal = t.personalearly + t.personallate; t.all = t.corp + t.personal;
+    return t;
+  }
+
+  function renderOwnerTable(owner) {
+    const k = mkey(fmY, fmM);
+    const list = fixed.payees.filter(p => p.owner === owner);
+    if (!list.length) return '<p class="empty">支払先がありません</p>';
+    const rows = ['early', 'late'].map(h => {
+      const ps = list.filter(p => p.half === h);
+      return ps.map(p => `<tr>
+          <td><button class="linkbtn" data-edit="${p.id}">${esc(p.name)}</button>${p.method ? `<div class="note">${esc(p.method)}</div>` : ''}</td>
+          <td><span class="badge b-${p.half}">${HALVES[p.half]}</span> <span class="note">${dayLabel(p)}</span></td>
+          <td class="num"><input class="amt" inputmode="numeric" data-id="${p.id}" value="${amountOf(p, k) || ''}" placeholder="0"></td>
+        </tr>`).join('') +
+        `<tr class="sum"><td colspan="2">${HALVES[h]} 合計</td><td class="num" id="fs-${owner}-${h}"></td></tr>`;
+    }).join('');
+    return `<table class="pay"><thead><tr><th>支払先</th><th>時期</th><th class="num">金額</th></tr></thead><tbody>${rows}
+      <tr class="sum last"><td colspan="2">${OWNERS[owner]} 合計</td><td class="num" id="fs-${owner}-all"></td></tr></tbody></table>`;
+  }
+  ['fm-corp', 'fm-personal'].forEach(id => {
+    $(id).addEventListener('change', e => {
+      if (!e.target.matches('input.amt')) return;
+      const v = parseInt(e.target.value.replace(/[^\d]/g, ''), 10);
+      const a = fixed.amounts[mkey(fmY, fmM)] ||= {};
+      if (v) a[e.target.dataset.id] = v; else delete a[e.target.dataset.id];
+      e.target.value = v || '';
+      saveFixed(); renderMoneySummary(); renderHome();
+    });
+    $(id).addEventListener('click', e => { if (e.target.dataset.edit) editPayee(e.target.dataset.edit); });
+  });
+
+  // 入力欄はそのままにして、合計や一覧だけ描き直す
+  function renderMoneySummary() {
+    const k = mkey(fmY, fmM), t = monthTotals(k), today = todayStr();
+    const isCur = fmY === now.getFullYear() && fmM === now.getMonth();
+    const monthEnd = ymd(new Date(fmY, fmM + 1, 0));
+    const rest = isCur ? paymentsBetween(today, monthEnd) : [];
+    const card = (cls, label, total, early, late, owner) => `<div class="total ${cls}"><div class="label">${label}</div><div class="yen">${yen(total)}</div>
+      <div class="sub">前半 ${yen(early)} ／ 後半 ${yen(late)}</div>
+      ${isCur ? `<div class="sub">今日から月末までに あと ${yen(sum(rest.filter(p => !owner || p.p.owner === owner), p => p.amount))}</div>` : ''}</div>`;
+    $('fm-totals').innerHTML =
+      card('corp', '法人 合計', t.corp, t.corpearly, t.corplate, 'corp') +
+      card('personal', '個人 合計', t.personal, t.personalearly, t.personallate, 'personal') +
+      card('', '法人・個人 合計', t.all, t.corpearly + t.personalearly, t.corplate + t.personallate, '');
+    ['corp', 'personal'].forEach(o => {
+      const set = (id, v) => { const el = $(id); if (el) el.textContent = yen(v); };
+      set(`fs-${o}-early`, t[o + 'early']); set(`fs-${o}-late`, t[o + 'late']); set(`fs-${o}-all`, t[o]);
+    });
+
+    const up = paymentsBetween(today, addDays(today, 29));
+    $('up-corp').innerHTML = payTable(up.filter(p => p.p.owner === 'corp'));
+    $('up-personal').innerHTML = payTable(up.filter(p => p.p.owner === 'personal'));
+
+    $('fm-year-label').textContent = `${fmY}年 月ごとの一覧`;
+    let html = `<thead><tr><th>月</th><th class="num">法人 前半</th><th class="num">法人 後半</th><th class="num">法人 合計</th>
+      <th class="num">個人 前半</th><th class="num">個人 後半</th><th class="num">個人 合計</th><th class="num">法人・個人</th></tr></thead><tbody>`;
+    const cell = v => `<td class="num ${v ? '' : 'zero'}">${yen(v)}</td>`;
+    for (let m = 0; m < 12; m++) {
+      const tt = monthTotals(mkey(fmY, m));
+      html += `<tr class="clickable ${m === fmM ? 'cur' : ''}" data-m="${m}"><td>${m + 1}月</td>${cell(tt.corpearly)}${cell(tt.corplate)}${cell(tt.corp)}${cell(tt.personalearly)}${cell(tt.personallate)}${cell(tt.personal)}${cell(tt.all)}</tr>`;
     }
-    if (e.target.dataset.act === 'edit') {
-      const f = fcForm;
-      ['name', 'owner', 'amount', 'cycle', 'day', 'method', 'memo'].forEach(k => f[k].value = fc[k] ?? '');
-      f.month.value = fc.month || 1;
-      editingFc = fc.id; syncCycle(); formMode(f, true, '追加する', $('fc-form-title'), '固定費を追加', '固定費を編集');
-      f.scrollIntoView({ behavior: 'smooth', block: 'center' }); f.name.focus();
-    }
+    $('fm-year').innerHTML = html + '</tbody>';
+  }
+  $('fm-year').addEventListener('click', e => {
+    const tr = e.target.closest('tr[data-m]'); if (!tr) return;
+    fmM = +tr.dataset.m; renderMoney(); window.scrollTo({ top: 0, behavior: 'smooth' });
   });
 
   function renderMoney() {
-    const d = new Date(), y = d.getFullYear(), m = d.getMonth(), today = todayStr();
-    const monthStart = ymd(new Date(y, m, 1)), monthEnd = ymd(new Date(y, m + 1, 0));
-    $('money-month-label').textContent = `${y}年${m + 1}月の引き落とし`;
-    const monthPays = paymentsBetween(monthStart, monthEnd);
-    $('money-totals').innerHTML = ['corp', 'personal'].map(o => {
-      const all = monthPays.filter(p => p.fc.owner === o);
-      const rest = all.filter(p => p.date >= today);
-      const total = all.reduce((s, p) => s + +p.fc.amount, 0);
-      const restSum = rest.reduce((s, p) => s + +p.fc.amount, 0);
-      return `<div class="total ${o}"><div class="label">${OWNERS[o]}・今月の合計</div><div class="yen">${yen(total)}</div>
-        <div class="sub">今日から月末までに あと ${yen(restSum)}（${rest.length}件）</div></div>`;
-    }).join('');
-    const up = paymentsBetween(today, addDays(today, 29));
-    $('up-corp').innerHTML = payTable(up.filter(p => p.fc.owner === 'corp'));
-    $('up-personal').innerHTML = payTable(up.filter(p => p.fc.owner === 'personal'));
-
-    $('fc-tabs').innerHTML = [['all', 'すべて'], ...Object.entries(OWNERS)].map(([k, label]) => {
-      const n = k === 'all' ? fixed.length : fixed.filter(x => x.owner === k).length;
-      return `<button data-o="${k}" class="${fcOwner === k ? 'active' : ''}">${label}<span class="count">${n}</span></button>`;
-    }).join('');
-    $('fc-tabs').querySelectorAll('button').forEach(b => b.onclick = () => {
-      fcOwner = b.dataset.o; if (fcOwner !== 'all' && !editingFc) fcForm.owner.value = fcOwner; renderMoney();
-    });
-    const dayNum = fc => fc.day === 'end' ? 32 : (+fc.day || 99);
-    const list = fixed.filter(x => fcOwner === 'all' || x.owner === fcOwner)
-      .sort((a, b) => a.owner.localeCompare(b.owner) || dayNum(a) - dayNum(b));
-    $('fc-list').innerHTML = list.length ? list.map(fc => `<li class="task no-check ${fc.owner}" data-id="${fc.id}">
-        <div>
-          <div class="t-title">${esc(fc.name)}　${yen(fc.amount)}</div>
-          <div class="t-meta"><span class="badge b-${fc.owner}">${OWNERS[fc.owner]}</span><span class="${fc.day ? '' : 'overdue'}">${dayLabel(fc)}</span>${fc.method ? `<span>${esc(fc.method)}</span>` : ''}</div>
-          ${fc.memo ? `<div class="t-memo">${esc(fc.memo)}</div>` : ''}
-        </div>
-        <div class="t-actions"><button data-act="edit">編集</button><button data-act="del">削除</button></div>
-      </li>`).join('') : '<li class="empty">まだ登録がありません</li>';
+    $('fm-label').textContent = `${fmY}年${fmM + 1}月`;
+    $('fm-corp').innerHTML = renderOwnerTable('corp');
+    $('fm-personal').innerHTML = renderOwnerTable('personal');
+    renderMoneySummary();
   }
 
-  // スプレッドシートからの貼り付け取り込み
-  $('paste-btn').onclick = () => {
-    const text = $('paste').value.trim(); if (!text) return;
-    const rows = text.split(/\r?\n/).map(r => r.split(r.includes('\t') ? '\t' : ',').map(c => c.trim().replace(/^"|"$/g, '')));
-    const head = rows[0];
-    const find = re => head.findIndex(h => re.test(h));
-    let iName = find(/名|項目|内容|サービス|支払先/), iOwner = find(/区分|法人|個人|種別/),
-        iAmt = find(/金額|料金|額|円/), iDay = find(/日/);
-    let body = rows.slice(1);
-    if (iAmt < 0) { iName = 0; iAmt = 1; iDay = 2; iOwner = -1; body = rows; } // 見出しなし
-    if (iName < 0) iName = head.findIndex((_, i) => ![iOwner, iAmt, iDay].includes(i));
-    let owner = $('paste-owner').value, added = 0;
-    body.forEach(r => {
-      // 「法人」「個人」だけの見出し行が途中にある場合はそこから区分を切り替える
-      const line = r.join('');
-      if (/^(法人|個人)/.test(line) && !r[iAmt]) { owner = line.startsWith('法人') ? 'corp' : 'personal'; return; }
-      const name = r[iName], amount = parseInt(String(r[iAmt] ?? '').replace(/[^\d-]/g, ''), 10);
-      if (!name || isNaN(amount)) return;
-      const o = iOwner >= 0 && r[iOwner] ? (/法人|会社/.test(r[iOwner]) ? 'corp' : /個人/.test(r[iOwner]) ? 'personal' : owner) : owner;
-      const ds = String(r[iDay] ?? '');
-      const yearly = ds.match(/(\d{1,2})月\s*(\d{1,2})日/);
-      const day = /末/.test(ds) ? 'end' : ((yearly ? yearly[2] : (ds.match(/\d{1,2}/) || [])[0]) || '');
-      fixed.push({ id: uid(), name, owner: o, amount, cycle: yearly ? 'yearly' : 'monthly', month: yearly ? +yearly[1] : 1,
-        day: day && +day >= 1 && +day <= 31 ? String(+day) : day === 'end' ? 'end' : '', method: '', memo: '' });
-      added++;
+  // スプレッドシート「法人個人固定費」の貼り付け取り込み
+  // 形：見出し行が「法人 | 支払先… | 前半 | 後半 | 合計額 | 個人 | 支払先… | 前半 | 後半 | 合計額 | 法人・個人 | 合計額」
+  //     その下に「2026年9月 | 金額… 」の行が続く
+  const toNum = s => { const v = parseInt(String(s ?? '').replace(/[^\d-]/g, ''), 10); return isNaN(v) ? 0 : v; };
+  function importSheet(text) {
+    const rows = text.replace(/\r/g, '').split('\n').filter(r => r.trim()).map(r => r.split('\t').map(c => c.trim()));
+    const hi = rows.findIndex(r => r.includes('法人') || r.includes('個人'));
+    if (hi < 0) return null;
+    const head = rows[hi];
+    const sections = [];
+    head.forEach((h, i) => {
+      if (h !== '法人' && h !== '個人') return;
+      const sec = { owner: h === '法人' ? 'corp' : 'personal', monthCol: i, cols: [], early: -1, late: -1 };
+      for (let j = i + 1; j < head.length; j++) {
+        const c = head[j];
+        if (c === '前半') sec.early = j;
+        else if (c === '後半') sec.late = j;
+        else if (/^合計/.test(c) || c === '法人' || c === '個人' || /法人.*個人/.test(c)) break;
+        else if (c && sec.early < 0 && sec.late < 0) sec.cols.push(j);
+      }
+      sections.push(sec);
     });
-    saveFixed(); renderAll();
-    $('paste').value = '';
-    toast(added ? `${added}件 取り込みました` : '取り込める行が見つかりませんでした');
+    if (!sections.length) return null;
+    let months = 0, payeesAdded = 0;
+    sections.forEach(sec => {
+      // 同じ名前の列（三井住友 が2つ など）は「三井住友(2)」として分ける
+      const seen = {};
+      const payees = sec.cols.map(j => {
+        let name = head[j]; seen[name] = (seen[name] || 0) + 1;
+        if (seen[name] > 1) name += `(${seen[name]})`;
+        let p = fixed.payees.find(x => x.owner === sec.owner && x.name === name);
+        if (!p) { fixed.payees.push(p = { id: uid(), name, owner: sec.owner, half: 'early', day: '', method: '' }); payeesAdded++; }
+        return { j, p, votes: { early: 0, late: 0 } };
+      });
+      rows.slice(hi + 1).forEach(r => {
+        const mm = (r[sec.monthCol] || '').match(/(\d{4})\D+(\d{1,2})/);
+        if (!mm) return;
+        const k = `${mm[1]}-${mm[2].padStart(2, '0')}`;
+        const vals = payees.map(x => toNum(r[x.j]));
+        if (!vals.some(Boolean)) return;
+        const a = fixed.amounts[k] ||= {};
+        payees.forEach((x, i) => { if (vals[i]) a[x.p.id] = vals[i]; else delete a[x.p.id]; });
+        if (sec.owner === 'corp') months++;
+        // 「前半」の合計とぴったり合う組み合わせを探して、どれが前半かを見分ける
+        const target = toNum(r[sec.early]), nz = vals.map((v, i) => [v, i]).filter(([v]) => v);
+        if (sec.early < 0 || !target || nz.length > 18) return;
+        let found = -1, count = 0;
+        for (let mask = 0; mask < (1 << nz.length) && count < 2; mask++) {
+          let s = 0; nz.forEach(([v], b) => { if (mask & (1 << b)) s += v; });
+          if (s === target) { found = mask; count++; }
+        }
+        if (count !== 1) return;
+        nz.forEach(([, i], b) => payees[i].votes[(found & (1 << b)) ? 'early' : 'late']++);
+      });
+      payees.forEach(x => { if (x.votes.early || x.votes.late) x.p.half = x.votes.late > x.votes.early ? 'late' : 'early'; });
+    });
+    return { months, payeesAdded };
+  }
+  $('paste-btn').onclick = () => {
+    const text = $('paste').value; if (!text.trim()) return;
+    const r = importSheet(text);
+    if (!r) return toast('「法人」「個人」の見出しが見つかりませんでした');
+    saveFixed(); renderAll(); $('paste').value = '';
+    toast(`取り込みました（支払先 新規${r.payeesAdded}件）`);
   };
+
+  // ---------- 引き落としチェック ----------
+  let ckY = now.getFullYear(), ckCell = null, ckItem = null;
+  const ckForm = $('ck-form');
+  $('ck-prev').onclick = () => { ckY--; renderChecks(); };
+  $('ck-next').onclick = () => { ckY++; renderChecks(); };
+
+  function renderChecks() {
+    $('ck-label').textContent = `${ckY}年`;
+    const curK = mkey(now.getFullYear(), now.getMonth());
+    let html = `<thead><tr><th class="name">口座・カード</th>` +
+      Array.from({ length: 12 }, (_, m) => `<th class="${mkey(ckY, m) === curK ? 'cur' : ''}">${m + 1}月</th>`).join('') + '</tr></thead><tbody>';
+    checks.items.forEach(it => {
+      html += `<tr><th class="name"><button class="linkbtn" data-item="${it.id}">${esc(it.name)}</button>${it.owner ? ` <span class="badge b-${it.owner}">${OWNERS[it.owner]}</span>` : ''}</th>`;
+      for (let m = 0; m < 12; m++) {
+        const k = mkey(ckY, m), c = checks.cells[`${it.id}|${k}`];
+        if (!c && k > curK) { html += '<td class="future"></td>'; continue; }
+        const cls = !c ? 'todo' : c.issue ? 'issue' : c.paid ? 'paid' : 'ok';
+        const label = c ? `${c.issue ? '⚠ ' : ''}${c.date ? md(c.date) : '✓'}${c.paid ? '支' : ''}` : '';
+        html += `<td class="${cls}" data-cell="${it.id}|${k}" title="${c?.memo ? esc(c.memo) : ''}">${label}</td>`;
+      }
+      html += '</tr>';
+    });
+    if (!checks.items.length) html += '<tr><td colspan="13" class="future" style="padding:20px">下のフォームから口座・カードを追加してください</td></tr>';
+    $('ck-table').innerHTML = html + '</tbody>';
+    const todo = checks.items.filter(it => !checks.cells[`${it.id}|${curK}`]);
+    const issues = Object.entries(checks.cells).filter(([, c]) => c.issue).length;
+    $('ck-summary').innerHTML = checks.items.length
+      ? ` 今月まだ：<b>${todo.length}件</b>${issues ? `　⚠ おかしい引き落とし：<b class="overdue">${issues}件</b>` : ''}`
+      : '';
+  }
+
+  $('ck-table').addEventListener('click', e => {
+    const itemBtn = e.target.closest('[data-item]');
+    if (itemBtn) return openItem(itemBtn.dataset.item);
+    const td = e.target.closest('td[data-cell]'); if (!td) return;
+    ckCell = td.dataset.cell;
+    const [id, k] = ckCell.split('|'), it = checks.items.find(x => x.id === id), c = checks.cells[ckCell];
+    $('ckd-title').textContent = `${it.name}　${+k.slice(0, 4)}年${+k.slice(5)}月`;
+    $('ckd-date').value = c?.date || todayStr();
+    $('ckd-paid').checked = !!c?.paid; $('ckd-issue').checked = !!c?.issue; $('ckd-memo').value = c?.memo || '';
+    $('ckd-clear').classList.toggle('hidden', !c);
+    $('ck-dialog').showModal();
+  });
+  $('ckd-save').onclick = () => {
+    checks.cells[ckCell] = { date: $('ckd-date').value, paid: $('ckd-paid').checked, issue: $('ckd-issue').checked, memo: $('ckd-memo').value.trim() };
+    saveChecks(); $('ck-dialog').close(); renderChecks(); renderHome();
+  };
+  $('ckd-clear').onclick = () => { delete checks.cells[ckCell]; saveChecks(); $('ck-dialog').close(); renderChecks(); renderHome(); };
+  $('ckd-cancel').onclick = () => $('ck-dialog').close();
+
+  function openItem(id) {
+    ckItem = id; const it = checks.items.find(x => x.id === id);
+    $('cki-name').value = it.name; $('cki-url').value = it.url || '';
+    $('ck-item-dialog').showModal();
+  }
+  const moveItem = d => {
+    const i = checks.items.findIndex(x => x.id === ckItem), j = i + d;
+    if (j < 0 || j >= checks.items.length) return;
+    [checks.items[i], checks.items[j]] = [checks.items[j], checks.items[i]];
+    saveChecks(); renderChecks();
+  };
+  $('cki-up').onclick = () => moveItem(-1);
+  $('cki-down').onclick = () => moveItem(1);
+  $('cki-save').onclick = () => {
+    const it = checks.items.find(x => x.id === ckItem), name = $('cki-name').value.trim();
+    if (name) it.name = name; it.url = $('cki-url').value.trim();
+    saveChecks(); $('ck-item-dialog').close(); renderChecks();
+  };
+  $('cki-del').onclick = () => {
+    const it = checks.items.find(x => x.id === ckItem);
+    if (!confirm(`「${it.name}」を削除しますか？（記録も消えます）`)) return;
+    checks.items = checks.items.filter(x => x !== it);
+    Object.keys(checks.cells).forEach(k => { if (k.startsWith(it.id + '|')) delete checks.cells[k]; });
+    saveChecks(); $('ck-item-dialog').close(); renderChecks(); renderHome();
+  };
+  $('cki-cancel').onclick = () => $('ck-item-dialog').close();
+
+  ckForm.addEventListener('submit', e => {
+    e.preventDefault();
+    const name = ckForm.name.value.trim(); if (!name) return;
+    checks.items.push({ id: uid(), name, owner: ckForm.owner.value, url: ckForm.url.value.trim() });
+    ckForm.reset(); saveChecks(); renderChecks(); renderHome();
+  });
+  ckForm.querySelector('.cancel').onclick = () => ckForm.reset();
 
   // ---------- ID・パスワード（暗号化保存） ----------
   const enc = new TextEncoder(), dec = new TextDecoder();
@@ -772,7 +1086,7 @@
   function resetVForm() {
     vForm.reset(); if (vOwner !== 'all') vForm.owner.value = vOwner;
     vForm.password.type = 'password'; $('pw-toggle').textContent = '表示';
-    editingV = null; formMode(vForm, false, '追加する', $('v-form-title'), 'サイトを追加', 'サイトを編集');
+    editingV = null; formMode(vForm, false, $('v-form-title'), 'サイトを追加', 'サイトを編集');
   }
   $('pw-toggle').onclick = () => {
     const p = vForm.password; p.type = p.type === 'password' ? 'text' : 'password';
@@ -814,7 +1128,7 @@
     }
     if (act === 'edit') {
       ['owner', 'site', 'url', 'loginId', 'password', 'memo'].forEach(k => vForm[k].value = v[k] ?? '');
-      editingV = v.id; formMode(vForm, true, '追加する', $('v-form-title'), 'サイトを追加', 'サイトを編集');
+      editingV = v.id; formMode(vForm, true, $('v-form-title'), 'サイトを追加', 'サイトを編集');
       vForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   });
@@ -849,7 +1163,7 @@
 
   // ---------- バックアップ ----------
   $('export-btn').onclick = () => {
-    const data = { app: 'yarukoto', version: 1, savedAt: new Date().toISOString(), tasks, fixed, vault: load(K_VAULT, null) };
+    const data = { app: 'yarukoto', version: 2, savedAt: new Date().toISOString(), tasks, fixed, checks, vault: load(K_VAULT, null) };
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
     a.download = `yarukoto-backup-${todayStr()}.json`;
@@ -860,15 +1174,18 @@
     try {
       const data = JSON.parse(await file.text());
       if (data.app !== 'yarukoto') throw 0;
-      if (!confirm('今のデータをファイルの内容で置き換えます。よろしいですか？')) return;
-      tasks = data.tasks || []; fixed = data.fixed || [];
-      saveTasks(); saveFixed();
-      if (data.vault) store(K_VAULT, data.vault); else localStorage.removeItem(K_VAULT);
-      lockVault(); renderAll(); toast('読み込みました');
+      const parts = [data.tasks && 'やること', data.fixed && '固定費', data.checks && '引き落としチェック', data.vault && 'ID・パスワード'].filter(Boolean);
+      if (!parts.length || !confirm(`「${parts.join('・')}」をファイルの内容で置き換えます。よろしいですか？`)) return;
+      if (data.tasks) { tasks = data.tasks; saveTasks(); }
+      if (data.fixed) { fixed = Array.isArray(data.fixed) ? (store(K_FIXED_OLD, data.fixed), migrateFixed()) : data.fixed; saveFixed(); }
+      if (data.checks) { checks = data.checks; saveChecks(); }
+      if (data.vault) { store(K_VAULT, data.vault); lockVault(); }
+      renderAll(); toast('読み込みました');
     } catch { toast('このファイルは読み込めませんでした'); }
   };
 
-  function renderAll() { renderHome(); renderMoney(); }
+  function renderAll() { renderHome(); renderMoney(); renderChecks(); }
+  saveFixed();
   renderAll();
 })();
 </script>
