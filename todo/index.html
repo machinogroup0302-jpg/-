@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
 <title>やることボード</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
@@ -18,6 +19,8 @@
     --now: #e5484d;
     --wait: #3e7bfa;
     --share: #2f9e6e;
+    --corp: #6741d9;
+    --personal: #d9480f;
     --radius: 12px;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -30,7 +33,7 @@
     display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
   }
   header h1 { font-size: 1.15rem; font-weight: 700; }
-  nav { display: flex; gap: 6px; }
+  nav { display: flex; gap: 6px; flex-wrap: wrap; }
   nav button {
     background: transparent; color: #cfd8e3; border: 1px solid #33465e;
     padding: 6px 14px; border-radius: 999px; font: inherit; cursor: pointer;
@@ -38,20 +41,29 @@
   nav button.active { background: var(--accent); color: var(--navy); border-color: var(--accent); font-weight: 700; }
   main { max-width: 1200px; margin: 0 auto; padding: 16px; }
   .grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 16px; align-items: start; }
-  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+  .stack { display: flex; flex-direction: column; gap: 16px; }
+  @media (max-width: 900px) { .grid, .grid2 { grid-template-columns: 1fr; } }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; }
-  .card h2 { font-size: 1rem; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .card h2 { font-size: 1rem; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  .card h3 { font-size: .9rem; margin: 14px 0 6px; }
+  .note { font-size: .8rem; color: var(--muted); }
+  .btn {
+    border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 4px 12px;
+    font: inherit; font-size: .85rem; cursor: pointer; color: var(--text);
+  }
+  .btn.primary { background: var(--navy); color: #fff; border-color: var(--navy); font-weight: 700; }
+  .btn.small { padding: 1px 8px; font-size: .75rem; }
 
   /* カレンダー */
   .cal-head { display: flex; align-items: center; gap: 8px; }
-  .cal-head button { border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 2px 10px; cursor: pointer; font: inherit; }
   .cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
   .cal .dow { font-size: .75rem; color: var(--muted); text-align: center; padding: 2px 0; }
   .cal .dow:first-child { color: var(--now); }
   .cal .dow:last-child { color: var(--wait); }
   .day {
-    min-height: 82px; border: 1px solid var(--line); border-radius: 8px; padding: 4px;
-    font-size: .75rem; cursor: pointer; background: #fff; overflow: hidden;
+    min-height: 86px; border: 1px solid var(--line); border-radius: 8px; padding: 4px;
+    font-size: .75rem; cursor: pointer; background: #fff; overflow: hidden; min-width: 0;
   }
   .day.other { background: #fafbfc; color: #aab3be; }
   .day.today { border: 2px solid var(--accent); }
@@ -62,21 +74,27 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: .7rem;
   }
   .chip.done { opacity: .4; text-decoration: line-through; }
-  @media (max-width: 600px) { .day { min-height: 56px; } .chip { font-size: .6rem; } }
+  .chip.pay { background: #fff; border: 1px solid var(--c); color: var(--c); font-weight: 700; }
+  @media (max-width: 600px) { .day { min-height: 58px; } .chip { font-size: .6rem; } }
+  .legend { display: flex; gap: 10px; font-size: .75rem; color: var(--muted); flex-wrap: wrap; }
+  .legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; background: var(--c); }
+  .legend span.outline::before { background: #fff; border: 2px solid var(--c); width: 6px; height: 6px; }
 
   /* フォーム */
   form.add { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; }
-  form.add input[name=title] { grid-column: 1 / -1; }
-  form.add input, form.add select, form.add textarea {
-    font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; width: 100%;
+  form.add .full { grid-column: 1 / -1; }
+  form.add label { font-size: .75rem; color: var(--muted); display: flex; flex-direction: column; gap: 2px; }
+  form.add input, form.add select, form.add textarea, textarea.paste, input.search {
+    font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; width: 100%; color: var(--text);
   }
-  form.add textarea { grid-column: 1 / -1; min-height: 44px; resize: vertical; }
-  form.add button {
-    grid-column: 1 / -1; background: var(--navy); color: #fff; border: 0; border-radius: 8px;
+  form.add textarea { min-height: 44px; resize: vertical; }
+  form.add .actions { grid-column: 1 / -1; display: flex; gap: 8px; }
+  form.add .actions button[type=submit] {
+    flex: 1; background: var(--navy); color: #fff; border: 0; border-radius: 8px;
     padding: 10px; font: inherit; font-weight: 700; cursor: pointer;
   }
 
-  /* 種類タブ */
+  /* タブ */
   .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
   .tabs button {
     border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 4px 12px;
@@ -96,22 +114,54 @@
   .task.now { border-left-color: var(--now); }
   .task.wait { border-left-color: var(--wait); }
   .task.share { border-left-color: var(--share); }
+  .task.corp { border-left-color: var(--corp); }
+  .task.personal { border-left-color: var(--personal); }
+  .task.no-check { grid-template-columns: 1fr auto; }
   .task.done .t-title { text-decoration: line-through; color: var(--muted); }
   .task input[type=checkbox] { width: 18px; height: 18px; margin-top: 3px; cursor: pointer; }
   .t-title { font-weight: 700; word-break: break-word; }
-  .t-meta { font-size: .75rem; color: var(--muted); display: flex; gap: 8px; flex-wrap: wrap; margin-top: 2px; }
-  .t-memo { font-size: .8rem; color: var(--muted); margin-top: 4px; white-space: pre-wrap; }
+  .t-title a { color: inherit; }
+  .t-meta { font-size: .75rem; color: var(--muted); display: flex; gap: 8px; flex-wrap: wrap; margin-top: 2px; align-items: center; }
+  .t-memo { font-size: .8rem; color: var(--muted); margin-top: 4px; white-space: pre-wrap; word-break: break-word; }
   .badge { border-radius: 4px; padding: 0 6px; color: #fff; font-size: .7rem; font-weight: 700; }
   .pri-高 { background: var(--now); } .pri-中 { background: #f08c00; } .pri-低 { background: #8a96a3; }
+  .b-corp { background: var(--corp); } .b-personal { background: var(--personal); }
   .overdue { color: var(--now); font-weight: 700; }
   .t-actions { display: flex; gap: 4px; }
   .t-actions button { border: 0; background: transparent; cursor: pointer; color: var(--muted); font-size: .8rem; padding: 2px 4px; }
   .t-actions button:hover { color: var(--text); }
   .empty { color: var(--muted); font-size: .9rem; text-align: center; padding: 20px 0; }
 
-  .legend { display: flex; gap: 10px; font-size: .75rem; color: var(--muted); }
-  .legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; background: var(--c); }
+  /* 固定費 */
+  .totals { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .total { border-radius: 10px; padding: 12px; color: #fff; }
+  .total.corp { background: var(--corp); } .total.personal { background: var(--personal); }
+  .total .label { font-size: .8rem; opacity: .9; }
+  .total .yen { font-size: 1.4rem; font-weight: 700; }
+  .total .sub { font-size: .75rem; opacity: .9; }
+  table.pay { width: 100%; border-collapse: collapse; font-size: .85rem; }
+  table.pay th, table.pay td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line); }
+  table.pay th { font-size: .75rem; color: var(--muted); font-weight: 500; }
+  table.pay td.num, table.pay th.num { text-align: right; white-space: nowrap; }
+  table.pay tr.sum td { font-weight: 700; border-bottom: 0; }
+  .soon { color: var(--now); font-weight: 700; }
 
+  /* パスワード */
+  .lock-box { max-width: 420px; margin: 20px auto; display: flex; flex-direction: column; gap: 10px; }
+  .lock-box input { font: inherit; padding: 10px; border: 1px solid var(--line); border-radius: 8px; }
+  .lock-box .err { color: var(--now); font-size: .85rem; min-height: 1.2em; }
+  .cred-row { display: flex; align-items: center; gap: 6px; font-size: .85rem; margin-top: 4px; flex-wrap: wrap; }
+  .cred-row .k { color: var(--muted); font-size: .75rem; width: 64px; flex-shrink: 0; }
+  .cred-row code { font-family: ui-monospace, Menlo, monospace; background: var(--bg); padding: 1px 6px; border-radius: 4px; word-break: break-all; }
+  .pw-wrap { display: flex; gap: 6px; }
+  .pw-wrap input { flex: 1; min-width: 0; }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+    background: var(--navy); color: #fff; padding: 8px 16px; border-radius: 999px; font-size: .85rem;
+    opacity: 0; transition: opacity .2s; pointer-events: none;
+  }
+  .toast.show { opacity: 1; }
   .hidden { display: none !important; }
 </style>
 </head>
@@ -120,34 +170,44 @@
   <h1>やることボード</h1>
   <nav>
     <button data-view="home" class="active">スケジュール・やること</button>
-    <button data-view="money">お金管理</button>
+    <button data-view="money">固定費</button>
+    <button data-view="vault">ID・パスワード</button>
+    <button data-view="backup">バックアップ</button>
   </nav>
 </header>
 
 <main>
   <!-- トップ：カレンダー＋やることリスト -->
   <section id="view-home" class="grid">
-    <div class="card">
-      <h2>
-        <span class="cal-head">
-          <button id="prev" aria-label="前の月">‹</button>
-          <span id="month-label"></span>
-          <button id="next" aria-label="次の月">›</button>
-          <button id="today-btn">今日</button>
-        </span>
-        <span class="legend">
-          <span style="--c:var(--now)">すぐやる</span>
-          <span style="--c:var(--wait)">返事待ち</span>
-          <span style="--c:var(--share)">山川共有</span>
-        </span>
-      </h2>
-      <div class="cal" id="cal"></div>
+    <div class="stack">
+      <div class="card">
+        <h2>
+          <span class="cal-head">
+            <button class="btn" id="prev" aria-label="前の月">‹</button>
+            <span id="month-label"></span>
+            <button class="btn" id="next" aria-label="次の月">›</button>
+            <button class="btn" id="today-btn">今日</button>
+          </span>
+          <span class="legend">
+            <span style="--c:var(--now)">すぐやる</span>
+            <span style="--c:var(--wait)">返事待ち</span>
+            <span style="--c:var(--share)">山川共有</span>
+            <span class="outline" style="--c:var(--corp)">法人引落</span>
+            <span class="outline" style="--c:var(--personal)">個人引落</span>
+          </span>
+        </h2>
+        <div class="cal" id="cal"></div>
+      </div>
+      <div class="card">
+        <h2>これからの引き落とし（2週間）<button class="btn small" data-goto="money">固定費を見る</button></h2>
+        <div id="home-upcoming"></div>
+      </div>
     </div>
 
     <div class="card">
       <h2>やることリスト</h2>
       <form class="add" id="add-form">
-        <input name="title" placeholder="やることを入力" required>
+        <input name="title" class="full" placeholder="やることを入力" required>
         <select name="category">
           <option value="now">すぐやる</option>
           <option value="wait">返事待ち</option>
@@ -158,9 +218,12 @@
           <option value="中" selected>優先度：中</option>
           <option value="低">優先度：低</option>
         </select>
-        <input name="due" type="date" title="期限（カレンダーに表示されます）" style="grid-column:1/-1">
-        <textarea name="memo" placeholder="メモ（任意）"></textarea>
-        <button type="submit" id="submit-btn">追加する</button>
+        <input name="due" type="date" class="full" title="期限（カレンダーに表示されます）">
+        <textarea name="memo" class="full" placeholder="メモ（任意）"></textarea>
+        <div class="actions">
+          <button type="submit">追加する</button>
+          <button type="button" class="btn cancel hidden">やめる</button>
+        </div>
       </form>
 
       <div class="tabs" id="tabs"></div>
@@ -179,127 +242,278 @@
     </div>
   </section>
 
-  <!-- お金管理（準備中） -->
+  <!-- 固定費 -->
   <section id="view-money" class="hidden">
-    <div class="card">
-      <h2>お金管理</h2>
-      <p class="empty">Googleスプレッドシートとの連携内容を確認中です。</p>
+    <div class="stack">
+      <div class="card">
+        <h2><span id="money-month-label"></span></h2>
+        <div class="totals" id="money-totals"></div>
+      </div>
+      <div class="grid2">
+        <div class="card">
+          <h2>法人：これからの引き落とし（30日）</h2>
+          <div id="up-corp"></div>
+        </div>
+        <div class="card">
+          <h2>個人：これからの引き落とし（30日）</h2>
+          <div id="up-personal"></div>
+        </div>
+      </div>
+      <div class="grid">
+        <div class="card">
+          <h2>固定費の一覧</h2>
+          <div class="tabs" id="fc-tabs"></div>
+          <ul class="tasks" id="fc-list"></ul>
+        </div>
+        <div class="stack">
+          <div class="card">
+            <h2 id="fc-form-title">固定費を追加</h2>
+            <form class="add" id="fc-form">
+              <input name="name" class="full" placeholder="名前（例：事務所家賃、携帯代）" required>
+              <label>区分
+                <select name="owner"><option value="corp">法人</option><option value="personal">個人</option></select>
+              </label>
+              <label>金額（円）
+                <input name="amount" type="number" min="0" step="1" inputmode="numeric" required>
+              </label>
+              <label>周期
+                <select name="cycle"><option value="monthly">毎月</option><option value="yearly">毎年</option></select>
+              </label>
+              <label>引き落とし日
+                <select name="day"></select>
+              </label>
+              <label class="yearly-only hidden">何月
+                <select name="month"></select>
+              </label>
+              <label class="full">支払い方法・口座（任意）
+                <input name="method" placeholder="例：〇〇銀行、△△カード">
+              </label>
+              <textarea name="memo" class="full" placeholder="メモ（任意）"></textarea>
+              <div class="actions">
+                <button type="submit">追加する</button>
+                <button type="button" class="btn cancel hidden">やめる</button>
+              </div>
+            </form>
+          </div>
+          <div class="card">
+            <h2>スプレッドシートから取り込む</h2>
+            <p class="note">スプレッドシートの「法人個人固定費」で、見出しも含めて範囲を選んでコピーし、下に貼り付けてください。「名前・区分（法人/個人）・金額・引き落とし日」の列を自動で見つけます。区分の列がない場合は、下で選んだ区分になります。</p>
+            <textarea class="paste" id="paste" rows="6" placeholder="ここに貼り付け" style="margin:8px 0"></textarea>
+            <div class="filters" style="margin:0">
+              <label>区分の列がないとき
+                <select id="paste-owner"><option value="corp">法人</option><option value="personal">個人</option></select>
+              </label>
+              <button class="btn primary" id="paste-btn">取り込む</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ID・パスワード -->
+  <section id="view-vault" class="hidden">
+    <div class="card" id="vault-locked">
+      <div class="lock-box">
+        <h2 id="lock-title">ID・パスワード管理</h2>
+        <p class="note" id="lock-note"></p>
+        <input type="password" id="master" placeholder="マスターパスワード" autocomplete="current-password">
+        <input type="password" id="master2" class="hidden" placeholder="もう一度（確認）" autocomplete="new-password">
+        <div class="err" id="lock-err"></div>
+        <button class="btn primary" id="unlock-btn" style="padding:10px">開く</button>
+      </div>
+    </div>
+
+    <div id="vault-open" class="grid hidden">
+      <div class="card">
+        <h2>登録済みのサイト <button class="btn small" id="lock-btn">🔒 鍵をかける</button></h2>
+        <div class="tabs" id="v-tabs"></div>
+        <input class="search" id="v-search" placeholder="サイト名・IDで検索" style="margin-bottom:10px">
+        <ul class="tasks" id="v-list"></ul>
+      </div>
+      <div class="card">
+        <h2 id="v-form-title">サイトを追加</h2>
+        <form class="add" id="v-form" autocomplete="off">
+          <label>区分
+            <select name="owner"><option value="corp">法人</option><option value="personal">個人</option></select>
+          </label>
+          <label>サイト名
+            <input name="site" placeholder="例：〇〇銀行 法人口座" required>
+          </label>
+          <label class="full">ログインページのリンク
+            <input name="url" type="url" placeholder="https://">
+          </label>
+          <label class="full">ID
+            <input name="loginId" autocomplete="off">
+          </label>
+          <label class="full">パスワード
+            <span class="pw-wrap">
+              <input name="password" type="password" autocomplete="new-password">
+              <button type="button" class="btn small" id="pw-toggle">表示</button>
+              <button type="button" class="btn small" id="pw-gen">自動作成</button>
+            </span>
+          </label>
+          <textarea name="memo" class="full" placeholder="メモ（任意：暗証番号のヒントなど）"></textarea>
+          <div class="actions">
+            <button type="submit">追加する</button>
+            <button type="button" class="btn cancel hidden">やめる</button>
+          </div>
+        </form>
+        <p class="note">中身は端末の中で暗号化して保存しています。マスターパスワードを忘れると誰も開けなくなるので、必ず覚えておいてください。10分操作がないと自動で鍵がかかります。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- バックアップ -->
+  <section id="view-backup" class="hidden">
+    <div class="card" style="max-width:640px">
+      <h2>バックアップ</h2>
+      <p class="note">データはこのブラウザの中だけに保存されています。ブラウザのデータを消すと全部消えるので、ときどきファイルに保存しておいてください。別の端末でも、このファイルを読み込めば同じ内容になります（パスワードは暗号化されたまま保存されます）。</p>
+      <div class="filters" style="margin-top:12px">
+        <button class="btn primary" id="export-btn">ファイルに保存</button>
+        <label class="btn">ファイルから読み込む<input type="file" id="import-file" accept="application/json" class="hidden"></label>
+      </div>
     </div>
   </section>
 </main>
+<div class="toast" id="toast"></div>
 
 <script>
 (() => {
-  const KEY = 'yarukoto-tasks-v1';
+  const K_TASKS = 'yarukoto-tasks-v1';
+  const K_FIXED = 'yarukoto-fixed-v1';
+  const K_VAULT = 'yarukoto-vault-v1';
   const CATS = { now: 'すぐやる', wait: '返事待ち', share: '山川共有' };
-  const COLORS = { now: 'var(--now)', wait: 'var(--wait)', share: 'var(--share)' };
+  const COLORS = { now: 'var(--now)', wait: 'var(--wait)', share: 'var(--share)', corp: 'var(--corp)', personal: 'var(--personal)' };
+  const OWNERS = { corp: '法人', personal: '個人' };
   const PRI = { '高': 0, '中': 1, '低': 2 };
 
-  let tasks = load();
-  let cat = 'all';
-  let selectedDay = null;
-  let editingId = null;
-  const now = new Date();
-  let viewY = now.getFullYear(), viewM = now.getMonth();
-
   const $ = id => document.getElementById(id);
-
-  function load() {
-    try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch { return []; }
-  }
-  function save() {
-    try { localStorage.setItem(KEY, JSON.stringify(tasks)); } catch {}
-  }
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const ymd = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const todayStr = () => ymd(new Date());
-  const esc = s => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const yen = n => '¥' + Math.round(n).toLocaleString('ja-JP');
+  const md = s => `${+s.slice(5, 7)}/${+s.slice(8, 10)}`;
+  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
+  const store = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+  function toast(msg) {
+    const t = $('toast'); t.textContent = msg; t.classList.add('show');
+    clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 1600);
+  }
 
-  // 画面切り替え
-  document.querySelectorAll('nav button').forEach(b => b.addEventListener('click', () => {
-    document.querySelectorAll('nav button').forEach(x => x.classList.toggle('active', x === b));
-    $('view-home').classList.toggle('hidden', b.dataset.view !== 'home');
-    $('view-money').classList.toggle('hidden', b.dataset.view !== 'money');
-  }));
+  let tasks = load(K_TASKS, []);
+  let fixed = load(K_FIXED, []);
+  const saveTasks = () => store(K_TASKS, tasks);
+  const saveFixed = () => store(K_FIXED, fixed);
 
-  // 追加・編集
-  $('add-form').addEventListener('submit', e => {
-    e.preventDefault();
-    const f = e.target;
-    const data = {
-      title: f.title.value.trim(),
-      category: f.category.value,
-      priority: f.priority.value,
-      due: f.due.value,
-      memo: f.memo.value.trim(),
-    };
-    if (!data.title) return;
-    if (editingId) {
-      Object.assign(tasks.find(t => t.id === editingId), data);
-      editingId = null;
-      $('submit-btn').textContent = '追加する';
-    } else {
-      tasks.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), done: false, created: Date.now(), ...data });
+  // ---------- 画面切り替え ----------
+  function show(view) {
+    document.querySelectorAll('nav button').forEach(x => x.classList.toggle('active', x.dataset.view === view));
+    ['home', 'money', 'vault', 'backup'].forEach(v => $('view-' + v).classList.toggle('hidden', v !== view));
+    if (view === 'vault') vaultScreen();
+  }
+  document.querySelectorAll('nav button, [data-goto]').forEach(b =>
+    b.addEventListener('click', () => show(b.dataset.view || b.dataset.goto)));
+
+  // 編集フォームの共通処理
+  function formMode(form, editing, addLabel, titleEl, addTitle, editTitle) {
+    form.querySelector('button[type=submit]').textContent = editing ? '変更を保存' : addLabel;
+    form.querySelector('.cancel').classList.toggle('hidden', !editing);
+    if (titleEl) titleEl.textContent = editing ? editTitle : addTitle;
+  }
+
+  // ---------- 固定費の日付計算 ----------
+  // 引き落とし日が月末より後（31日など）の場合はその月の末日に寄せる
+  function payDate(fc, y, m) {
+    if (!fc.day) return null;
+    if (fc.cycle === 'yearly' && +fc.month !== m + 1) return null;
+    const last = new Date(y, m + 1, 0).getDate();
+    return ymd(new Date(y, m, fc.day === 'end' ? last : Math.min(+fc.day, last)));
+  }
+  function paymentsBetween(from, to) {
+    const out = [];
+    const a = new Date(from), b = new Date(to);
+    for (let y = a.getFullYear(), m = a.getMonth(); y < b.getFullYear() || (y === b.getFullYear() && m <= b.getMonth()); m === 11 ? (y++, m = 0) : m++) {
+      fixed.forEach(fc => {
+        const d = payDate(fc, y, m);
+        if (d && d >= from && d <= to) out.push({ date: d, fc });
+      });
     }
-    f.reset();
-    f.priority.value = '中';
-    if (cat !== 'all') f.category.value = cat;
-    if (selectedDay) f.due.value = selectedDay;
-    save(); render();
+    return out.sort((p, q) => p.date.localeCompare(q.date) || q.fc.amount - p.fc.amount);
+  }
+  const addDays = (s, n) => { const d = new Date(s + 'T00:00:00'); d.setDate(d.getDate() + n); return ymd(d); };
+  const dayLabel = fc => !fc.day ? '日付未設定' : (fc.cycle === 'yearly' ? `毎年${fc.month}月` : '毎月') + (fc.day === 'end' ? '末日' : `${fc.day}日`);
+
+  // ---------- やることリスト ----------
+  let cat = 'all', selectedDay = null, editingTask = null;
+  const now = new Date();
+  let viewY = now.getFullYear(), viewM = now.getMonth();
+  const taskForm = $('add-form');
+
+  function resetTaskForm() {
+    taskForm.reset(); taskForm.priority.value = '中';
+    if (cat !== 'all') taskForm.category.value = cat;
+    if (selectedDay) taskForm.due.value = selectedDay;
+    editingTask = null; formMode(taskForm, false, '追加する');
+  }
+  taskForm.addEventListener('submit', e => {
+    e.preventDefault();
+    const f = taskForm;
+    const data = { title: f.title.value.trim(), category: f.category.value, priority: f.priority.value, due: f.due.value, memo: f.memo.value.trim() };
+    if (!data.title) return;
+    if (editingTask) Object.assign(tasks.find(t => t.id === editingTask), data);
+    else tasks.push({ id: uid(), done: false, created: Date.now(), ...data });
+    saveTasks(); resetTaskForm(); renderHome();
   });
+  taskForm.querySelector('.cancel').onclick = resetTaskForm;
 
   $('list').addEventListener('click', e => {
     const li = e.target.closest('.task'); if (!li) return;
     const t = tasks.find(x => x.id === li.dataset.id);
-    if (e.target.matches('input[type=checkbox]')) { t.done = e.target.checked; save(); render(); }
+    if (e.target.matches('input[type=checkbox]')) { t.done = e.target.checked; saveTasks(); renderHome(); }
     if (e.target.dataset.act === 'del' && confirm(`「${t.title}」を削除しますか？`)) {
-      tasks = tasks.filter(x => x !== t); save(); render();
+      tasks = tasks.filter(x => x !== t); saveTasks(); renderHome();
     }
     if (e.target.dataset.act === 'edit') {
-      const f = $('add-form');
+      const f = taskForm;
       f.title.value = t.title; f.category.value = t.category; f.priority.value = t.priority;
       f.due.value = t.due || ''; f.memo.value = t.memo || '';
-      editingId = t.id; $('submit-btn').textContent = '変更を保存';
-      f.title.focus();
+      editingTask = t.id; formMode(f, true, '追加する'); f.title.focus();
     }
   });
 
-  $('sort').addEventListener('change', render);
-  $('show-done').addEventListener('change', render);
-  $('prev').addEventListener('click', () => { viewM--; if (viewM < 0) { viewM = 11; viewY--; } renderCal(); });
-  $('next').addEventListener('click', () => { viewM++; if (viewM > 11) { viewM = 0; viewY++; } renderCal(); });
-  $('today-btn').addEventListener('click', () => { const d = new Date(); viewY = d.getFullYear(); viewM = d.getMonth(); renderCal(); });
-
+  $('sort').addEventListener('change', renderHome);
+  $('show-done').addEventListener('change', renderHome);
+  $('prev').onclick = () => { viewM--; if (viewM < 0) { viewM = 11; viewY--; } renderCal(); };
+  $('next').onclick = () => { viewM++; if (viewM > 11) { viewM = 0; viewY++; } renderCal(); };
+  $('today-btn').onclick = () => { const d = new Date(); viewY = d.getFullYear(); viewM = d.getMonth(); renderCal(); };
   $('cal').addEventListener('click', e => {
     const day = e.target.closest('.day'); if (!day) return;
     selectedDay = selectedDay === day.dataset.date ? null : day.dataset.date;
-    $('add-form').due.value = selectedDay || '';
-    render();
+    if (!editingTask) taskForm.due.value = selectedDay || '';
+    renderHome();
   });
   $('day-filter').addEventListener('click', e => {
-    if (e.target.tagName === 'BUTTON') { selectedDay = null; $('add-form').due.value = ''; render(); }
+    if (e.target.tagName === 'BUTTON') { selectedDay = null; if (!editingTask) taskForm.due.value = ''; renderHome(); }
   });
 
   function renderTabs() {
     const open = tasks.filter(t => !t.done);
-    const items = [['all', 'すべて'], ...Object.entries(CATS)];
-    $('tabs').innerHTML = items.map(([k, label]) => {
+    $('tabs').innerHTML = [['all', 'すべて'], ...Object.entries(CATS)].map(([k, label]) => {
       const n = k === 'all' ? open.length : open.filter(t => t.category === k).length;
       return `<button data-cat="${k}" class="${cat === k ? 'active' : ''}">${label}<span class="count">${n}</span></button>`;
     }).join('');
     $('tabs').querySelectorAll('button').forEach(b => b.onclick = () => {
       cat = b.dataset.cat;
-      if (cat !== 'all') $('add-form').category.value = cat;
-      render();
+      if (cat !== 'all' && !editingTask) taskForm.category.value = cat;
+      renderHome();
     });
   }
 
   function renderList() {
-    const showDone = $('show-done').checked;
-    const sort = $('sort').value;
-    let list = tasks.filter(t =>
-      (cat === 'all' || t.category === cat) &&
-      (showDone || !t.done) &&
-      (!selectedDay || t.due === selectedDay));
+    const showDone = $('show-done').checked, sort = $('sort').value;
+    const list = tasks.filter(t => (cat === 'all' || t.category === cat) && (showDone || !t.done) && (!selectedDay || t.due === selectedDay));
     const dueKey = t => t.due || '9999-12-31';
     list.sort((a, b) => {
       if (a.done !== b.done) return a.done ? 1 : -1;
@@ -307,15 +521,17 @@
       if (sort === 'due') return dueKey(a).localeCompare(dueKey(b)) || PRI[a.priority] - PRI[b.priority];
       return a.created - b.created;
     });
-
-    $('day-filter').innerHTML = selectedDay
-      ? `${selectedDay.replace(/-/g, '/')} の分だけ表示中 <button style="border:0;background:none;color:var(--wait);cursor:pointer;font:inherit">解除</button>`
-      : '';
-
+    let dayInfo = '';
+    if (selectedDay) {
+      const pays = paymentsBetween(selectedDay, selectedDay);
+      dayInfo = `${md(selectedDay)} の分だけ表示中 <button style="border:0;background:none;color:var(--wait);cursor:pointer;font:inherit">解除</button>` +
+        (pays.length ? `<br>この日の引き落とし：${pays.map(p => `${esc(p.fc.name)}（${OWNERS[p.fc.owner]} ${yen(p.fc.amount)}）`).join('、')}` : '');
+    }
+    $('day-filter').innerHTML = dayInfo;
     const today = todayStr();
     $('list').innerHTML = list.length ? list.map(t => {
       const over = t.due && !t.done && t.due < today;
-      const dueTxt = t.due ? `期限 ${t.due.slice(5).replace('-', '/')}${t.due === today ? '（今日）' : ''}` : '期限なし';
+      const dueTxt = t.due ? `期限 ${md(t.due)}${t.due === today ? '（今日）' : ''}` : '期限なし';
       return `<li class="task ${t.category} ${t.done ? 'done' : ''}" data-id="${t.id}">
         <input type="checkbox" ${t.done ? 'checked' : ''} aria-label="完了">
         <div>
@@ -327,36 +543,333 @@
           </div>
           ${t.memo ? `<div class="t-memo">${esc(t.memo)}</div>` : ''}
         </div>
-        <div class="t-actions">
-          <button data-act="edit">編集</button>
-          <button data-act="del">削除</button>
-        </div>
+        <div class="t-actions"><button data-act="edit">編集</button><button data-act="del">削除</button></div>
       </li>`;
     }).join('') : '<li class="empty">やることはありません</li>';
   }
 
   function renderCal() {
     $('month-label').textContent = `${viewY}年${viewM + 1}月`;
-    const first = new Date(viewY, viewM, 1);
-    const start = new Date(viewY, viewM, 1 - first.getDay());
+    const start = new Date(viewY, viewM, 1 - new Date(viewY, viewM, 1).getDay());
+    const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 41);
+    const pays = paymentsBetween(ymd(start), ymd(end));
     const today = todayStr();
     let html = '日月火水木金土'.split('').map(d => `<div class="dow">${d}</div>`).join('');
     for (let i = 0; i < 42; i++) {
       const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
       const ds = ymd(d);
-      const dayTasks = tasks.filter(t => t.due === ds)
-        .sort((a, b) => a.done - b.done || PRI[a.priority] - PRI[b.priority]);
-      const chips = dayTasks.slice(0, 3).map(t =>
-        `<span class="chip ${t.done ? 'done' : ''}" style="background:${COLORS[t.category]}" title="${esc(t.title)}">${esc(t.title)}</span>`).join('');
-      const more = dayTasks.length > 3 ? `<span style="color:var(--muted)">+${dayTasks.length - 3}</span>` : '';
+      const items = [
+        ...tasks.filter(t => t.due === ds).sort((a, b) => a.done - b.done || PRI[a.priority] - PRI[b.priority])
+          .map(t => `<span class="chip ${t.done ? 'done' : ''}" style="background:${COLORS[t.category]}" title="${esc(t.title)}">${esc(t.title)}</span>`),
+        ...pays.filter(p => p.date === ds)
+          .map(p => `<span class="chip pay" style="--c:${COLORS[p.fc.owner]}" title="${OWNERS[p.fc.owner]}：${esc(p.fc.name)} ${yen(p.fc.amount)}">¥ ${esc(p.fc.name)}</span>`),
+      ];
+      const more = items.length > 3 ? `<span style="color:var(--muted)">+${items.length - 3}</span>` : '';
       const cls = ['day', d.getMonth() !== viewM && 'other', ds === today && 'today', ds === selectedDay && 'selected'].filter(Boolean).join(' ');
-      html += `<div class="${cls}" data-date="${ds}"><div class="num">${d.getDate()}</div>${chips}${more}</div>`;
+      html += `<div class="${cls}" data-date="${ds}"><div class="num">${d.getDate()}</div>${items.slice(0, 3).join('')}${more}</div>`;
     }
     $('cal').innerHTML = html;
   }
 
-  function render() { renderTabs(); renderList(); renderCal(); }
-  render();
+  function payTable(pays, withOwner) {
+    if (!pays.length) return '<p class="empty">予定はありません</p>';
+    const today = todayStr(), soon = addDays(today, 3);
+    const sum = pays.reduce((s, p) => s + +p.fc.amount, 0);
+    return `<table class="pay"><thead><tr><th>日付</th>${withOwner ? '<th>区分</th>' : ''}<th>名前</th><th class="num">金額</th></tr></thead><tbody>` +
+      pays.map(p => `<tr><td class="${p.date <= soon ? 'soon' : ''}">${md(p.date)}${p.date === today ? '（今日）' : ''}</td>` +
+        (withOwner ? `<td><span class="badge b-${p.fc.owner}">${OWNERS[p.fc.owner]}</span></td>` : '') +
+        `<td>${esc(p.fc.name)}${p.fc.method ? `<div class="note">${esc(p.fc.method)}</div>` : ''}</td><td class="num">${yen(p.fc.amount)}</td></tr>`).join('') +
+      `<tr class="sum"><td colspan="${withOwner ? 3 : 2}">合計</td><td class="num">${yen(sum)}</td></tr></tbody></table>`;
+  }
+
+  function renderHome() {
+    renderTabs(); renderList(); renderCal();
+    const today = todayStr();
+    $('home-upcoming').innerHTML = fixed.length
+      ? payTable(paymentsBetween(today, addDays(today, 13)), true)
+      : '<p class="empty">固定費が未登録です。「固定費」から登録してください。</p>';
+  }
+
+  // ---------- 固定費 ----------
+  const fcForm = $('fc-form');
+  let fcOwner = 'all', editingFc = null;
+  fcForm.day.innerHTML = '<option value="">未設定</option>' +
+    Array.from({ length: 31 }, (_, i) => `<option value="${i + 1}">${i + 1}日</option>`).join('') + '<option value="end">月末</option>';
+  fcForm.month.innerHTML = Array.from({ length: 12 }, (_, i) => `<option value="${i + 1}">${i + 1}月</option>`).join('');
+  const syncCycle = () => fcForm.querySelector('.yearly-only').classList.toggle('hidden', fcForm.cycle.value !== 'yearly');
+  fcForm.cycle.addEventListener('change', syncCycle);
+
+  function resetFcForm() {
+    fcForm.reset(); if (fcOwner !== 'all') fcForm.owner.value = fcOwner;
+    editingFc = null; syncCycle(); formMode(fcForm, false, '追加する', $('fc-form-title'), '固定費を追加', '固定費を編集');
+  }
+  fcForm.addEventListener('submit', e => {
+    e.preventDefault();
+    const f = fcForm;
+    const data = {
+      name: f.name.value.trim(), owner: f.owner.value, amount: Math.round(+f.amount.value || 0),
+      cycle: f.cycle.value, day: f.day.value, month: +f.month.value, method: f.method.value.trim(), memo: f.memo.value.trim(),
+    };
+    if (!data.name) return;
+    if (editingFc) Object.assign(fixed.find(x => x.id === editingFc), data);
+    else fixed.push({ id: uid(), ...data });
+    saveFixed(); resetFcForm(); renderAll();
+  });
+  fcForm.querySelector('.cancel').onclick = resetFcForm;
+
+  $('fc-list').addEventListener('click', e => {
+    const li = e.target.closest('.task'); if (!li) return;
+    const fc = fixed.find(x => x.id === li.dataset.id);
+    if (e.target.dataset.act === 'del' && confirm(`「${fc.name}」を削除しますか？`)) {
+      fixed = fixed.filter(x => x !== fc); saveFixed(); renderAll();
+    }
+    if (e.target.dataset.act === 'edit') {
+      const f = fcForm;
+      ['name', 'owner', 'amount', 'cycle', 'day', 'method', 'memo'].forEach(k => f[k].value = fc[k] ?? '');
+      f.month.value = fc.month || 1;
+      editingFc = fc.id; syncCycle(); formMode(f, true, '追加する', $('fc-form-title'), '固定費を追加', '固定費を編集');
+      f.scrollIntoView({ behavior: 'smooth', block: 'center' }); f.name.focus();
+    }
+  });
+
+  function renderMoney() {
+    const d = new Date(), y = d.getFullYear(), m = d.getMonth(), today = todayStr();
+    const monthStart = ymd(new Date(y, m, 1)), monthEnd = ymd(new Date(y, m + 1, 0));
+    $('money-month-label').textContent = `${y}年${m + 1}月の引き落とし`;
+    const monthPays = paymentsBetween(monthStart, monthEnd);
+    $('money-totals').innerHTML = ['corp', 'personal'].map(o => {
+      const all = monthPays.filter(p => p.fc.owner === o);
+      const rest = all.filter(p => p.date >= today);
+      const total = all.reduce((s, p) => s + +p.fc.amount, 0);
+      const restSum = rest.reduce((s, p) => s + +p.fc.amount, 0);
+      return `<div class="total ${o}"><div class="label">${OWNERS[o]}・今月の合計</div><div class="yen">${yen(total)}</div>
+        <div class="sub">今日から月末までに あと ${yen(restSum)}（${rest.length}件）</div></div>`;
+    }).join('');
+    const up = paymentsBetween(today, addDays(today, 29));
+    $('up-corp').innerHTML = payTable(up.filter(p => p.fc.owner === 'corp'));
+    $('up-personal').innerHTML = payTable(up.filter(p => p.fc.owner === 'personal'));
+
+    $('fc-tabs').innerHTML = [['all', 'すべて'], ...Object.entries(OWNERS)].map(([k, label]) => {
+      const n = k === 'all' ? fixed.length : fixed.filter(x => x.owner === k).length;
+      return `<button data-o="${k}" class="${fcOwner === k ? 'active' : ''}">${label}<span class="count">${n}</span></button>`;
+    }).join('');
+    $('fc-tabs').querySelectorAll('button').forEach(b => b.onclick = () => {
+      fcOwner = b.dataset.o; if (fcOwner !== 'all' && !editingFc) fcForm.owner.value = fcOwner; renderMoney();
+    });
+    const dayNum = fc => fc.day === 'end' ? 32 : (+fc.day || 99);
+    const list = fixed.filter(x => fcOwner === 'all' || x.owner === fcOwner)
+      .sort((a, b) => a.owner.localeCompare(b.owner) || dayNum(a) - dayNum(b));
+    $('fc-list').innerHTML = list.length ? list.map(fc => `<li class="task no-check ${fc.owner}" data-id="${fc.id}">
+        <div>
+          <div class="t-title">${esc(fc.name)}　${yen(fc.amount)}</div>
+          <div class="t-meta"><span class="badge b-${fc.owner}">${OWNERS[fc.owner]}</span><span class="${fc.day ? '' : 'overdue'}">${dayLabel(fc)}</span>${fc.method ? `<span>${esc(fc.method)}</span>` : ''}</div>
+          ${fc.memo ? `<div class="t-memo">${esc(fc.memo)}</div>` : ''}
+        </div>
+        <div class="t-actions"><button data-act="edit">編集</button><button data-act="del">削除</button></div>
+      </li>`).join('') : '<li class="empty">まだ登録がありません</li>';
+  }
+
+  // スプレッドシートからの貼り付け取り込み
+  $('paste-btn').onclick = () => {
+    const text = $('paste').value.trim(); if (!text) return;
+    const rows = text.split(/\r?\n/).map(r => r.split(r.includes('\t') ? '\t' : ',').map(c => c.trim().replace(/^"|"$/g, '')));
+    const head = rows[0];
+    const find = re => head.findIndex(h => re.test(h));
+    let iName = find(/名|項目|内容|サービス|支払先/), iOwner = find(/区分|法人|個人|種別/),
+        iAmt = find(/金額|料金|額|円/), iDay = find(/日/);
+    let body = rows.slice(1);
+    if (iAmt < 0) { iName = 0; iAmt = 1; iDay = 2; iOwner = -1; body = rows; } // 見出しなし
+    if (iName < 0) iName = head.findIndex((_, i) => ![iOwner, iAmt, iDay].includes(i));
+    let owner = $('paste-owner').value, added = 0;
+    body.forEach(r => {
+      // 「法人」「個人」だけの見出し行が途中にある場合はそこから区分を切り替える
+      const line = r.join('');
+      if (/^(法人|個人)/.test(line) && !r[iAmt]) { owner = line.startsWith('法人') ? 'corp' : 'personal'; return; }
+      const name = r[iName], amount = parseInt(String(r[iAmt] ?? '').replace(/[^\d-]/g, ''), 10);
+      if (!name || isNaN(amount)) return;
+      const o = iOwner >= 0 && r[iOwner] ? (/法人|会社/.test(r[iOwner]) ? 'corp' : /個人/.test(r[iOwner]) ? 'personal' : owner) : owner;
+      const ds = String(r[iDay] ?? '');
+      const yearly = ds.match(/(\d{1,2})月\s*(\d{1,2})日/);
+      const day = /末/.test(ds) ? 'end' : ((yearly ? yearly[2] : (ds.match(/\d{1,2}/) || [])[0]) || '');
+      fixed.push({ id: uid(), name, owner: o, amount, cycle: yearly ? 'yearly' : 'monthly', month: yearly ? +yearly[1] : 1,
+        day: day && +day >= 1 && +day <= 31 ? String(+day) : day === 'end' ? 'end' : '', method: '', memo: '' });
+      added++;
+    });
+    saveFixed(); renderAll();
+    $('paste').value = '';
+    toast(added ? `${added}件 取り込みました` : '取り込める行が見つかりませんでした');
+  };
+
+  // ---------- ID・パスワード（暗号化保存） ----------
+  const enc = new TextEncoder(), dec = new TextDecoder();
+  const b64 = buf => btoa(String.fromCharCode(...new Uint8Array(buf)));
+  const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+  let vaultKey = null, vault = [], vOwner = 'all', editingV = null, idleTimer = null;
+
+  async function deriveKey(pass, salt) {
+    const base = await crypto.subtle.importKey('raw', enc.encode(pass), 'PBKDF2', false, ['deriveKey']);
+    return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: 250000, hash: 'SHA-256' }, base,
+      { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+  }
+  async function saveVault() {
+    const stored = load(K_VAULT, null);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, vaultKey, enc.encode(JSON.stringify(vault)));
+    store(K_VAULT, { salt: stored.salt, iv: b64(iv), data: b64(ct) });
+  }
+  function lockVault() {
+    vaultKey = null; vault = []; editingV = null;
+    $('v-form').reset(); $('v-list').innerHTML = '';
+    vaultScreen();
+  }
+  function bumpIdle() {
+    clearTimeout(idleTimer);
+    if (vaultKey) idleTimer = setTimeout(() => { lockVault(); toast('自動で鍵をかけました'); }, 10 * 60 * 1000);
+  }
+  ['click', 'keydown'].forEach(ev => document.addEventListener(ev, bumpIdle));
+
+  function vaultScreen() {
+    const exists = !!load(K_VAULT, null);
+    $('vault-locked').classList.toggle('hidden', !!vaultKey);
+    $('vault-open').classList.toggle('hidden', !vaultKey);
+    if (vaultKey) return renderVault();
+    $('master2').classList.toggle('hidden', exists);
+    $('lock-note').textContent = exists
+      ? 'マスターパスワードを入れて開いてください。'
+      : '最初にマスターパスワードを決めてください。この管理表を開くための合言葉です。忘れると中身を取り出せなくなります。';
+    $('unlock-btn').textContent = exists ? '開く' : '設定して開く';
+    $('lock-err').textContent = '';
+    if (!crypto.subtle) $('lock-err').textContent = 'このページは https で開いたときだけ使えます。';
+  }
+  async function unlock() {
+    const pass = $('master').value, stored = load(K_VAULT, null);
+    $('lock-err').textContent = '';
+    if (!pass) return;
+    try {
+      if (!stored) {
+        if (pass.length < 6) return $('lock-err').textContent = '6文字以上にしてください。';
+        if (pass !== $('master2').value) return $('lock-err').textContent = '確認用と一致しません。';
+        const salt = crypto.getRandomValues(new Uint8Array(16));
+        store(K_VAULT, { salt: b64(salt) });
+        vaultKey = await deriveKey(pass, salt); vault = [];
+        await saveVault();
+      } else {
+        const key = await deriveKey(pass, unb64(stored.salt));
+        const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(stored.iv) }, key, unb64(stored.data));
+        vault = JSON.parse(dec.decode(pt)); vaultKey = key;
+      }
+    } catch {
+      $('lock-err').textContent = 'マスターパスワードが違います。'; return;
+    }
+    $('master').value = $('master2').value = '';
+    bumpIdle(); vaultScreen();
+  }
+  $('unlock-btn').onclick = unlock;
+  [$('master'), $('master2')].forEach(i => i.addEventListener('keydown', e => { if (e.key === 'Enter') unlock(); }));
+  $('lock-btn').onclick = lockVault;
+
+  const vForm = $('v-form');
+  function resetVForm() {
+    vForm.reset(); if (vOwner !== 'all') vForm.owner.value = vOwner;
+    vForm.password.type = 'password'; $('pw-toggle').textContent = '表示';
+    editingV = null; formMode(vForm, false, '追加する', $('v-form-title'), 'サイトを追加', 'サイトを編集');
+  }
+  $('pw-toggle').onclick = () => {
+    const p = vForm.password; p.type = p.type === 'password' ? 'text' : 'password';
+    $('pw-toggle').textContent = p.type === 'password' ? '表示' : '隠す';
+  };
+  $('pw-gen').onclick = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%&*?';
+    const r = crypto.getRandomValues(new Uint32Array(16));
+    vForm.password.value = Array.from(r, n => chars[n % chars.length]).join('');
+    vForm.password.type = 'text'; $('pw-toggle').textContent = '隠す';
+  };
+  vForm.addEventListener('submit', async e => {
+    e.preventDefault();
+    if (!vaultKey) return vaultScreen();
+    const f = vForm;
+    const data = { owner: f.owner.value, site: f.site.value.trim(), url: f.url.value.trim(), loginId: f.loginId.value, password: f.password.value, memo: f.memo.value.trim() };
+    if (!data.site) return;
+    if (editingV) Object.assign(vault.find(x => x.id === editingV), data);
+    else vault.push({ id: uid(), ...data });
+    await saveVault(); resetVForm(); renderVault(); toast('保存しました');
+  });
+  vForm.querySelector('.cancel').onclick = resetVForm;
+  $('v-search').addEventListener('input', renderVault);
+
+  $('v-list').addEventListener('click', async e => {
+    const li = e.target.closest('.task'); if (!li) return;
+    const v = vault.find(x => x.id === li.dataset.id), act = e.target.dataset.act;
+    if (act === 'copy-id' || act === 'copy-pw') {
+      try { await navigator.clipboard.writeText(act === 'copy-id' ? v.loginId : v.password); toast('コピーしました'); }
+      catch { toast('コピーできませんでした'); }
+    }
+    if (act === 'show-pw') {
+      const c = li.querySelector('.pw'); const shown = c.dataset.shown === '1';
+      c.textContent = shown ? '••••••••' : v.password; c.dataset.shown = shown ? '0' : '1';
+      e.target.textContent = shown ? '表示' : '隠す';
+    }
+    if (act === 'del' && confirm(`「${v.site}」を削除しますか？`)) {
+      vault = vault.filter(x => x !== v); await saveVault(); renderVault();
+    }
+    if (act === 'edit') {
+      ['owner', 'site', 'url', 'loginId', 'password', 'memo'].forEach(k => vForm[k].value = v[k] ?? '');
+      editingV = v.id; formMode(vForm, true, '追加する', $('v-form-title'), 'サイトを追加', 'サイトを編集');
+      vForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  });
+
+  function safeUrl(u) { try { const x = new URL(u); return /^https?:$/.test(x.protocol) ? x.href : ''; } catch { return ''; } }
+  function renderVault() {
+    $('v-tabs').innerHTML = [['all', 'すべて'], ...Object.entries(OWNERS)].map(([k, label]) => {
+      const n = k === 'all' ? vault.length : vault.filter(x => x.owner === k).length;
+      return `<button data-o="${k}" class="${vOwner === k ? 'active' : ''}">${label}<span class="count">${n}</span></button>`;
+    }).join('');
+    $('v-tabs').querySelectorAll('button').forEach(b => b.onclick = () => {
+      vOwner = b.dataset.o; if (vOwner !== 'all' && !editingV) vForm.owner.value = vOwner; renderVault();
+    });
+    const q = $('v-search').value.trim().toLowerCase();
+    const list = vault.filter(x => (vOwner === 'all' || x.owner === vOwner) &&
+      (!q || [x.site, x.loginId, x.url, x.memo].some(s => (s || '').toLowerCase().includes(q))))
+      .sort((a, b) => a.owner.localeCompare(b.owner) || a.site.localeCompare(b.site, 'ja'));
+    $('v-list').innerHTML = list.length ? list.map(v => {
+      const url = safeUrl(v.url);
+      return `<li class="task no-check ${v.owner}" data-id="${v.id}">
+        <div>
+          <div class="t-title">${url ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(v.site)} ↗</a>` : esc(v.site)}</div>
+          <div class="t-meta"><span class="badge b-${v.owner}">${OWNERS[v.owner]}</span>${url ? `<span>${esc(new URL(url).host)}</span>` : ''}</div>
+          <div class="cred-row"><span class="k">ID</span><code>${esc(v.loginId) || '—'}</code>${v.loginId ? '<button class="btn small" data-act="copy-id">コピー</button>' : ''}</div>
+          <div class="cred-row"><span class="k">パスワード</span><code class="pw">••••••••</code>${v.password ? '<button class="btn small" data-act="show-pw">表示</button><button class="btn small" data-act="copy-pw">コピー</button>' : ''}</div>
+          ${v.memo ? `<div class="t-memo">${esc(v.memo)}</div>` : ''}
+        </div>
+        <div class="t-actions"><button data-act="edit">編集</button><button data-act="del">削除</button></div>
+      </li>`;
+    }).join('') : '<li class="empty">まだ登録がありません</li>';
+  }
+
+  // ---------- バックアップ ----------
+  $('export-btn').onclick = () => {
+    const data = { app: 'yarukoto', version: 1, savedAt: new Date().toISOString(), tasks, fixed, vault: load(K_VAULT, null) };
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+    a.download = `yarukoto-backup-${todayStr()}.json`;
+    a.click(); URL.revokeObjectURL(a.href);
+  };
+  $('import-file').onchange = async e => {
+    const file = e.target.files[0]; e.target.value = ''; if (!file) return;
+    try {
+      const data = JSON.parse(await file.text());
+      if (data.app !== 'yarukoto') throw 0;
+      if (!confirm('今のデータをファイルの内容で置き換えます。よろしいですか？')) return;
+      tasks = data.tasks || []; fixed = data.fixed || [];
+      saveTasks(); saveFixed();
+      if (data.vault) store(K_VAULT, data.vault); else localStorage.removeItem(K_VAULT);
+      lockVault(); renderAll(); toast('読み込みました');
+    } catch { toast('このファイルは読み込めませんでした'); }
+  };
+
+  function renderAll() { renderHome(); renderMoney(); }
+  renderAll();
 })();
 </script>
 </body>
