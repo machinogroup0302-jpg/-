@@ -116,7 +116,7 @@ async function computeLog(mode, out, force = false, st = style) {
     out.innerHTML = '<p class="small muted"><span class="spinner"></span> 計算しています…</p>';
     await new Promise((r) => setTimeout(r, 30));
     const kind = kindOf(mode);
-    const prices = {};
+    const prices = {}, priceAt = {};
     // やり方ごとに向き（買いだけ・売りだけ・両方）が違うので、向きごとに全部計算しておく
     const by = Object.fromEntries(waySides(mode).map((v) => [v, { trades: [], holding: [], next: [] }]));
     // 「1年前から先を知らずに」の練習用：最初から決まっている代表銘柄（為替は全部）で、1年より前から計算しておく
@@ -126,6 +126,7 @@ async function computeLog(mode, out, force = false, st = style) {
     let n = 0;
     for (const x of list) {
       prices[x.symbol] = x.candles[x.candles.length - 1].close;
+      priceAt[x.symbol] = x.candles[x.candles.length - 1].time;
       const opt = { kind, pair: x.symbol.replace(/=X$/, ''), regime, intraday: day, days: day ? (kind === 'fx' ? 1000 : 600) : 250, maxHold: day ? null : swingDays };
       const last = x.candles[x.candles.length - 1];
       for (const [v, g] of Object.entries(by)) {
@@ -144,7 +145,7 @@ async function computeLog(mode, out, force = false, st = style) {
     if (!usdjpy) { try { const u = await api('/api/chart?symbol=USDJPY&tf=1d'); usdjpy = u.candles[u.candles.length - 1].close; } catch { /* 取れなければ米国株の量は出さない */ } }
     // 練習用の取引にも、その時点までのことだけで「勝つ確率の目安」を付ける
     if (wf) for (const ts of Object.values(wf)) for (const t of ts) t.odds = signalOdds(ts, { symbol: t.symbol, side: t.side, strength: t.strength, before: t.entryDate });
-    const data = { list: day ? null : list, regime, by, wf, wfCount: fixed.size, prices, usdjpy, count: list.length, at: Date.now(), style: st, scanInfo };
+    const data = { list: day ? null : list, regime, by, wf, wfCount: fixed.size, prices, priceAt, usdjpy, count: list.length, at: Date.now(), style: st, scanInfo };
     logCache[ck] = { at: Date.now(), data };
     return data;
   })();
@@ -205,7 +206,7 @@ function viewOf(r, mode) {
   const sel = wayViewOf(mode);
   const way = sel === 'custom' && r.custom ? r.custom : sel === 'auto' || !WAYS[mode].some((w) => w.key === sel) ? best : wayOf(mode, sel);
   const g = ensureOdds(r.by[way.sides]);
-  return { wfRes: r.wfRes, wfCount: r.wfCount, trades: g.trades, holding: g.holding, next: g.next, prices: r.prices, usdjpy: r.usdjpy, way, best, std, custom: r.custom, minOdds: way.minOdds || 0, cmp: r.cmp, keep, month, auto: way === best && sel === 'auto', pf: wayProfile(pf, mode, (way.base || way).key), budget };
+  return { wfRes: r.wfRes, wfCount: r.wfCount, trades: g.trades, holding: g.holding, next: g.next, prices: r.prices, priceAt: r.priceAt, usdjpy: r.usdjpy, way, best, std, custom: r.custom, minOdds: way.minOdds || 0, cmp: r.cmp, keep, month, auto: way === best && sel === 'auto', pf: wayProfile(pf, mode, (way.base || way).key), budget };
 }
 
 // 「今月はこのやり方に決めています」の一言
@@ -512,6 +513,18 @@ function calForm(mode, b) {
     <p class="small muted" style="margin:0">※ 信用で持っている株・現物の株が「持っている株」に全部入っていると、正確になります（NISAの株は担保にならないので入れなくてOK）。</p></details>`;
 }
 
+// 何の値段・いつのCSVで計算したか（証券会社の数字とずれたときに、どこが違うか分かるように）
+function calcBasis(mode, r, use) {
+  const ms = use.rows.filter((x) => x.now);
+  const md = (t) => { const d = new Date((t + 9 * 3600) * 1000); return `${d.getUTCMonth() + 1}/${d.getUTCDate()}`; };
+  const bare = (x) => String(x).toUpperCase().replace(/\.T$|=X$/, '');
+  const at = (h) => { const k = Object.keys(r.priceAt || {}).find((p) => bare(p) === bare(symbolOf(mode, h.code))); return k ? r.priceAt[k] : null; };
+  const cal = getProfile().marginCal?.[mode];
+  const parts = ms.map((x) => `${esc(x.h.name)} ${fmtPrice(x.now, mode === 'stock' ? 0 : digitsOf(mode))}円${at(x.h) ? `（${md(at(x.h))}の終値）` : ''}`);
+  if (!parts.length && !cal) return '';
+  return `<p class="small muted" style="margin:6px 0 0">🔎 計算に使った値段：${parts.join('・') || '—'}${cal ? `／CSVを読み込んだ日：${esc(cal.date.slice(5).replace('-', '/'))}（そのあと楽天証券で売買・入金・出金したら、CSVを読み込み直すと合います）` : ''}</p>`;
+}
+
 // 💰 今使えるお金：むずかしい計算は裏でやって、わかりやすい数字だけ出す
 function moneySummary(mode, r, use, left, book, topUp) {
   const big = (label, value, note = '', cls = '') => `<div class="stat"><div class="label">${label}</div><div class="value ${cls}" style="font-size:18px;word-break:keep-all">${value}</div>${note ? `<div class="small muted">${note}</div>` : ''}</div>`;
@@ -542,6 +555,7 @@ function moneySummary(mode, r, use, left, book, topUp) {
   }
   if (book) cards.push(big('全部のお金（信用を今ぜんぶ決済したら）', `約${yen0(book.total + left.cash + topUp)}`, '現金＋現物の株の今の値段'));
   return `<div class="grid2">${cards.join('')}</div>
+    ${calcBasis(mode, r, use)}
     <p class="small muted" style="margin:4px 0 0">毎日の値段で、自動で計算し直しています。予算を入れ直したいときは、「持っている株」で証券会社のCSVを読み込むと、予算も自動で決まります。</p>`;
 }
 
