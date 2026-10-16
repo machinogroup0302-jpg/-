@@ -361,7 +361,8 @@ async function handleApi(req, res, url) {
 async function serveStatic(req, res, url) {
   let file = VENDOR[url.pathname];
   if (!file) {
-    const rel = url.pathname === '/' ? '/index.html' : decodeURIComponent(url.pathname);
+    // 「/board/」のようにフォルダで終わるときは、その中の index.html
+    const rel = url.pathname.endsWith('/') ? decodeURIComponent(url.pathname) + 'index.html' : decodeURIComponent(url.pathname);
     file = path.normalize(path.join(PUBLIC, rel));
     if (!file.startsWith(PUBLIC + path.sep)) return send(res, 403, 'forbidden');
   }
@@ -379,6 +380,7 @@ const server = http.createServer(async (req, res) => {
   try {
     if (url.pathname.startsWith('/api/')) return await handleApi(req, res, url);
     if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, 'method not allowed');
+    if (url.pathname === '/board') { res.writeHead(301, { Location: '/board/' }); return res.end(); }
     return await serveStatic(req, res, url);
   } catch (e) {
     console.error(e);
