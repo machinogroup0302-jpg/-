@@ -128,7 +128,7 @@
   .badge { border-radius: 4px; padding: 0 6px; color: #fff; font-size: .7rem; font-weight: 700; white-space: nowrap; }
   .pri-高 { background: var(--now); } .pri-中 { background: #f08c00; } .pri-低 { background: #8a96a3; }
   .b-corp { background: var(--corp); } .b-personal { background: var(--personal); }
-  .b-early { background: #e03131; } .b-late { background: #e8a200; }
+  .b-early { background: #e03131; } .b-late { background: #e8a200; } .b-tbd { background: #8a96a3; }
   .overdue { color: var(--now); font-weight: 700; }
   .t-actions { display: flex; gap: 4px; }
   .t-actions button { border: 0; background: transparent; cursor: pointer; color: var(--muted); font-size: .8rem; padding: 2px 4px; }
@@ -292,7 +292,7 @@
           <button class="btn" id="fm-copy">前の月と同じ金額を入れる（空欄だけ）</button>
         </h2>
         <div class="totals" id="fm-totals"></div>
-        <p class="note" style="margin-top:8px">前半は15日まで、後半は月末までに引き落とされる扱いです。支払先に引き落とし日を入れると、その日でカレンダーに出ます。</p>
+        <p class="note" style="margin-top:8px">金額はシートの行（月）ごとに入れます。「翌月」の支払先は、その次の月の引き落とし日でカレンダーに出ます（例：10月の行のシャープ → 11/3）。日付未定のものはカレンダーに出ません。</p>
       </div>
       <div class="grid2">
         <div class="card"><h2>法人<span class="note">金額はここで直接入力できます</span></h2><div class="scroll" id="fm-corp"></div></div>
@@ -315,10 +315,13 @@
               <select name="owner"><option value="corp">法人</option><option value="personal">個人</option></select>
             </label>
             <label>前半・後半
-              <select name="half"><option value="early">前半（〜15日）</option><option value="late">後半（〜月末）</option></select>
+              <select name="half"><option value="early">前半</option><option value="late">後半</option><option value="tbd">未定</option></select>
             </label>
-            <label>引き落とし日（分かれば）
+            <label>引き落とし日
               <select name="day"></select>
+            </label>
+            <label>引き落とされる月
+              <select name="shift"><option value="0">その月</option><option value="1">翌月</option></select>
             </label>
             <label>いつもの金額（任意）
               <input name="amount" type="number" min="0" step="1" inputmode="numeric" placeholder="今月に入ります">
@@ -489,7 +492,7 @@
   const CATS = { now: 'すぐやる', wait: '返事待ち', share: '山川共有' };
   const COLORS = { now: 'var(--now)', wait: 'var(--wait)', share: 'var(--share)', corp: 'var(--corp)', personal: 'var(--personal)' };
   const OWNERS = { corp: '法人', personal: '個人' };
-  const HALVES = { early: '前半', late: '後半' };
+  const HALVES = { early: '前半', late: '後半', tbd: '未定' };
   const PRI = { '高': 0, '中': 1, '低': 2 };
 
   const $ = id => document.getElementById(id);
@@ -553,27 +556,27 @@
 
   // ---------- 固定費の日付計算 ----------
   const amountOf = (p, k) => +(fixed.amounts[k]?.[p.id] || 0);
-  // 引き落とし日が分かればその日、なければ前半＝15日まで・後半＝月末まで
+  // シートの行の月（y, m）の分が、実際に引き落とされる日。日付未定なら null
   function payDate(p, y, m) {
-    const last = new Date(y, m + 1, 0).getDate();
-    const day = p.day === 'end' ? last : p.day ? Math.min(+p.day, last) : (p.half === 'late' ? last : 15);
-    return ymd(new Date(y, m, day));
+    if (!p.day) return null;
+    const t = new Date(y, m + (+p.shift || 0), 1), last = new Date(t.getFullYear(), t.getMonth() + 1, 0).getDate();
+    return ymd(new Date(t.getFullYear(), t.getMonth(), p.day === 'end' ? last : Math.min(+p.day, last)));
   }
   function paymentsBetween(from, to) {
     const out = [];
     const a = new Date(from + 'T00:00:00'), b = new Date(to + 'T00:00:00');
-    for (let t = new Date(a.getFullYear(), a.getMonth(), 1); t <= b; t = new Date(t.getFullYear(), t.getMonth() + 1, 1)) {
+    // 「翌月」払いがあるので、1か月前の行から見る
+    for (let t = new Date(a.getFullYear(), a.getMonth() - 1, 1); t <= b; t = new Date(t.getFullYear(), t.getMonth() + 1, 1)) {
       const y = t.getFullYear(), m = t.getMonth(), k = mkey(y, m);
       fixed.payees.forEach(p => {
         const amount = amountOf(p, k);
-        if (!amount) return;
-        const date = payDate(p, y, m);
-        if (date >= from && date <= to) out.push({ date, p, amount, byDeadline: !p.day });
+        const date = amount && payDate(p, y, m);
+        if (date && date >= from && date <= to) out.push({ date, p, amount, rowKey: k });
       });
     }
     return out.sort((x, y) => x.date.localeCompare(y.date) || y.amount - x.amount);
   }
-  const dayLabel = p => p.day === 'end' ? '月末' : p.day ? `${p.day}日` : (p.half === 'late' ? '〜月末' : '〜15日');
+  const dayLabel = p => !p.day ? '日付未定' : (+p.shift ? '翌月' : '') + (p.day === 'end' ? '末日' : `${p.day}日`);
 
   // ---------- やることリスト ----------
   let cat = 'all', selectedDay = null, editingTask = null;
@@ -655,7 +658,7 @@
     if (selectedDay) {
       const pays = paymentsBetween(selectedDay, selectedDay);
       dayInfo = `${md(selectedDay)} の分だけ表示中 <button style="border:0;background:none;color:var(--wait);cursor:pointer;font:inherit">解除</button>` +
-        (pays.length ? `<br>この日${pays.some(p => p.byDeadline) ? '（まで）' : ''}の引き落とし：${pays.map(p => `${esc(p.p.name)}（${OWNERS[p.p.owner]} ${yen(p.amount)}）`).join('、')}` : '');
+        (pays.length ? `<br>この日の引き落とし：${pays.map(p => `${esc(p.p.name)}（${OWNERS[p.p.owner]} ${yen(p.amount)}）`).join('、')}` : '');
     }
     $('day-filter').innerHTML = dayInfo;
     const today = todayStr();
@@ -689,18 +692,16 @@
       const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
       const ds = ymd(d);
       const dayPays = pays.filter(p => p.date === ds);
-      // 日付が分かっているものは1件ずつ、前半・後半でまとめているものは「法人 前半」のように合計で出す
+      // 同じ日の引き落としは法人・個人ごとにまとめて1つにする
       const groups = {};
-      dayPays.filter(p => p.byDeadline).forEach(p => {
-        const g = groups[p.p.owner + p.p.half] ||= { owner: p.p.owner, half: p.p.half, total: 0, names: [] };
+      dayPays.forEach(p => {
+        const g = groups[p.p.owner] ||= { owner: p.p.owner, total: 0, names: [] };
         g.total += p.amount; g.names.push(`${p.p.name} ${yen(p.amount)}`);
       });
       const items = [
         ...tasks.filter(t => t.due === ds).sort((a, b) => a.done - b.done || PRI[a.priority] - PRI[b.priority])
           .map(t => `<span class="chip ${t.done ? 'done' : ''}" style="background:${COLORS[t.category]}" title="${esc(t.title)}">${esc(t.title)}</span>`),
-        ...Object.values(groups).map(g => `<span class="chip pay" style="--c:${COLORS[g.owner]}" title="${OWNERS[g.owner]}${HALVES[g.half]}（この日まで）\n${esc(g.names.join('\n'))}">${OWNERS[g.owner]}${HALVES[g.half]} ${man(g.total)}</span>`),
-        ...dayPays.filter(p => !p.byDeadline)
-          .map(p => `<span class="chip pay" style="--c:${COLORS[p.p.owner]}" title="${OWNERS[p.p.owner]}：${esc(p.p.name)} ${yen(p.amount)}">¥ ${esc(p.p.name)}</span>`),
+        ...Object.values(groups).map(g => `<span class="chip pay" style="--c:${COLORS[g.owner]}" title="${OWNERS[g.owner]}\n${esc(g.names.join('\n'))}">${man(g.total)} ${g.names.length === 1 ? esc(g.names[0].replace(/ ¥[\d,]+$/, '')) : OWNERS[g.owner] + g.names.length + '件'}</span>`),
       ];
       const more = items.length > 3 ? `<span style="color:var(--muted)">+${items.length - 3}</span>` : '';
       const cls = ['day', d.getMonth() !== viewM && 'other', ds === today && 'today', ds === selectedDay && 'selected'].filter(Boolean).join(' ');
@@ -713,7 +714,7 @@
     if (!pays.length) return '<p class="empty">予定はありません</p>';
     const today = todayStr(), soon = addDays(today, 3);
     return `<table class="pay"><thead><tr><th>日付</th>${withOwner ? '<th>区分</th>' : ''}<th>支払先</th><th class="num">金額</th></tr></thead><tbody>` +
-      pays.map(p => `<tr><td class="${p.date <= soon ? 'soon' : ''}">${md(p.date)}${p.byDeadline ? 'まで' : ''}${p.date === today ? '（今日）' : ''}</td>` +
+      pays.map(p => `<tr><td class="${p.date <= soon ? 'soon' : ''}">${md(p.date)}${p.date === today ? '（今日）' : ''}</td>` +
         (withOwner ? `<td><span class="badge b-${p.p.owner}">${OWNERS[p.p.owner]}</span></td>` : '') +
         `<td>${esc(p.p.name)}${p.p.method ? `<div class="note">${esc(p.p.method)}</div>` : ''}</td><td class="num">${yen(p.amount)}</td></tr>`).join('') +
       `<tr class="sum last"><td colspan="${withOwner ? 3 : 2}">合計</td><td class="num">${yen(sum(pays, p => p.amount))}</td></tr></tbody></table>`;
@@ -736,7 +737,7 @@
   // ---------- 固定費 ----------
   const fcForm = $('fc-form');
   let fmY = now.getFullYear(), fmM = now.getMonth(), editingFc = null;
-  fcForm.day.innerHTML = '<option value="">分からない（前半・後半で表示）</option>' +
+  fcForm.day.innerHTML = '<option value="">未定</option>' +
     Array.from({ length: 31 }, (_, i) => `<option value="${i + 1}">${i + 1}日</option>`).join('') + '<option value="end">月末</option>';
 
   const shiftMonth = n => { const d = new Date(fmY, fmM + n, 1); fmY = d.getFullYear(); fmM = d.getMonth(); renderMoney(); };
@@ -759,7 +760,7 @@
   fcForm.addEventListener('submit', e => {
     e.preventDefault();
     const f = fcForm;
-    const data = { name: f.name.value.trim(), owner: f.owner.value, half: f.half.value, day: f.day.value, method: f.method.value.trim() };
+    const data = { name: f.name.value.trim(), owner: f.owner.value, half: f.half.value, day: f.day.value, shift: +f.shift.value, method: f.method.value.trim() };
     if (!data.name) return;
     let p;
     if (editingFc) p = Object.assign(fixed.payees.find(x => x.id === editingFc), data);
@@ -778,6 +779,7 @@
   function editPayee(id) {
     const p = fixed.payees.find(x => x.id === id), f = fcForm;
     ['name', 'owner', 'half', 'day', 'method'].forEach(k => f[k].value = p[k] ?? '');
+    f.shift.value = +p.shift || 0;
     f.amount.value = amountOf(p, mkey(fmY, fmM)) || '';
     editingFc = id; formMode(f, true, $('fc-form-title'), '支払先を追加', '支払先を編集');
     f.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -785,9 +787,11 @@
 
   function monthTotals(k) {
     const t = {};
-    ['corp', 'personal'].forEach(o => ['early', 'late'].forEach(h =>
-      t[o + h] = sum(fixed.payees.filter(p => p.owner === o && p.half === h), p => amountOf(p, k))));
-    t.corp = t.corpearly + t.corplate; t.personal = t.personalearly + t.personallate; t.all = t.corp + t.personal;
+    ['corp', 'personal'].forEach(o => {
+      ['early', 'late', 'tbd'].forEach(h => t[o + h] = sum(fixed.payees.filter(p => p.owner === o && p.half === h), p => amountOf(p, k)));
+      t[o] = t[o + 'early'] + t[o + 'late'] + t[o + 'tbd'];
+    });
+    t.all = t.corp + t.personal;
     return t;
   }
 
@@ -795,8 +799,9 @@
     const k = mkey(fmY, fmM);
     const list = fixed.payees.filter(p => p.owner === owner);
     if (!list.length) return '<p class="empty">支払先がありません</p>';
-    const rows = ['early', 'late'].map(h => {
+    const rows = ['early', 'late', 'tbd'].map(h => {
       const ps = list.filter(p => p.half === h);
+      if (h === 'tbd' && !ps.length) return '';
       return ps.map(p => `<tr>
           <td><button class="linkbtn" data-edit="${p.id}">${esc(p.name)}</button>${p.method ? `<div class="note">${esc(p.method)}</div>` : ''}</td>
           <td><span class="badge b-${p.half}">${HALVES[p.half]}</span> <span class="note">${dayLabel(p)}</span></td>
@@ -822,19 +827,21 @@
   // 入力欄はそのままにして、合計や一覧だけ描き直す
   function renderMoneySummary() {
     const k = mkey(fmY, fmM), t = monthTotals(k), today = todayStr();
-    const isCur = fmY === now.getFullYear() && fmM === now.getMonth();
-    const monthEnd = ymd(new Date(fmY, fmM + 1, 0));
-    const rest = isCur ? paymentsBetween(today, monthEnd) : [];
-    const card = (cls, label, total, early, late, owner) => `<div class="total ${cls}"><div class="label">${label}</div><div class="yen">${yen(total)}</div>
-      <div class="sub">前半 ${yen(early)} ／ 後半 ${yen(late)}</div>
-      ${isCur ? `<div class="sub">今日から月末までに あと ${yen(sum(rest.filter(p => !owner || p.p.owner === owner), p => p.amount))}</div>` : ''}</div>`;
+    // この月の行のうち、まだ引き落とされていない分（翌月払いを含む）
+    const rest = fixed.payees.filter(p => amountOf(p, k) && (payDate(p, fmY, fmM) || '9999') >= today);
+    const card = (cls, label, total, early, late, owner) => {
+      const r = rest.filter(p => !owner || p.owner === owner);
+      return `<div class="total ${cls}"><div class="label">${label}</div><div class="yen">${yen(total)}</div>
+      <div class="sub">前半 ${yen(early)} ／ 後半 ${yen(late)}${total - early - late ? ` ／ 未定 ${yen(total - early - late)}` : ''}</div>
+      ${r.length && k <= mkey(now.getFullYear(), now.getMonth()) ? `<div class="sub">この月の分で まだ引き落とされていない：${yen(sum(r, p => amountOf(p, k)))}</div>` : ''}</div>`;
+    };
     $('fm-totals').innerHTML =
       card('corp', '法人 合計', t.corp, t.corpearly, t.corplate, 'corp') +
       card('personal', '個人 合計', t.personal, t.personalearly, t.personallate, 'personal') +
       card('', '法人・個人 合計', t.all, t.corpearly + t.personalearly, t.corplate + t.personallate, '');
     ['corp', 'personal'].forEach(o => {
       const set = (id, v) => { const el = $(id); if (el) el.textContent = yen(v); };
-      set(`fs-${o}-early`, t[o + 'early']); set(`fs-${o}-late`, t[o + 'late']); set(`fs-${o}-all`, t[o]);
+      set(`fs-${o}-early`, t[o + 'early']); set(`fs-${o}-late`, t[o + 'late']); set(`fs-${o}-tbd`, t[o + 'tbd']); set(`fs-${o}-all`, t[o]);
     });
 
     const up = paymentsBetween(today, addDays(today, 29));
@@ -894,7 +901,7 @@
         let name = head[j]; seen[name] = (seen[name] || 0) + 1;
         if (seen[name] > 1) name += `(${seen[name]})`;
         let p = fixed.payees.find(x => x.owner === sec.owner && x.name === name);
-        if (!p) { fixed.payees.push(p = { id: uid(), name, owner: sec.owner, half: 'early', day: '', method: '' }); payeesAdded++; }
+        if (!p) { fixed.payees.push(p = { id: uid(), name, owner: sec.owner, half: 'early', day: '', shift: 0, method: '' }); payeesAdded++; }
         return { j, p, votes: { early: 0, late: 0 } };
       });
       rows.slice(hi + 1).forEach(r => {
@@ -917,7 +924,7 @@
         if (count !== 1) return;
         nz.forEach(([, i], b) => payees[i].votes[(found & (1 << b)) ? 'early' : 'late']++);
       });
-      payees.forEach(x => { if (x.votes.early || x.votes.late) x.p.half = x.votes.late > x.votes.early ? 'late' : 'early'; });
+      payees.forEach(x => { if ((x.votes.early || x.votes.late) && x.p.half !== 'tbd') x.p.half = x.votes.late > x.votes.early ? 'late' : 'early'; });
     });
     return { months, payeesAdded };
   }
