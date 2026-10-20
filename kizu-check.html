@@ -34,10 +34,10 @@
   }
   button, input, select, textarea { font: inherit; color: inherit; }
   button { cursor: pointer; }
-  .wrap { max-width: 720px; margin: 0 auto; padding: 0 16px; }
+  .wrap { max-width: 720px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
 
   header {
-    position: sticky; top: 0; z-index: 30; background: rgba(13,27,42,.96); color: #fff;
+    position: sticky; top: env(safe-area-inset-top, 0px); z-index: 30; background: rgba(13,27,42,.96); color: #fff;
     backdrop-filter: blur(8px);
   }
   .header-inner { display: flex; align-items: center; justify-content: space-between; height: 56px; }
@@ -201,7 +201,7 @@
   /* 下の操作バー */
   .actions {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; background: rgba(255,255,255,.97);
-    border-top: 1px solid var(--line); padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--line); padding: 10px max(16px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
   }
   .actions .wrap { display: grid; grid-template-columns: 1fr 1fr 1.4fr; gap: 8px; padding: 0; }
   .btn { border: none; border-radius: 999px; padding: 14px 8px; font-weight: 700; font-size: 15px; }
@@ -228,6 +228,16 @@
   .sheet-sub { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .sheet-sub button { border: 1.5px solid var(--line); background: #fff; border-radius: 12px; padding: 12px 0; font-weight: 700; }
   #sheetDelete { color: var(--t-crack); }
+
+  #dlg { position: fixed; inset: 0; z-index: 45; display: grid; place-items: center; padding: 16px; background: rgba(13,27,42,.45); }
+  #dlg[hidden] { display: none; }
+  .dlg-box { background: #fff; border-radius: 16px; padding: 20px 16px 16px; width: 100%; max-width: 420px; }
+  .dlg-box p { font-size: 15px; font-weight: 700; white-space: pre-line; margin-bottom: 12px; }
+  .dlg-box textarea { width: 100%; height: 180px; border: 1.5px solid var(--line); border-radius: 10px; padding: 10px; font-size: 13px; margin-bottom: 12px; }
+  .dlg-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .dlg-btns button { border: 1.5px solid var(--line); background: #fff; border-radius: 12px; padding: 12px 0; font-weight: 700; }
+  .dlg-btns button.ok { background: var(--yellow); border-color: var(--yellow); color: var(--navy); }
+  .dlg-btns.one { grid-template-columns: 1fr; }
 
   #toast {
     position: fixed; left: 50%; bottom: calc(90px + env(safe-area-inset-bottom)); transform: translateX(-50%) translateY(20px);
@@ -362,6 +372,13 @@
   <div class="sheet-sub">
     <button id="sheetDelete">この印を消す</button>
     <button id="sheetClose">OK</button>
+  </div>
+</div>
+<div id="dlg" hidden>
+  <div class="dlg-box" role="dialog" aria-modal="true" aria-labelledby="dlgMsg">
+    <p id="dlgMsg"></p>
+    <textarea id="dlgText" readonly hidden></textarea>
+    <div class="dlg-btns" id="dlgBtns"><button id="dlgCancel">やめる</button><button class="ok" id="dlgOk">OK</button></div>
   </div>
 </div>
 <div id="toast"></div>
@@ -899,7 +916,7 @@ function renderRecords() {
         <button class="del" data-del="${r.id}">削除</button>
       </div>`).join('');
 }
-$('records').addEventListener('click', (e) => {
+$('records').addEventListener('click', async (e) => {
   const recs = load(REC_KEY, []);
   const openId = e.target.dataset.open, delId = e.target.dataset.del;
   if (openId) {
@@ -911,7 +928,7 @@ $('records').addEventListener('click', (e) => {
     toast(`${r.plate} を開きました`);
   } else if (delId) {
     const r = recs.find((x) => x.id === delId);
-    if (!r || !confirm(`${r.plate} のシートを削除しますか？`)) return;
+    if (!r || !(await ask(`${r.plate} のシートを削除しますか？`, '削除する'))) return;
     store(REC_KEY, recs.filter((x) => x.id !== delId));
     if (S.id === delId) { S.id = null; saveDraft(); }
     renderRecords();
@@ -934,9 +951,9 @@ $('btnSave').addEventListener('click', () => {
   toast('保存しました');
 });
 
-$('btnNew').addEventListener('click', () => {
+$('btnNew').addEventListener('click', async () => {
   const touched = S.plate || S.odagiri || S.marks.length || S.parts.length || S.memo;
-  if (touched && !confirm('いまの内容を消して、新しいシートにしますか？\n（保存したシートは残ります）')) return;
+  if (touched && !(await ask('いまの内容を消して、新しいシートにしますか？\n（保存したシートは残ります）', '新しくする'))) return;
   S = blank();
   fillForm(); renderAll(); saveDraft();
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -980,12 +997,34 @@ function shareText() {
 $('btnShare').addEventListener('click', async () => {
   const text = shareText();
   if (navigator.share) {
-    try { await navigator.share({ text }); } catch {}
-    return;
+    try { await navigator.share({ text }); return; }
+    catch (err) { if (err && err.name === 'AbortError') return; }
   }
   try { await navigator.clipboard.writeText(text); toast('コピーしました。LINEなどに貼り付けてください'); }
-  catch { prompt('この文章をコピーしてください', text); }
+  catch { showText('下の文章を長押ししてコピーしてください', text); }
 });
+
+// ブラウザの確認ダイアログが出ない環境もあるので、ページの中で聞く
+function openDlg(msg, { okLabel = 'OK', cancel = true, text = null } = {}) {
+  $('dlgMsg').textContent = msg;
+  $('dlgText').hidden = text == null;
+  if (text != null) $('dlgText').value = text;
+  $('dlgOk').textContent = okLabel;
+  $('dlgCancel').hidden = !cancel;
+  $('dlgBtns').classList.toggle('one', !cancel);
+  $('dlg').hidden = false;
+  return new Promise((resolve) => {
+    const done = (v) => { $('dlg').hidden = true; $('dlgOk').onclick = $('dlgCancel').onclick = null; resolve(v); };
+    $('dlgOk').onclick = () => done(true);
+    $('dlgCancel').onclick = () => done(false);
+  });
+}
+const ask = (msg, okLabel) => openDlg(msg, { okLabel });
+function showText(msg, text) {
+  openDlg(msg, { cancel: false, text, okLabel: '閉じる' });
+  $('dlgText').focus();
+  $('dlgText').select();
+}
 
 let toastTimer;
 function toast(msg) {
