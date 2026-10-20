@@ -21,10 +21,9 @@
     --line: #e1e6ec;
     --radius: 14px;
 
-    --t-scratch: #f5a524;
-    --t-dent: #3b82f6;
+    --t-scratch: #f08c00;
+    --t-dent: #2f6fe4;
     --t-crack: #e5484d;
-    --t-replace: #8e4ec6;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -34,6 +33,7 @@
     padding-bottom: calc(96px + env(safe-area-inset-bottom));
   }
   button, input, select, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; }
   .wrap { max-width: 720px; margin: 0 auto; padding: 0 16px; }
 
   header {
@@ -59,15 +59,11 @@
   .field input, .field textarea {
     width: 100%; border: 1.5px solid var(--line); border-radius: 10px; padding: 12px; font-size: 16px; background: #fff;
   }
-  .field input:focus, .field textarea:focus { outline: none; border-color: var(--yellow-dark); }
+  input:focus, textarea:focus { outline: none; border-color: var(--yellow-dark) !important; }
   .field textarea { min-height: 72px; resize: vertical; }
-  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .yen { position: relative; }
-  .yen input { padding-left: 30px; text-align: right; }
-  .yen::before { content: "¥"; position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); font-weight: 700; }
-  .diff { font-size: 13px; color: var(--muted); text-align: right; margin-top: -4px; }
-  .diff b { color: var(--text); }
-  .diff.minus b { color: var(--t-crack); }
+  .yen input { padding-left: 28px !important; text-align: right; }
+  .yen::before { content: "¥"; position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--muted); font-weight: 700; font-size: 14px; }
 
   .field .toggle {
     display: flex; align-items: center; justify-content: space-between; gap: 12px;
@@ -82,18 +78,32 @@
   .toggle input:checked + .switch::after { transform: translateX(20px); }
   .toggle:has(input:checked) { border-color: var(--yellow-dark); background: #fffbea; }
 
-  /* 車の図 */
-  .views { display: grid; gap: 12px; }
-  .views .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .view-cap { font-size: 12px; font-weight: 700; color: var(--muted); text-align: center; margin-top: 2px; }
-  .view svg { width: 100%; height: auto; display: block; overflow: visible; }
-  .p { fill: #fff; stroke: var(--navy); stroke-width: 1.3; stroke-linejoin: round; cursor: pointer; transition: fill .12s; }
+  /* 描く道具 */
+  .tools { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 10px; }
+  .tool {
+    border: 1.5px solid var(--line); background: #fff; border-radius: 10px; padding: 8px 0 6px;
+    display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 12px; font-weight: 700;
+  }
+  .tool svg { width: 26px; height: 18px; }
+  .tool.on { background: var(--navy); border-color: var(--navy); color: #fff; }
+  .tabs { display: flex; gap: 4px; border-bottom: 1.5px solid var(--line); margin-bottom: 8px; }
+  .tab {
+    flex: 1; border: none; background: none; padding: 8px 0; font-size: 14px; font-weight: 700; color: var(--muted);
+    border-bottom: 3px solid transparent; margin-bottom: -1.5px; position: relative;
+  }
+  .tab.on { color: var(--navy); border-bottom-color: var(--yellow); }
+  .tab .cnt { display: inline-block; min-width: 16px; height: 16px; line-height: 16px; border-radius: 8px; background: var(--t-crack); color: #fff; font-size: 10px; margin-left: 2px; vertical-align: 1px; }
+  .stage { position: relative; }
+  .stage svg { width: 100%; height: auto; display: none; overflow: visible; touch-action: none; user-select: none; -webkit-user-select: none; }
+  .stage svg.on { display: block; }
+  .stage svg.narrow { max-width: 340px; margin: 0 auto; }
+  .stage-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; }
+  .stage-foot .cap { font-size: 12px; font-weight: 700; color: var(--muted); }
+  .undo { border: 1.5px solid var(--line); background: #fff; border-radius: 999px; padding: 6px 14px; font-size: 13px; font-weight: 700; }
+  .undo:disabled { opacity: .4; }
+
+  .p { fill: #fff; stroke: var(--navy); stroke-width: 1.3; stroke-linejoin: round; }
   .p.tire { fill: #3a4654; }
-  .p:active { fill: #fff3c4; }
-  .p[data-t=scratch] { fill: var(--t-scratch); }
-  .p[data-t=dent] { fill: var(--t-dent); }
-  .p[data-t=crack] { fill: var(--t-crack); }
-  .p[data-t=replace] { fill: var(--t-replace); }
   .body { fill: #cfd8e2; }
   .glass { fill: #dbe6f1; stroke: var(--navy); stroke-width: .8; pointer-events: none; }
   .arch { fill: #fff; }
@@ -103,34 +113,80 @@
   .mdl { display: none; }
   body.mdl-on .mdl { display: inline; }
   .p.mdl { stroke-dasharray: 3 2; }
-  .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; justify-content: center; font-size: 12px; margin-top: 12px; }
-  .legend span { display: inline-flex; align-items: center; gap: 4px; }
-  .legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
-  .hint { font-size: 12px; color: var(--muted); text-align: center; margin-top: 6px; }
+
+  /* 描いた印 */
+  .marks { pointer-events: none; }
+  .mk { fill: none; stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+  .mk.circle { stroke-width: 3; }
+  .k-scratch .mk { stroke: var(--t-scratch); }
+  .k-dent .mk { stroke: var(--t-dent); fill: rgba(47,111,228,.15); }
+  .k-crack .mk { stroke: var(--t-crack); }
+  .mn circle { stroke: #fff; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+  .k-scratch .mn circle { fill: var(--t-scratch); }
+  .k-dent .mn circle { fill: var(--t-dent); }
+  .k-crack .mn circle { fill: var(--t-crack); }
+  .mn text { fill: #fff; font-weight: 900; text-anchor: middle; dominant-baseline: central; font-family: inherit; }
+  .hit { fill: none; stroke: transparent; stroke-width: 22; vector-effect: non-scaling-stroke; }
+  .erase-mode .hit { pointer-events: all; cursor: pointer; }
+  .erase-mode .marks g:hover .mk { opacity: .5; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; justify-content: center; font-size: 12px; margin-top: 10px; color: var(--muted); }
+  .hint { font-size: 12px; color: var(--muted); text-align: center; margin-top: 4px; }
 
   .badge { display: inline-block; font-size: 11px; font-weight: 700; color: #fff; padding: 2px 8px; border-radius: 999px; flex-shrink: 0; }
   .b-scratch { background: var(--t-scratch); }
   .b-dent { background: var(--t-dent); }
   .b-crack { background: var(--t-crack); }
-  .b-replace { background: var(--t-replace); }
 
-  /* パーツ一覧 */
-  .empty { font-size: 13px; color: var(--muted); text-align: center; padding: 16px 0; }
-  .part-row { border-top: 1px solid var(--line); padding: 12px 0; }
-  .part-row:first-child { border-top: none; padding-top: 0; }
-  .pr-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-  .pr-head b { font-size: 14px; flex: 1; min-width: 0; }
-  .pr-head select { border: 1.5px solid var(--line); border-radius: 8px; padding: 6px 8px; font-size: 14px; background: #fff; }
-  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
-  .chip { border: 1.5px solid var(--line); background: #fff; border-radius: 999px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
-  .chip.on { background: var(--navy); border-color: var(--navy); color: #fff; }
-  .chip.on::before { content: "✓ "; color: var(--yellow); }
-  .part-row .extra { width: 100%; border: 1.5px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 16px; }
-  .summary { margin-top: 14px; background: var(--bg-soft); border-radius: 10px; padding: 12px; }
-  .summary h3 { font-size: 13px; font-weight: 900; margin-bottom: 6px; }
-  .summary ul { list-style: none; font-size: 14px; }
-  .summary li { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px dashed var(--line); }
-  .summary li:last-child { border-bottom: none; }
+  .empty { font-size: 13px; color: var(--muted); text-align: center; padding: 12px 0; }
+  .x { border: none; background: none; color: var(--muted); font-size: 20px; line-height: 1; padding: 4px 6px; margin-left: auto; flex-shrink: 0; }
+
+  /* キズ・ヘコミの金額 */
+  .mrow { border-top: 1px solid var(--line); padding: 10px 0; }
+  .mrow:first-child { border-top: none; padding-top: 0; }
+  .mrow-head { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+  .mrow-head b { font-size: 14px; min-width: 0; }
+  .mnum { width: 22px; height: 22px; border-radius: 50%; color: #fff; font-size: 12px; font-weight: 900; display: grid; place-items: center; flex-shrink: 0; }
+  .mrow-body { display: flex; gap: 8px; align-items: center; }
+  .seg { display: inline-flex; border: 1.5px solid var(--line); border-radius: 10px; overflow: hidden; flex-shrink: 0; }
+  .seg button { border: none; background: #fff; padding: 9px 14px; font-weight: 900; font-size: 15px; }
+  .seg button + button { border-left: 1.5px solid var(--line); }
+  .seg button.on { background: var(--navy); color: var(--yellow); }
+  .mrow-body .yen { flex: 1; }
+  .money-in { width: 100%; border: 1.5px solid var(--line); border-radius: 10px; padding: 9px 10px; font-size: 16px; background: #fff; }
+
+  /* パーツ */
+  .suggest { margin-bottom: 12px; }
+  .suggest p { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { border: 1.5px dashed #b9c3ce; background: #fff; border-radius: 999px; padding: 6px 12px; font-size: 13px; }
+  .chip::before { content: "＋ "; color: var(--yellow-dark); font-weight: 900; }
+  .prow { border: 1.5px solid var(--line); border-radius: 12px; padding: 10px; margin-bottom: 8px; }
+  .prow-head { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
+  .prow-head input { flex: 1; min-width: 0; border: none; border-bottom: 1.5px solid var(--line); padding: 4px 2px; font-size: 16px; font-weight: 700; border-radius: 0; }
+  .prow-body { display: grid; grid-template-columns: 72px 1fr; gap: 8px; }
+  .prow-body label { display: block; font-size: 11px; color: var(--muted); font-weight: 700; margin-bottom: 2px; }
+  .prow-body .qty { width: 100%; border: 1.5px solid var(--line); border-radius: 10px; padding: 9px 6px; font-size: 16px; text-align: center; }
+  .prow-calc { display: flex; justify-content: space-between; align-items: baseline; margin-top: 8px; font-size: 12px; color: var(--muted); }
+  .prow-calc b { font-size: 17px; color: var(--text); }
+  .add-part { width: 100%; border: 1.5px dashed #b9c3ce; background: var(--bg-soft); border-radius: 12px; padding: 12px; font-weight: 700; }
+  .foot-note { font-size: 11px; color: var(--muted); margin-top: 8px; }
+
+  /* 見積金額 */
+  .sum-row { display: flex; justify-content: space-between; align-items: baseline; padding: 6px 0; font-size: 14px; }
+  .sum-row .v { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .sum-row .fixed { font-size: 11px; background: var(--bg-soft); border-radius: 4px; padding: 0 5px; margin-left: 4px; color: var(--muted); }
+  .sum-total { display: flex; justify-content: space-between; align-items: baseline; border-top: 2px solid var(--navy); margin-top: 6px; padding-top: 10px; }
+  .sum-total span { font-weight: 900; }
+  .sum-total .v { font-size: 26px; font-weight: 900; font-variant-numeric: tabular-nums; }
+  .deduct { margin-top: 16px; background: var(--bg-soft); border-radius: 12px; padding: 12px; }
+  .deduct h3 { font-size: 13px; font-weight: 900; margin-bottom: 8px; }
+  .deduct .line-in { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 4px 0; font-size: 14px; }
+  .deduct .line-in .yen { width: 150px; }
+  .net { display: flex; justify-content: space-between; align-items: baseline; border-top: 1.5px dashed #b9c3ce; margin-top: 8px; padding-top: 8px; }
+  .net span { font-weight: 900; font-size: 14px; }
+  .net .v { font-size: 20px; font-weight: 900; }
+  .net.minus .v { color: var(--t-crack); }
 
   /* 保存したシート */
   .rec { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
@@ -138,7 +194,7 @@
   .rec-main { flex: 1; min-width: 0; }
   .rec-main b { display: block; font-size: 15px; }
   .rec-main small { color: var(--muted); font-size: 12px; }
-  .rec button { border: 1.5px solid var(--line); background: #fff; border-radius: 8px; padding: 6px 10px; font-size: 13px; cursor: pointer; }
+  .rec button { border: 1.5px solid var(--line); background: #fff; border-radius: 8px; padding: 6px 10px; font-size: 13px; }
   .rec button.del { color: var(--t-crack); }
   .mini-tag { display: inline-block; font-size: 10px; font-weight: 700; background: #fff3c4; color: #8a6d00; border-radius: 4px; padding: 0 5px; margin-left: 4px; vertical-align: 2px; }
 
@@ -148,12 +204,12 @@
     border-top: 1px solid var(--line); padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
   }
   .actions .wrap { display: grid; grid-template-columns: 1fr 1fr 1.4fr; gap: 8px; padding: 0; }
-  .btn { border: none; border-radius: 999px; padding: 14px 8px; font-weight: 700; font-size: 15px; cursor: pointer; }
+  .btn { border: none; border-radius: 999px; padding: 14px 8px; font-weight: 700; font-size: 15px; }
   .btn-primary { background: var(--yellow); color: var(--navy); }
   .btn-sub { background: var(--bg-soft); border: 1.5px solid var(--line); }
   .btn:active { transform: scale(.97); }
 
-  /* 部位をタップしたときのシート */
+  /* 印を描いたあとに大きさを選ぶシート */
   #backdrop { position: fixed; inset: 0; background: rgba(13,27,42,.45); z-index: 40; opacity: 0; pointer-events: none; transition: opacity .15s; }
   #sheet {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 41; background: #fff; border-radius: 18px 18px 0 0;
@@ -162,13 +218,16 @@
   }
   body.sheet-open #backdrop { opacity: 1; pointer-events: auto; }
   body.sheet-open #sheet { transform: none; }
-  #sheet .s-title { font-size: 18px; font-weight: 900; margin-bottom: 12px; text-align: center; }
-  .type-btns { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 10px; }
-  .type-btns button { border: 2px solid transparent; border-radius: 12px; padding: 14px 0; font-weight: 900; font-size: 15px; color: #fff; cursor: pointer; }
-  .type-btns button.on { border-color: var(--navy); box-shadow: 0 0 0 2px #fff inset; }
+  #sheet .s-title { font-size: 17px; font-weight: 900; margin-bottom: 12px; text-align: center; }
+  .size-btns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; }
+  .size-btns button { border: 2px solid var(--line); background: #fff; border-radius: 12px; padding: 12px 0; }
+  .size-btns button b { display: block; font-size: 22px; font-weight: 900; line-height: 1.2; }
+  .size-btns button small { font-size: 12px; color: var(--muted); }
+  .size-btns button.on { border-color: var(--navy); background: var(--navy); color: var(--yellow); }
+  .size-btns button.on small { color: #fff; }
   .sheet-sub { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  .sheet-sub button { border: 1.5px solid var(--line); background: #fff; border-radius: 12px; padding: 12px 0; font-weight: 700; cursor: pointer; }
-  #sheetClear { color: var(--t-crack); }
+  .sheet-sub button { border: 1.5px solid var(--line); background: #fff; border-radius: 12px; padding: 12px 0; font-weight: 700; }
+  #sheetDelete { color: var(--t-crack); }
 
   #toast {
     position: fixed; left: 50%; bottom: calc(90px + env(safe-area-inset-bottom)); transform: translateX(-50%) translateY(20px);
@@ -180,9 +239,10 @@
   .note { font-size: 12px; color: var(--muted); margin: 4px 0 24px; }
 
   @media print {
-    header, .actions, #records-card, .note, .hint, #sheet, #backdrop { display: none !important; }
+    header, .actions, #records-card, .note, .hint, .tools, .tabs, .undo, .suggest, .add-part, .x, #sheet, #backdrop { display: none !important; }
     body { background: #fff; padding: 0; }
     .card { break-inside: avoid; }
+    .stage svg { display: block !important; margin-bottom: 8px; }
   }
 </style>
 </head>
@@ -197,10 +257,10 @@
 
 <main class="wrap">
   <h1>キズ修理チェックシート</h1>
-  <p class="lead">アルファード／ヴェルファイア用。図の部位をタップしてキズの場所を記録します。</p>
+  <p class="lead">アルファード／ヴェルファイア用。車の図に線や丸を描いてキズの場所を記録します。</p>
 
   <section class="card">
-    <h2><span class="num">1</span>車両・見積り</h2>
+    <h2><span class="num">1</span>車両</h2>
     <div class="field">
       <label for="plate">登録番号</label>
       <input id="plate" type="text" placeholder="例）大宮 300 あ 12-34" autocomplete="off">
@@ -209,18 +269,7 @@
       <label for="date">見積日</label>
       <input id="date" type="date">
     </div>
-    <div class="grid2">
-      <div class="field">
-        <label for="amount">見積金額</label>
-        <div class="yen"><input id="amount" type="text" inputmode="numeric" placeholder="0"></div>
-      </div>
-      <div class="field">
-        <label for="odagiri">小田切さんに渡す金額</label>
-        <div class="yen"><input id="odagiri" type="text" inputmode="numeric" placeholder="0"></div>
-      </div>
-    </div>
-    <p class="diff" id="diff"></p>
-    <div class="field" style="margin-top:12px">
+    <div class="field">
       <label class="toggle">
         <span class="t-label">モデリスタ<small>エアロ（フロント・サイド・リヤ）付き</small></span>
         <input id="mdl" type="checkbox">
@@ -229,34 +278,63 @@
     </div>
   </section>
 
+  <section class="card" id="draw-card">
+    <h2><span class="num">2</span>キズの場所を描く<span class="aside" id="markCount"></span></h2>
+    <div class="tools" id="tools">
+      <button class="tool on" data-tool="line">
+        <svg viewBox="0 0 26 18"><path d="M3 13 C 8 4, 14 16, 23 5" fill="none" stroke="var(--t-scratch)" stroke-width="3" stroke-linecap="round"/></svg>線＝キズ</button>
+      <button class="tool" data-tool="circle">
+        <svg viewBox="0 0 26 18"><circle cx="13" cy="9" r="7" fill="rgba(47,111,228,.15)" stroke="var(--t-dent)" stroke-width="2.5"/></svg>丸＝ヘコミ</button>
+      <button class="tool" data-tool="cross">
+        <svg viewBox="0 0 26 18"><path d="M7 3 L19 15 M19 3 L7 15" stroke="var(--t-crack)" stroke-width="3" stroke-linecap="round"/></svg>×＝ワレ</button>
+      <button class="tool" data-tool="erase">
+        <svg viewBox="0 0 26 18"><path d="M6 12 L13 5 L20 12 L16 16 L10 16 Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>消す</button>
+    </div>
+    <div class="tabs" id="tabs"></div>
+    <div class="stage" id="stage"></div>
+    <div class="stage-foot">
+      <span class="cap" id="viewCap"></span>
+      <button class="undo" id="undo">↶ 1つ戻す</button>
+    </div>
+    <p class="hint" id="toolHint"></p>
+  </section>
+
   <section class="card">
-    <h2><span class="num">2</span>キズの場所<span class="aside" id="spotCount"></span></h2>
-    <div class="views">
-      <div class="row2">
-        <div class="view"><div id="v-front"></div><p class="view-cap">前</p></div>
-        <div class="view"><div id="v-rear"></div><p class="view-cap">後ろ</p></div>
+    <h2><span class="num">3</span>キズ・ヘコミの金額</h2>
+    <div id="markList"></div>
+  </section>
+
+  <section class="card">
+    <h2><span class="num">4</span>パーツ</h2>
+    <div class="suggest" id="suggest"></div>
+    <div id="partList"></div>
+    <button class="add-part" id="addPart">＋ パーツを追加</button>
+    <p class="foot-note">税抜の金額を入れると、お客さまへの請求額（税抜 × 1.1 × 1.1、10円の位で切り上げ）を自動で出します。</p>
+  </section>
+
+  <section class="card">
+    <h2><span class="num">5</span>見積金額</h2>
+    <div class="sum-row"><span id="sumRepairLabel">キズ・ヘコミ修理</span><span class="v" id="sumRepair">¥0</span></div>
+    <div class="sum-row"><span>パーツ</span><span class="v" id="sumParts">¥0</span></div>
+    <div class="sum-row"><span>出張料<span class="fixed">毎回</span></span><span class="v" id="sumTravel"></span></div>
+    <div class="sum-total"><span>見積金額</span><span class="v" id="sumTotal">¥0</span></div>
+
+    <div class="deduct">
+      <h3>引かれる金額</h3>
+      <div class="line-in">
+        <label for="odagiri">小田切さんに渡す金額</label>
+        <div class="yen"><input class="money-in" id="odagiri" type="text" inputmode="numeric" placeholder="0"></div>
       </div>
-      <div class="view"><div id="v-left"></div><p class="view-cap">左側面（← 前）</p></div>
-      <div class="view"><div id="v-right"></div><p class="view-cap">右側面（前 →）</p></div>
-      <div class="view"><div id="v-top"></div><p class="view-cap">上から（← 前）</p></div>
+      <div class="line-in">
+        <span>パーツの仕入れ（税込）</span>
+        <b id="sumPartsCost">¥0</b>
+      </div>
+      <div class="net" id="net"><span>手元に残る金額</span><span class="v" id="sumNet">¥0</span></div>
     </div>
-    <div class="legend">
-      <span><i style="background:var(--t-scratch)"></i>キズ</span>
-      <span><i style="background:var(--t-dent)"></i>ヘコミ</span>
-      <span><i style="background:var(--t-crack)"></i>ワレ</span>
-      <span><i style="background:var(--t-replace)"></i>交換</span>
-    </div>
-    <p class="hint">点線の部分はモデリスタのエアロです（モデリスタをオンにすると出ます）</p>
   </section>
 
   <section class="card">
-    <h2><span class="num">3</span>必要なパーツ</h2>
-    <div id="parts"></div>
-    <div id="summary"></div>
-  </section>
-
-  <section class="card">
-    <h2><span class="num">4</span>備考</h2>
+    <h2><span class="num">6</span>備考</h2>
     <div class="field">
       <textarea id="memo" placeholder="お客さまの要望、作業の注意点など"></textarea>
     </div>
@@ -280,22 +358,29 @@
 <div id="backdrop"></div>
 <div id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
   <p class="s-title" id="sheetTitle"></p>
-  <div class="type-btns" id="typeBtns"></div>
+  <div class="size-btns" id="sizeBtns"></div>
   <div class="sheet-sub">
-    <button id="sheetClear">取り消す</button>
-    <button id="sheetClose">閉じる</button>
+    <button id="sheetDelete">この印を消す</button>
+    <button id="sheetClose">OK</button>
   </div>
 </div>
 <div id="toast"></div>
 
 <script>
-const TYPES = {
-  scratch: { label: 'キズ',   work: '塗装' },
-  dent:    { label: 'ヘコミ', work: '板金塗装' },
-  crack:   { label: 'ワレ',   work: '部品交換' },
-  replace: { label: '交換',   work: '部品交換' },
+// 大きさごとの修理代と出張料（税込）
+const SIZES = {
+  L: { label: '大', price: 45000 },
+  M: { label: '中', price: 35000 },
+  S: { label: '小', price: 25000 },
 };
-const WORKS = ['磨き', '塗装', '板金塗装', '部品交換', '脱着のみ'];
+const TRAVEL_FEE = 26400;
+
+// 描き方とキズの種類
+const KINDS = {
+  line:   { label: 'キズ',   cls: 'scratch', hint: '指でなぞると線が引けます（キズ）' },
+  circle: { label: 'ヘコミ', cls: 'dent',    hint: '押したまま広げると丸が描けます。タップだけでも置けます（ヘコミ）' },
+  cross:  { label: 'ワレ',   cls: 'crack',   hint: 'タップした所に × を置きます（ワレ）' },
+};
 
 // 部位と、その部位で必要になりそうなパーツ
 const PANELS = {};
@@ -325,7 +410,7 @@ def('rearglass', 'リヤガラス', ['バックドアガラス']);
 def('bumperR', 'リヤバンパー', ['リヤバンパーカバー', 'バンパーリテーナー', 'クリップ類']);
 def('mdl_skirtR', 'リヤスカート（モデリスタ）', ['リヤスカート（モデリスタ）', '取付クリップ類'], true);
 
-// 図の形。id があるものはタップできる部位、cls だけのものは飾り
+// 図の形。id があるものは部位（描いた印がどこにあるかの判定に使う）、cls だけのものは飾り
 const SIDE_VIEW = { w: 400, h: 160, items: [
   { cls: 'body', pts: [[8,98],[14,88],[40,84],[100,70],[150,24],[372,20],[384,30],[390,104],[390,132],[8,132]] },
   { id: 'bumperF', pts: [[8,98],[14,88],[34,86],[38,132],[8,132]] },
@@ -390,8 +475,17 @@ const TOP_VIEW = { w: 400, h: 120, items: [
   { id: 'mirror_L', pts: [[104,118],[116,118],[118,107],[102,107]] },
 ]};
 
-function renderView(view, opts = {}) {
-  const { side, mirror } = opts;
+
+const VIEWS = {
+  front: { label: '前',   cap: '前から',            def: FRONT_VIEW },
+  rear:  { label: '後ろ', cap: '後ろから',          def: REAR_VIEW },
+  left:  { label: '左',   cap: '左側面（← 前）',    def: SIDE_VIEW, side: 'L' },
+  right: { label: '右',   cap: '右側面（前 →）',    def: SIDE_VIEW, side: 'R', mirror: true },
+  top:   { label: '上',   cap: '上から（← 前）',    def: TOP_VIEW },
+};
+
+function renderView(key) {
+  const { def: view, side, mirror } = VIEWS[key];
   const X = (x) => mirror ? view.w - x : x;
   const shapes = view.items.map((it) => {
     const id = it.id && (side ? it.id.replace('*', side) : it.id);
@@ -400,18 +494,17 @@ function renderView(view, opts = {}) {
     if (it.c) return `<circle ${attrs} cx="${X(it.c[0])}" cy="${it.c[1]}" r="${it.c[2]}"/>`;
     return `<polygon ${attrs} points="${it.pts.map(([x, y]) => `${X(x)},${y}`).join(' ')}"/>`;
   }).join('');
-  return `<svg viewBox="0 0 ${view.w} ${view.h}" xmlns="http://www.w3.org/2000/svg">${shapes}</svg>`;
+  const narrow = view.w < 300 ? ' narrow' : '';
+  return `<svg class="${narrow}" data-view="${key}" viewBox="0 0 ${view.w} ${view.h}" xmlns="http://www.w3.org/2000/svg">${shapes}<g class="marks"></g></svg>`;
 }
-document.getElementById('v-front').innerHTML = renderView(FRONT_VIEW);
-document.getElementById('v-rear').innerHTML = renderView(REAR_VIEW);
-document.getElementById('v-left').innerHTML = renderView(SIDE_VIEW, { side: 'L' });
-document.getElementById('v-right').innerHTML = renderView(SIDE_VIEW, { side: 'R', mirror: true });
-document.getElementById('v-top').innerHTML = renderView(TOP_VIEW);
+
+const $ = (id) => document.getElementById(id);
+$('stage').innerHTML = Object.keys(VIEWS).map(renderView).join('');
+const svgOf = (key) => document.querySelector(`#stage svg[data-view="${key}"]`);
 
 // ---- 状態 ----
 const DRAFT_KEY = 'kizuCheck.draft';
 const REC_KEY = 'kizuCheck.records';
-const $ = (id) => document.getElementById(id);
 
 function today() {
   const d = new Date();
@@ -419,7 +512,15 @@ function today() {
   return d.toISOString().slice(0, 10);
 }
 function blank() {
-  return { id: null, plate: '', date: today(), amount: '', odagiri: '', mdl: false, damage: {}, parts: {}, memo: '' };
+  return { id: null, plate: '', date: today(), mdl: false, marks: [], parts: [], odagiri: '', memo: '' };
+}
+// 前の版で保存したデータも開けるようにそろえる
+function normalize(data) {
+  const s = Object.assign(blank(), data);
+  if (!Array.isArray(s.marks)) s.marks = [];
+  if (!Array.isArray(s.parts)) s.parts = [];
+  delete s.damage;
+  return s;
 }
 function load(key, fallback) {
   try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch { return fallback; }
@@ -428,152 +529,362 @@ function store(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
 }
 
-let S = Object.assign(blank(), load(DRAFT_KEY, {}));
+let S = normalize(load(DRAFT_KEY, {}));
 const saveDraft = () => store(DRAFT_KEY, S);
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
 const yen = (v) => v === '' || v == null ? '' : Number(v).toLocaleString('ja-JP');
-const activeIds = () => Object.keys(PANELS).filter((id) => S.damage[id] && (!PANELS[id].mdl || S.mdl));
+const money = (v) => '¥' + Number(v || 0).toLocaleString('ja-JP');
+const num = (v) => Number(v) || 0;
+function toDigits(str) {
+  const d = str.replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).replace(/[^0-9]/g, '');
+  return d === '' ? '' : String(Number(d));
+}
+function escapeHtml(s) { return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
+
+// パーツ：仕入れは税抜×1.1、請求は税抜×1.1×1.1 を10円の位で切り上げ（100円単位）
+function partCalc(p) {
+  const ex = num(p.price) * Math.max(1, num(p.qty));
+  return { cost: Math.floor(ex * 11 / 10), charge: Math.ceil(ex * 121 / 10000) * 100 };
+}
+function totals() {
+  const marks = activeMarks();
+  const repair = marks.reduce((a, m) => a + num(m.amount), 0);
+  let parts = 0, partsCost = 0;
+  for (const p of S.parts) { const c = partCalc(p); parts += c.charge; partsCost += c.cost; }
+  const total = repair + parts + TRAVEL_FEE;
+  return { count: marks.length, repair, parts, partsCost, total, net: total - num(S.odagiri) - partsCost };
+}
+// モデリスタをオフにしたら、エアロに描いた印は数えない
+const activeMarks = () => S.marks.filter((m) => !(m.panel && PANELS[m.panel].mdl && !S.mdl));
+const panelName = (m) => m.panel ? PANELS[m.panel].name : '場所不明';
 
 // ---- 入力欄 ----
 function fillForm() {
   $('plate').value = S.plate;
   $('date').value = S.date;
-  $('amount').value = yen(S.amount);
-  $('odagiri').value = yen(S.odagiri);
   $('mdl').checked = S.mdl;
+  $('odagiri').value = yen(S.odagiri);
   $('memo').value = S.memo;
   document.body.classList.toggle('mdl-on', S.mdl);
-  renderDiff();
-}
-function renderDiff() {
-  const el = $('diff');
-  if (S.amount === '' || S.odagiri === '') { el.textContent = ''; return; }
-  const d = Number(S.amount) - Number(S.odagiri);
-  el.className = 'diff' + (d < 0 ? ' minus' : '');
-  el.innerHTML = `差額（手元に残る分）<b>¥${d.toLocaleString('ja-JP')}</b>`;
 }
 $('plate').addEventListener('input', (e) => { S.plate = e.target.value; saveDraft(); });
 $('date').addEventListener('input', (e) => { S.date = e.target.value; saveDraft(); });
 $('memo').addEventListener('input', (e) => { S.memo = e.target.value; saveDraft(); });
-for (const key of ['amount', 'odagiri']) {
-  $(key).addEventListener('input', (e) => {
-    const digits = e.target.value.replace(/[^0-9０-９]/g, '').replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
-    S[key] = digits === '' ? '' : String(Number(digits));
-    e.target.value = yen(S[key]);
-    renderDiff();
-    saveDraft();
-  });
-}
+$('odagiri').addEventListener('input', (e) => {
+  S.odagiri = toDigits(e.target.value);
+  e.target.value = yen(S.odagiri);
+  renderTotals();
+  saveDraft();
+});
 $('mdl').addEventListener('change', (e) => {
   S.mdl = e.target.checked;
   document.body.classList.toggle('mdl-on', S.mdl);
-  render();
+  renderAll();
   saveDraft();
 });
 
-// ---- 部位をタップ ----
-let current = null;
-$('typeBtns').innerHTML = Object.entries(TYPES)
-  .map(([t, v]) => `<button data-t="${t}" style="background:var(--t-${t})">${v.label}</button>`).join('');
+// ---- 図に描く ----
+let tool = 'line';
+let view = 'left';
 
-document.querySelector('.views').addEventListener('click', (e) => {
-  const p = e.target.closest('.p');
-  if (p) openSheet(p.dataset.id);
+function setTool(t) {
+  tool = t;
+  document.querySelectorAll('.tool').forEach((b) => b.classList.toggle('on', b.dataset.tool === t));
+  $('stage').classList.toggle('erase-mode', t === 'erase');
+  $('toolHint').textContent = t === 'erase' ? '消したい印をタップしてください' : KINDS[t].hint;
+}
+$('tools').addEventListener('click', (e) => {
+  const b = e.target.closest('.tool');
+  if (b) setTool(b.dataset.tool);
 });
+
+function setView(key) {
+  view = key;
+  document.querySelectorAll('#stage svg').forEach((s) => s.classList.toggle('on', s.dataset.view === key));
+  $('viewCap').textContent = VIEWS[key].cap;
+  renderTabs();
+}
+function renderTabs() {
+  const counts = {};
+  for (const m of activeMarks()) counts[m.view] = (counts[m.view] || 0) + 1;
+  $('tabs').innerHTML = Object.entries(VIEWS).map(([k, v]) =>
+    `<button class="tab${k === view ? ' on' : ''}" data-view="${k}">${v.label}${counts[k] ? `<span class="cnt">${counts[k]}</span>` : ''}</button>`).join('');
+}
+$('tabs').addEventListener('click', (e) => {
+  const b = e.target.closest('.tab');
+  if (b) setView(b.dataset.view);
+});
+
+function toSvgPoint(svg, e) {
+  const pt = svg.createSVGPoint();
+  pt.x = e.clientX; pt.y = e.clientY;
+  const p = pt.matrixTransform(svg.getScreenCTM().inverse());
+  return [Math.round(p.x * 10) / 10, Math.round(p.y * 10) / 10];
+}
+// 描いた位置の下にある部位を探す
+function panelAt(svg, [x, y]) {
+  const pt = svg.createSVGPoint();
+  pt.x = x; pt.y = y;
+  const c = pt.matrixTransform(svg.getScreenCTM());
+  const el = document.elementsFromPoint(c.x, c.y).find((el) => el.classList && el.classList.contains('p') && svg.contains(el));
+  return el ? el.dataset.id : null;
+}
+function anchorOf(m) {
+  if (m.type === 'line') return m.pts[Math.floor(m.pts.length / 2)];
+  return [m.cx, m.cy];
+}
+
+function markShape(m, w) {
+  if (m.type === 'line') {
+    const pts = m.pts.map((p) => p.join(',')).join(' ');
+    return `<polyline class="mk" points="${pts}"/><polyline class="hit" points="${pts}"/>`;
+  }
+  if (m.type === 'circle') {
+    return `<circle class="mk circle" cx="${m.cx}" cy="${m.cy}" r="${m.r}"/><circle class="hit" cx="${m.cx}" cy="${m.cy}" r="${m.r}" style="fill:transparent"/>`;
+  }
+  const d = w / 45;
+  const path = `M${m.cx - d},${m.cy - d} L${m.cx + d},${m.cy + d} M${m.cx + d},${m.cy - d} L${m.cx - d},${m.cy + d}`;
+  return `<path class="mk" d="${path}"/><path class="hit" d="${path}"/>`;
+}
+function numberPos(m, w) {
+  const off = w / 32;
+  if (m.type === 'line') { const [x, y] = m.pts[0]; return [x - off * .7, y - off * .7]; }
+  if (m.type === 'circle') return [m.cx + m.r * .75 + off * .5, m.cy - m.r * .75 - off * .5];
+  return [m.cx + off * 1.1, m.cy - off * 1.1];
+}
+function renderMarks() {
+  const order = new Map(activeMarks().map((m, i) => [m.id, i + 1]));
+  for (const key of Object.keys(VIEWS)) {
+    const w = VIEWS[key].def.w;
+    const r = w / 48;
+    svgOf(key).querySelector('.marks').innerHTML = S.marks.filter((m) => m.view === key && order.has(m.id)).map((m) => {
+      const [nx, ny] = numberPos(m, w);
+      return `<g class="k-${KINDS[m.type].cls}" data-mark="${m.id}">${markShape(m, w)}
+        <g class="mn"><circle cx="${nx}" cy="${ny}" r="${r}"/><text x="${nx}" y="${ny}" font-size="${r * 1.25}">${order.get(m.id)}</text></g></g>`;
+    }).join('');
+  }
+}
+
+let drawing = null;
+$('stage').addEventListener('pointerdown', (e) => {
+  const svg = e.target.closest('svg');
+  if (!svg) return;
+  if (tool === 'erase') {
+    const g = e.target.closest('[data-mark]');
+    if (g) removeMark(g.dataset.mark);
+    return;
+  }
+  e.preventDefault();
+  svg.setPointerCapture(e.pointerId);
+  const p = toSvgPoint(svg, e);
+  const w = VIEWS[view].def.w;
+  const m = { id: uid(), view, type: tool, size: 'M', amount: SIZES.M.price };
+  if (tool === 'line') m.pts = [p];
+  else { m.cx = p[0]; m.cy = p[1]; m.r = tool === 'circle' ? 0 : undefined; }
+  const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  g.setAttribute('class', `k-${KINDS[tool].cls}`);
+  svg.querySelector('.marks').appendChild(g);
+  drawing = { svg, m, g, w, start: p };
+  if (tool === 'cross') finishDrawing();
+  else g.innerHTML = markShape(m, w);
+});
+$('stage').addEventListener('pointermove', (e) => {
+  if (!drawing) return;
+  const { m, g, w, svg, start } = drawing;
+  const p = toSvgPoint(svg, e);
+  if (m.type === 'line') {
+    const last = m.pts[m.pts.length - 1];
+    if (Math.hypot(p[0] - last[0], p[1] - last[1]) < w / 200) return;
+    m.pts.push(p);
+  } else {
+    m.r = Math.round(Math.hypot(p[0] - start[0], p[1] - start[1]) * 10) / 10;
+  }
+  g.innerHTML = markShape(m, w);
+});
+const endDrawing = () => { if (drawing) finishDrawing(); };
+$('stage').addEventListener('pointerup', endDrawing);
+$('stage').addEventListener('pointercancel', endDrawing);
+
+function finishDrawing() {
+  const { svg, m, g, w } = drawing;
+  drawing = null;
+  g.remove();
+  if (m.type === 'line') {
+    const [a, b] = [m.pts[0], m.pts[m.pts.length - 1]];
+    const len = m.pts.reduce((acc, p, i) => i ? acc + Math.hypot(p[0] - m.pts[i - 1][0], p[1] - m.pts[i - 1][1]) : 0, 0);
+    if (len < w / 60) { toast('もう少し長くなぞってください'); return; }
+    m.panel = panelAt(svg, anchorOf(m)) || panelAt(svg, a) || panelAt(svg, b);
+  } else {
+    if (m.type === 'circle' && m.r < w / 40) m.r = w / 30;
+    if (m.type === 'cross') delete m.r;
+    m.panel = panelAt(svg, [m.cx, m.cy]);
+  }
+  S.marks.push(m);
+  renderAll();
+  saveDraft();
+  openSheet(m.id);
+}
+
+function removeMark(id) {
+  S.marks = S.marks.filter((m) => m.id !== id);
+  renderAll();
+  saveDraft();
+}
+$('undo').addEventListener('click', () => {
+  const last = S.marks[S.marks.length - 1];
+  if (last) removeMark(last.id);
+});
+
+// ---- 大きさを選ぶシート ----
+let current = null;
 function openSheet(id) {
+  const m = S.marks.find((x) => x.id === id);
+  if (!m) return;
   current = id;
-  $('sheetTitle').textContent = PANELS[id].name;
-  document.querySelectorAll('#typeBtns button').forEach((b) => b.classList.toggle('on', S.damage[id] === b.dataset.t));
-  $('sheetClear').style.visibility = S.damage[id] ? 'visible' : 'hidden';
+  const n = activeMarks().findIndex((x) => x.id === id) + 1;
+  $('sheetTitle').textContent = `${n}．${KINDS[m.type].label}・${panelName(m)}`;
+  $('sizeBtns').innerHTML = Object.entries(SIZES).map(([k, v]) =>
+    `<button data-size="${k}" class="${m.size === k ? 'on' : ''}"><b>${v.label}</b><small>${money(v.price)}</small></button>`).join('');
   document.body.classList.add('sheet-open');
 }
 function closeSheet() { document.body.classList.remove('sheet-open'); current = null; }
 $('backdrop').addEventListener('click', closeSheet);
 $('sheetClose').addEventListener('click', closeSheet);
-$('sheetClear').addEventListener('click', () => { setDamage(current, null); closeSheet(); });
-$('typeBtns').addEventListener('click', (e) => {
-  const b = e.target.closest('button');
+$('sheetDelete').addEventListener('click', () => { removeMark(current); closeSheet(); });
+$('sizeBtns').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-size]');
   if (!b) return;
-  setDamage(current, b.dataset.t);
+  setSize(current, b.dataset.size);
   closeSheet();
 });
-
-function setDamage(id, t) {
-  if (!t) {
-    delete S.damage[id];
-    delete S.parts[id];
-  } else {
-    S.damage[id] = t;
-    const row = S.parts[id] || (S.parts[id] = { sel: [], extra: '' });
-    row.work = TYPES[t].work;
-    if ((t === 'crack' || t === 'replace') && row.sel.length === 0) row.sel.push(PANELS[id].parts[0]);
-  }
-  render();
+function setSize(id, size) {
+  const m = S.marks.find((x) => x.id === id);
+  m.size = size;
+  m.amount = SIZES[size].price;
+  renderAll();
   saveDraft();
 }
 
-// ---- パーツ一覧 ----
-function render() {
-  document.querySelectorAll('.p').forEach((el) => {
-    const t = S.damage[el.dataset.id];
-    if (t) el.dataset.t = t; else delete el.dataset.t;
-  });
-  const ids = activeIds();
-  $('spotCount').textContent = ids.length ? `${ids.length}か所` : '';
-
-  $('parts').innerHTML = ids.length === 0
-    ? '<p class="empty">図の部位をタップすると、ここに追加されます</p>'
-    : ids.map((id) => {
-        const t = S.damage[id], row = S.parts[id];
-        const opts = WORKS.map((w) => `<option${w === row.work ? ' selected' : ''}>${w}</option>`).join('');
-        const chips = PANELS[id].parts.map((p) =>
-          `<button class="chip${row.sel.includes(p) ? ' on' : ''}" data-part="${p}">${p}</button>`).join('');
-        return `<div class="part-row" data-id="${id}">
-          <div class="pr-head"><span class="badge b-${t}">${TYPES[t].label}</span><b>${PANELS[id].name}</b><select class="work">${opts}</select></div>
-          <div class="chips">${chips}</div>
-          <input class="extra" type="text" placeholder="ほかに要る部品（、で区切る）" value="${escapeAttr(row.extra)}">
+// ---- キズ・ヘコミの金額 ----
+function renderMarkList() {
+  const marks = activeMarks();
+  $('markCount').textContent = marks.length ? `${marks.length}か所` : '';
+  $('markList').innerHTML = marks.length === 0
+    ? '<p class="empty">図に描くと、ここに出ます</p>'
+    : marks.map((m, i) => {
+        const k = KINDS[m.type];
+        const seg = Object.entries(SIZES).map(([s, v]) =>
+          `<button data-size="${s}" class="${m.size === s ? 'on' : ''}">${v.label}</button>`).join('');
+        return `<div class="mrow" data-mark="${m.id}">
+          <div class="mrow-head"><span class="mnum b-${k.cls}">${i + 1}</span><span class="badge b-${k.cls}">${k.label}</span><b>${panelName(m)}</b><span style="font-size:11px;color:var(--muted)">（${VIEWS[m.view].label}）</span><button class="x" aria-label="消す">×</button></div>
+          <div class="mrow-body"><div class="seg">${seg}</div><div class="yen"><input class="money-in m-amount" type="text" inputmode="numeric" value="${yen(m.amount)}"></div></div>
         </div>`;
       }).join('');
-  renderSummary();
 }
-function escapeAttr(s) { return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
+$('markList').addEventListener('click', (e) => {
+  const row = e.target.closest('.mrow');
+  if (!row) return;
+  const id = row.dataset.mark;
+  if (e.target.closest('.x')) removeMark(id);
+  else if (e.target.closest('[data-size]')) setSize(id, e.target.closest('[data-size]').dataset.size);
+});
+$('markList').addEventListener('input', (e) => {
+  if (!e.target.classList.contains('m-amount')) return;
+  const m = S.marks.find((x) => x.id === e.target.closest('.mrow').dataset.mark);
+  m.amount = toDigits(e.target.value);
+  e.target.value = yen(m.amount);
+  renderTotals();
+  saveDraft();
+});
 
-function partTotals() {
-  const counts = new Map();
-  for (const id of activeIds()) {
-    const row = S.parts[id];
-    const extras = row.extra.split(/[、,，\n]/).map((s) => s.trim()).filter(Boolean);
-    for (const p of [...row.sel, ...extras]) counts.set(p, (counts.get(p) || 0) + 1);
+// ---- パーツ ----
+function renderSuggest() {
+  const have = new Set(S.parts.map((p) => p.name));
+  const list = [];
+  for (const m of activeMarks()) {
+    if (!m.panel) continue;
+    for (const name of PANELS[m.panel].parts) if (!have.has(name) && !list.includes(name)) list.push(name);
   }
-  return counts;
+  $('suggest').innerHTML = list.length === 0 ? '' :
+    `<p>描いた場所から、要りそうなパーツ（タップで追加）</p><div class="chips">${
+      list.map((n) => `<button class="chip" data-name="${escapeHtml(n)}">${escapeHtml(n)}</button>`).join('')}</div>`;
 }
-function renderSummary() {
-  const counts = partTotals();
-  $('summary').innerHTML = counts.size === 0 ? '' : `<div class="summary"><h3>注文するパーツ（${counts.size}種類）</h3><ul>${
-    [...counts].map(([p, n]) => `<li><span>${escapeAttr(p)}</span><span>×${n}</span></li>`).join('')}</ul></div>`;
-}
-
-$('parts').addEventListener('click', (e) => {
+$('suggest').addEventListener('click', (e) => {
   const chip = e.target.closest('.chip');
   if (!chip) return;
-  const row = S.parts[chip.closest('.part-row').dataset.id];
-  const p = chip.dataset.part;
-  row.sel = row.sel.includes(p) ? row.sel.filter((x) => x !== p) : [...row.sel, p];
-  chip.classList.toggle('on');
-  renderSummary();
+  addPart(chip.dataset.name);
+});
+function addPart(name = '') {
+  S.parts.push({ id: uid(), name, qty: 1, price: '' });
+  renderParts();
+  renderSuggest();
+  renderTotals();
+  saveDraft();
+  const rows = document.querySelectorAll('.prow');
+  const last = rows[rows.length - 1];
+  if (last) last.querySelector(name ? '.p-price' : '.p-name').focus();
+}
+$('addPart').addEventListener('click', () => addPart());
+
+function partCalcHtml(p) {
+  const c = partCalc(p);
+  return num(p.price)
+    ? `<span>仕入れ（税込）${money(c.cost)}</span><span>請求 <b>${money(c.charge)}</b></span>`
+    : '<span>税抜の金額を入れてください</span><span></span>';
+}
+function renderParts() {
+  $('partList').innerHTML = S.parts.map((p) => `<div class="prow" data-part="${p.id}">
+      <div class="prow-head"><input class="p-name" type="text" placeholder="パーツ名" value="${escapeHtml(p.name)}"><button class="x" aria-label="削除">×</button></div>
+      <div class="prow-body">
+        <div><label>数量</label><input class="qty" type="number" inputmode="numeric" min="1" value="${p.qty}"></div>
+        <div><label>税抜の金額（1個あたり）</label><div class="yen"><input class="money-in p-price" type="text" inputmode="numeric" placeholder="0" value="${yen(p.price)}"></div></div>
+      </div>
+      <div class="prow-calc">${partCalcHtml(p)}</div>
+    </div>`).join('');
+}
+$('partList').addEventListener('click', (e) => {
+  if (!e.target.closest('.x')) return;
+  const id = e.target.closest('.prow').dataset.part;
+  S.parts = S.parts.filter((p) => p.id !== id);
+  renderParts();
+  renderSuggest();
+  renderTotals();
   saveDraft();
 });
-$('parts').addEventListener('change', (e) => {
-  if (!e.target.classList.contains('work')) return;
-  S.parts[e.target.closest('.part-row').dataset.id].work = e.target.value;
+$('partList').addEventListener('input', (e) => {
+  const row = e.target.closest('.prow');
+  if (!row) return;
+  const p = S.parts.find((x) => x.id === row.dataset.part);
+  if (e.target.classList.contains('p-name')) { p.name = e.target.value; renderSuggest(); }
+  else if (e.target.classList.contains('qty')) p.qty = Math.max(1, num(e.target.value));
+  else if (e.target.classList.contains('p-price')) { p.price = toDigits(e.target.value); e.target.value = yen(p.price); }
+  row.querySelector('.prow-calc').innerHTML = partCalcHtml(p);
+  renderTotals();
   saveDraft();
 });
-$('parts').addEventListener('input', (e) => {
-  if (!e.target.classList.contains('extra')) return;
-  S.parts[e.target.closest('.part-row').dataset.id].extra = e.target.value;
-  renderSummary();
-  saveDraft();
-});
+
+// ---- 見積金額 ----
+function renderTotals() {
+  const t = totals();
+  $('sumRepairLabel').textContent = `キズ・ヘコミ修理（${t.count}か所）`;
+  $('sumRepair').textContent = money(t.repair);
+  $('sumParts').textContent = money(t.parts);
+  $('sumTravel').textContent = money(TRAVEL_FEE);
+  $('sumTotal').textContent = money(t.total);
+  $('sumPartsCost').textContent = money(t.partsCost);
+  $('sumNet').textContent = (t.net < 0 ? '−' : '') + money(Math.abs(t.net));
+  $('net').classList.toggle('minus', t.net < 0);
+}
+
+function renderAll() {
+  renderMarks();
+  renderTabs();
+  renderMarkList();
+  renderSuggest();
+  renderParts();
+  renderTotals();
+}
 
 // ---- 保存・送る ----
 function renderRecords() {
@@ -582,8 +893,8 @@ function renderRecords() {
   $('records').innerHTML = recs.length === 0
     ? '<p class="empty">まだありません</p>'
     : recs.map((r) => `<div class="rec">
-        <div class="rec-main"><b>${escapeAttr(r.plate)}${r.mdl ? '<span class="mini-tag">モデリスタ</span>' : ''}</b>
-          <small>${r.date || '日付なし'}　${r.amount !== '' ? '¥' + yen(r.amount) : '金額未記入'}</small></div>
+        <div class="rec-main"><b>${escapeHtml(r.plate)}${r.mdl ? '<span class="mini-tag">モデリスタ</span>' : ''}</b>
+          <small>${r.date || '日付なし'}　${r.total != null ? money(r.total) : ''}</small></div>
         <button data-open="${r.id}">開く</button>
         <button class="del" data-del="${r.id}">削除</button>
       </div>`).join('');
@@ -594,8 +905,8 @@ $('records').addEventListener('click', (e) => {
   if (openId) {
     const r = recs.find((x) => x.id === openId);
     if (!r) return;
-    S = Object.assign(blank(), JSON.parse(JSON.stringify(r)));
-    fillForm(); render(); saveDraft();
+    S = normalize(JSON.parse(JSON.stringify(r)));
+    fillForm(); renderAll(); saveDraft();
     window.scrollTo({ top: 0, behavior: 'smooth' });
     toast(`${r.plate} を開きました`);
   } else if (delId) {
@@ -610,8 +921,9 @@ $('records').addEventListener('click', (e) => {
 $('btnSave').addEventListener('click', () => {
   if (!S.plate.trim()) { toast('登録番号を入れてください'); $('plate').focus(); return; }
   const recs = load(REC_KEY, []);
-  S.id = S.id || Date.now().toString(36);
+  S.id = S.id || uid();
   S.savedAt = new Date().toISOString();
+  S.total = totals().total;
   const rec = JSON.parse(JSON.stringify(S));
   const i = recs.findIndex((x) => x.id === S.id);
   if (i >= 0) recs.splice(i, 1);
@@ -623,32 +935,45 @@ $('btnSave').addEventListener('click', () => {
 });
 
 $('btnNew').addEventListener('click', () => {
-  const touched = S.plate || S.amount || S.odagiri || Object.keys(S.damage).length || S.memo;
+  const touched = S.plate || S.odagiri || S.marks.length || S.parts.length || S.memo;
   if (touched && !confirm('いまの内容を消して、新しいシートにしますか？\n（保存したシートは残ります）')) return;
   S = blank();
-  fillForm(); render(); saveDraft();
+  fillForm(); renderAll(); saveDraft();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 });
 
 function shareText() {
+  const t = totals();
   const lines = [
     '【キズ修理チェックシート】',
     `登録番号：${S.plate || '未記入'}`,
     `見積日：${S.date || '未記入'}`,
     `車種：アルファード／ヴェルファイア（モデリスタ：${S.mdl ? 'あり' : 'なし'}）`,
-    `見積金額：${S.amount !== '' ? '¥' + yen(S.amount) : '未記入'}`,
-    `小田切さんに渡す金額：${S.odagiri !== '' ? '¥' + yen(S.odagiri) : '未記入'}`,
     '',
     '■ キズの場所',
   ];
-  const ids = activeIds();
-  if (ids.length === 0) lines.push('なし');
-  for (const id of ids) lines.push(`・${PANELS[id].name}：${TYPES[S.damage[id]].label} → ${S.parts[id].work}`);
-  const counts = partTotals();
-  if (counts.size) {
-    lines.push('', '■ 必要なパーツ');
-    for (const [p, n] of counts) lines.push(`・${p}${n > 1 ? ' ×' + n : ''}`);
+  const marks = activeMarks();
+  if (marks.length === 0) lines.push('なし');
+  marks.forEach((m, i) => lines.push(`${i + 1}. ${panelName(m)}　${KINDS[m.type].label}（${SIZES[m.size].label}）${money(m.amount)}`));
+  if (S.parts.length) {
+    lines.push('', '■ パーツ（税抜 → 請求）');
+    for (const p of S.parts) {
+      const c = partCalc(p);
+      lines.push(`・${p.name || '名前なし'}${num(p.qty) > 1 ? ' ×' + p.qty : ''}　${money(num(p.price) * Math.max(1, num(p.qty)))} → ${money(c.charge)}`);
+    }
   }
+  lines.push(
+    '',
+    '■ 見積金額',
+    `キズ・ヘコミ修理：${money(t.repair)}`,
+    `パーツ：${money(t.parts)}`,
+    `出張料：${money(TRAVEL_FEE)}`,
+    `合計：${money(t.total)}`,
+    '',
+    `小田切さんに渡す金額：${S.odagiri !== '' ? money(S.odagiri) : '未記入'}`,
+    `パーツの仕入れ（税込）：${money(t.partsCost)}`,
+    `手元に残る金額：${(t.net < 0 ? '−' : '') + money(Math.abs(t.net))}`,
+  );
   if (S.memo.trim()) lines.push('', '■ 備考', S.memo.trim());
   return lines.join('\n');
 }
@@ -672,8 +997,9 @@ function toast(msg) {
 }
 
 fillForm();
-render();
-renderRecords();
+setTool('line');
+setView('left');
+renderAll();
 </script>
 </body>
 </html>
