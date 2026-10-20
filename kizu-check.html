@@ -19,6 +19,7 @@
     --bg: #ffffff;
     --bg-soft: #f4f6f9;
     --line: #e1e6ec;
+    --field: #b3bec9;
     --radius: 14px;
 
     --t-scratch: #f08c00;
@@ -59,6 +60,17 @@
   .field input, .field textarea {
     width: 100%; border: 1.5px solid var(--line); border-radius: 10px; padding: 12px; font-size: 16px; background: #fff;
   }
+  /* 入力欄の枠はスマホでもはっきり見えるように濃いめ */
+  input[type=text], input[type=date], input[type=number], textarea { border-color: var(--field) !important; }
+  /* iPhoneの日付欄は自前の最小幅を持っていて枠からはみ出すので、幅を枠に合わせる */
+  input[type=date] {
+    -webkit-appearance: none; appearance: none; display: block; min-width: 0; max-width: 100%;
+    min-height: 50px; text-align: left; background: #fff;
+  }
+  input[type=date]::-webkit-date-and-time-value { text-align: left; }
+  .range { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 8px; align-items: center; }
+  .range span { font-size: 14px; font-weight: 700; color: var(--muted); }
+  .warn { font-size: 12px; color: var(--t-crack); margin-top: 4px; }
   input:focus, textarea:focus { outline: none; border-color: var(--yellow-dark) !important; }
   .field textarea { min-height: 72px; resize: vertical; }
   .yen { position: relative; }
@@ -314,6 +326,14 @@
     <div class="field">
       <label for="date">見積日</label>
       <input id="date" type="date">
+    </div>
+    <div class="field">
+      <label for="workFrom">施工日</label>
+      <div class="range">
+        <input id="workFrom" type="date"><span>から</span>
+        <input id="workTo" type="date" aria-label="施工日（終わり）"><span>まで</span>
+      </div>
+      <p class="warn" id="workWarn" hidden>終わりの日が始まりの日より前になっています</p>
     </div>
     <div class="field">
       <label class="toggle">
@@ -597,7 +617,7 @@ function today() {
   return d.toISOString().slice(0, 10);
 }
 function blank() {
-  return { id: null, plate: '', date: today(), mdl: false, marks: [], parts: [], odagiri: '', memo: '' };
+  return { id: null, plate: '', date: today(), workFrom: '', workTo: '', mdl: false, marks: [], parts: [], odagiri: '', memo: '' };
 }
 // 前の版で保存したデータも開けるようにそろえる
 function normalize(data) {
@@ -648,6 +668,9 @@ const panelName = (m) => m.panel ? PANELS[m.panel].name : '場所不明';
 function fillForm() {
   $('plate').value = S.plate;
   $('date').value = S.date;
+  $('workFrom').value = S.workFrom;
+  $('workTo').value = S.workTo;
+  checkWork();
   $('mdl').checked = S.mdl;
   $('odagiri').value = yen(S.odagiri);
   $('memo').value = S.memo;
@@ -655,6 +678,23 @@ function fillForm() {
 }
 $('plate').addEventListener('input', (e) => { S.plate = e.target.value; saveDraft(); });
 $('date').addEventListener('input', (e) => { S.date = e.target.value; saveDraft(); });
+function checkWork() {
+  $('workWarn').hidden = !(S.workFrom && S.workTo && S.workTo < S.workFrom);
+}
+$('workFrom').addEventListener('input', (e) => {
+  S.workFrom = e.target.value;
+  // 1日で終わる作業が多いので、終わりが空なら同じ日を入れておく
+  if (S.workFrom && !S.workTo) { S.workTo = S.workFrom; $('workTo').value = S.workTo; }
+  checkWork();
+  saveDraft();
+});
+$('workTo').addEventListener('input', (e) => { S.workTo = e.target.value; checkWork(); saveDraft(); });
+const fmtDate = (d) => d ? d.replace(/-/g, '/') : '';
+function workRange() {
+  if (!S.workFrom && !S.workTo) return '';
+  if (S.workFrom === S.workTo) return fmtDate(S.workFrom);
+  return `${fmtDate(S.workFrom) || '？'} 〜 ${fmtDate(S.workTo) || '？'}`;
+}
 $('memo').addEventListener('input', (e) => { S.memo = e.target.value; saveDraft(); });
 $('odagiri').addEventListener('input', (e) => {
   S.odagiri = toDigits(e.target.value);
@@ -998,7 +1038,7 @@ function renderRecords() {
     ? '<p class="empty">まだありません</p>'
     : recs.map((r) => `<div class="rec">
         <div class="rec-main"><b>${escapeHtml(r.plate)}${r.mdl ? '<span class="mini-tag">モデリスタ</span>' : ''}</b>
-          <small>${r.date || '日付なし'}　${r.total != null ? money(r.total) : ''}</small></div>
+          <small>見積 ${r.date ? fmtDate(r.date) : '日付なし'}${r.workFrom ? `　施工 ${fmtDate(r.workFrom)}` : ''}　${r.total != null ? money(r.total) : ''}</small></div>
         <button data-open="${r.id}">開く</button>
         <button class="del" data-del="${r.id}">削除</button>
       </div>`).join('');
@@ -1051,7 +1091,8 @@ function shareText() {
   const lines = [
     '【キズ修理チェックシート】',
     `登録番号：${S.plate || '未記入'}`,
-    `見積日：${S.date || '未記入'}`,
+    `見積日：${fmtDate(S.date) || '未記入'}`,
+    `施工日：${workRange() || '未定'}`,
     `車種：アルファード／ヴェルファイア（モデリスタ：${S.mdl ? 'あり' : 'なし'}）`,
     '',
     '■ キズの場所',
