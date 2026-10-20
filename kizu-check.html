@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#0d1b2a">
+<title>キズ修理チェックシート | まちのグループ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --navy: #0d1b2a;
+    --navy-2: #1b2b40;
+    --yellow: #f5c518;
+    --yellow-dark: #d9ab00;
+    --text: #1d2733;
+    --muted: #5b6776;
+    --bg: #ffffff;
+    --bg-soft: #f4f6f9;
+    --line: #e1e6ec;
+    --radius: 14px;
+
+    --t-scratch: #f5a524;
+    --t-dent: #3b82f6;
+    --t-crack: #e5484d;
+    --t-replace: #8e4ec6;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Zen Kaku Gothic New", "Hiragino Sans", "Noto Sans JP", sans-serif;
+    color: var(--text); background: var(--bg-soft); line-height: 1.6;
+    -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent;
+    padding-bottom: calc(96px + env(safe-area-inset-bottom));
+  }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 0 16px; }
+
+  header {
+    position: sticky; top: 0; z-index: 30; background: rgba(13,27,42,.96); color: #fff;
+    backdrop-filter: blur(8px);
+  }
+  .header-inner { display: flex; align-items: center; justify-content: space-between; height: 56px; }
+  .logo { display: flex; align-items: center; gap: 8px; font-weight: 900; font-size: 16px; color: #fff; text-decoration: none; }
+  .logo-mark { width: 28px; height: 28px; border-radius: 7px; background: var(--yellow); color: var(--navy); display: grid; place-items: center; font-size: 14px; }
+  .header-sub { font-size: 12px; opacity: .7; }
+
+  h1 { font-size: 22px; font-weight: 900; margin: 20px 0 4px; }
+  .lead { font-size: 13px; color: var(--muted); margin-bottom: 16px; }
+
+  .card { background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin-bottom: 14px; }
+  .card h2 { font-size: 16px; font-weight: 900; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+  .card h2 .num { width: 22px; height: 22px; border-radius: 50%; background: var(--navy); color: var(--yellow); font-size: 12px; display: grid; place-items: center; }
+  .card h2 .aside { margin-left: auto; font-size: 12px; font-weight: 500; color: var(--muted); }
+
+  .field { margin-bottom: 12px; }
+  .field:last-child { margin-bottom: 0; }
+  .field label { display: block; font-size: 13px; font-weight: 700; margin-bottom: 4px; }
+  .field input, .field textarea {
+    width: 100%; border: 1.5px solid var(--line); border-radius: 10px; padding: 12px; font-size: 16px; background: #fff;
+  }
+  .field input:focus, .field textarea:focus { outline: none; border-color: var(--yellow-dark); }
+  .field textarea { min-height: 72px; resize: vertical; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .yen { position: relative; }
+  .yen input { padding-left: 30px; text-align: right; }
+  .yen::before { content: "¥"; position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); font-weight: 700; }
+  .diff { font-size: 13px; color: var(--muted); text-align: right; margin-top: -4px; }
+  .diff b { color: var(--text); }
+  .diff.minus b { color: var(--t-crack); }
+
+  .field .toggle {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    border: 1.5px solid var(--line); border-radius: 10px; padding: 12px; cursor: pointer; user-select: none;
+  }
+  .toggle .t-label { font-weight: 700; font-size: 15px; }
+  .toggle .t-label small { display: block; font-weight: 400; font-size: 12px; color: var(--muted); }
+  .toggle input { position: absolute; opacity: 0; pointer-events: none; }
+  .switch { width: 50px; height: 30px; border-radius: 999px; background: #cfd6de; position: relative; flex-shrink: 0; transition: background .15s; }
+  .switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: transform .15s; }
+  .toggle input:checked + .switch { background: var(--yellow-dark); }
+  .toggle input:checked + .switch::after { transform: translateX(20px); }
+  .toggle:has(input:checked) { border-color: var(--yellow-dark); background: #fffbea; }
+
+  /* 車の図 */
+  .views { display: grid; gap: 12px; }
+  .views .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .view-cap { font-size: 12px; font-weight: 700; color: var(--muted); text-align: center; margin-top: 2px; }
+  .view svg { width: 100%; height: auto; display: block; overflow: visible; }
+  .p { fill: #fff; stroke: var(--navy); stroke-width: 1.3; stroke-linejoin: round; cursor: pointer; transition: fill .12s; }
+  .p.tire { fill: #3a4654; }
+  .p:active { fill: #fff3c4; }
+  .p[data-t=scratch] { fill: var(--t-scratch); }
+  .p[data-t=dent] { fill: var(--t-dent); }
+  .p[data-t=crack] { fill: var(--t-crack); }
+  .p[data-t=replace] { fill: var(--t-replace); }
+  .body { fill: #cfd8e2; }
+  .glass { fill: #dbe6f1; stroke: var(--navy); stroke-width: .8; pointer-events: none; }
+  .arch { fill: #fff; }
+  .rim { fill: #aab4bf; stroke: #3a4654; stroke-width: 1; pointer-events: none; }
+  .plate { fill: #fff; stroke: var(--navy); stroke-width: .8; pointer-events: none; }
+  .deco-tire { fill: #3a4654; pointer-events: none; }
+  .mdl { display: none; }
+  body.mdl-on .mdl { display: inline; }
+  .p.mdl { stroke-dasharray: 3 2; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; justify-content: center; font-size: 12px; margin-top: 12px; }
+  .legend span { display: inline-flex; align-items: center; gap: 4px; }
+  .legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  .hint { font-size: 12px; color: var(--muted); text-align: center; margin-top: 6px; }
+
+  .badge { display: inline-block; font-size: 11px; font-weight: 700; color: #fff; padding: 2px 8px; border-radius: 999px; flex-shrink: 0; }
+  .b-scratch { background: var(--t-scratch); }
+  .b-dent { background: var(--t-dent); }
+  .b-crack { background: var(--t-crack); }
+  .b-replace { background: var(--t-replace); }
+
+  /* パーツ一覧 */
+  .empty { font-size: 13px; color: var(--muted); text-align: center; padding: 16px 0; }
+  .part-row { border-top: 1px solid var(--line); padding: 12px 0; }
+  .part-row:first-child { border-top: none; padding-top: 0; }
+  .pr-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .pr-head b { font-size: 14px; flex: 1; min-width: 0; }
+  .pr-head select { border: 1.5px solid var(--line); border-radius: 8px; padding: 6px 8px; font-size: 14px; background: #fff; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  .chip { border: 1.5px solid var(--line); background: #fff; border-radius: 999px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
+  .chip.on { background: var(--navy); border-color: var(--navy); color: #fff; }
+  .chip.on::before { content: "✓ "; color: var(--yellow); }
+  .part-row .extra { width: 100%; border: 1.5px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 16px; }
+  .summary { margin-top: 14px; background: var(--bg-soft); border-radius: 10px; padding: 12px; }
+  .summary h3 { font-size: 13px; font-weight: 900; margin-bottom: 6px; }
+  .summary ul { list-style: none; font-size: 14px; }
+  .summary li { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px dashed var(--line); }
+  .summary li:last-child { border-bottom: none; }
+
+  /* 保存したシート */
+  .rec { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
+  .rec:first-child { border-top: none; }
+  .rec-main { flex: 1; min-width: 0; }
+  .rec-main b { display: block; font-size: 15px; }
+  .rec-main small { color: var(--muted); font-size: 12px; }
+  .rec button { border: 1.5px solid var(--line); background: #fff; border-radius: 8px; padding: 6px 10px; font-size: 13px; cursor: pointer; }
+  .rec button.del { color: var(--t-crack); }
+  .mini-tag { display: inline-block; font-size: 10px; font-weight: 700; background: #fff3c4; color: #8a6d00; border-radius: 4px; padding: 0 5px; margin-left: 4px; vertical-align: 2px; }
+
+  /* 下の操作バー */
+  .actions {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; background: rgba(255,255,255,.97);
+    border-top: 1px solid var(--line); padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  }
+  .actions .wrap { display: grid; grid-template-columns: 1fr 1fr 1.4fr; gap: 8px; padding: 0; }
+  .btn { border: none; border-radius: 999px; padding: 14px 8px; font-weight: 700; font-size: 15px; cursor: pointer; }
+  .btn-primary { background: var(--yellow); color: var(--navy); }
+  .btn-sub { background: var(--bg-soft); border: 1.5px solid var(--line); }
+  .btn:active { transform: scale(.97); }
+
+  /* 部位をタップしたときのシート */
+  #backdrop { position: fixed; inset: 0; background: rgba(13,27,42,.45); z-index: 40; opacity: 0; pointer-events: none; transition: opacity .15s; }
+  #sheet {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 41; background: #fff; border-radius: 18px 18px 0 0;
+    padding: 18px 16px calc(16px + env(safe-area-inset-bottom)); transform: translateY(105%); transition: transform .2s;
+    max-width: 720px; margin: 0 auto;
+  }
+  body.sheet-open #backdrop { opacity: 1; pointer-events: auto; }
+  body.sheet-open #sheet { transform: none; }
+  #sheet .s-title { font-size: 18px; font-weight: 900; margin-bottom: 12px; text-align: center; }
+  .type-btns { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 10px; }
+  .type-btns button { border: 2px solid transparent; border-radius: 12px; padding: 14px 0; font-weight: 900; font-size: 15px; color: #fff; cursor: pointer; }
+  .type-btns button.on { border-color: var(--navy); box-shadow: 0 0 0 2px #fff inset; }
+  .sheet-sub { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .sheet-sub button { border: 1.5px solid var(--line); background: #fff; border-radius: 12px; padding: 12px 0; font-weight: 700; cursor: pointer; }
+  #sheetClear { color: var(--t-crack); }
+
+  #toast {
+    position: fixed; left: 50%; bottom: calc(90px + env(safe-area-inset-bottom)); transform: translateX(-50%) translateY(20px);
+    background: var(--navy); color: #fff; font-size: 14px; padding: 10px 18px; border-radius: 999px; z-index: 50;
+    opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; white-space: nowrap;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%); }
+
+  .note { font-size: 12px; color: var(--muted); margin: 4px 0 24px; }
+
+  @media print {
+    header, .actions, #records-card, .note, .hint, #sheet, #backdrop { display: none !important; }
+    body { background: #fff; padding: 0; }
+    .card { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap header-inner">
+    <a class="logo" href="./"><span class="logo-mark">M</span>まちのグループ</a>
+    <span class="header-sub">社内用</span>
+  </div>
+</header>
+
+<main class="wrap">
+  <h1>キズ修理チェックシート</h1>
+  <p class="lead">アルファード／ヴェルファイア用。図の部位をタップしてキズの場所を記録します。</p>
+
+  <section class="card">
+    <h2><span class="num">1</span>車両・見積り</h2>
+    <div class="field">
+      <label for="plate">登録番号</label>
+      <input id="plate" type="text" placeholder="例）大宮 300 あ 12-34" autocomplete="off">
+    </div>
+    <div class="field">
+      <label for="date">見積日</label>
+      <input id="date" type="date">
+    </div>
+    <div class="grid2">
+      <div class="field">
+        <label for="amount">見積金額</label>
+        <div class="yen"><input id="amount" type="text" inputmode="numeric" placeholder="0"></div>
+      </div>
+      <div class="field">
+        <label for="odagiri">小田切さんに渡す金額</label>
+        <div class="yen"><input id="odagiri" type="text" inputmode="numeric" placeholder="0"></div>
+      </div>
+    </div>
+    <p class="diff" id="diff"></p>
+    <div class="field" style="margin-top:12px">
+      <label class="toggle">
+        <span class="t-label">モデリスタ<small>エアロ（フロント・サイド・リヤ）付き</small></span>
+        <input id="mdl" type="checkbox">
+        <span class="switch"></span>
+      </label>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2><span class="num">2</span>キズの場所<span class="aside" id="spotCount"></span></h2>
+    <div class="views">
+      <div class="row2">
+        <div class="view"><div id="v-front"></div><p class="view-cap">前</p></div>
+        <div class="view"><div id="v-rear"></div><p class="view-cap">後ろ</p></div>
+      </div>
+      <div class="view"><div id="v-left"></div><p class="view-cap">左側面（← 前）</p></div>
+      <div class="view"><div id="v-right"></div><p class="view-cap">右側面（前 →）</p></div>
+      <div class="view"><div id="v-top"></div><p class="view-cap">上から（← 前）</p></div>
+    </div>
+    <div class="legend">
+      <span><i style="background:var(--t-scratch)"></i>キズ</span>
+      <span><i style="background:var(--t-dent)"></i>ヘコミ</span>
+      <span><i style="background:var(--t-crack)"></i>ワレ</span>
+      <span><i style="background:var(--t-replace)"></i>交換</span>
+    </div>
+    <p class="hint">点線の部分はモデリスタのエアロです（モデリスタをオンにすると出ます）</p>
+  </section>
+
+  <section class="card">
+    <h2><span class="num">3</span>必要なパーツ</h2>
+    <div id="parts"></div>
+    <div id="summary"></div>
+  </section>
+
+  <section class="card">
+    <h2><span class="num">4</span>備考</h2>
+    <div class="field">
+      <textarea id="memo" placeholder="お客さまの要望、作業の注意点など"></textarea>
+    </div>
+  </section>
+
+  <section class="card" id="records-card">
+    <h2>保存したシート<span class="aside" id="recCount"></span></h2>
+    <div id="records"></div>
+  </section>
+  <p class="note">保存したシートはこのスマホのブラウザの中にだけ残ります。ほかの人に送るときは「送る」を使ってください。</p>
+</main>
+
+<div class="actions">
+  <div class="wrap">
+    <button class="btn btn-sub" id="btnNew">新規</button>
+    <button class="btn btn-sub" id="btnShare">送る</button>
+    <button class="btn btn-primary" id="btnSave">保存</button>
+  </div>
+</div>
+
+<div id="backdrop"></div>
+<div id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+  <p class="s-title" id="sheetTitle"></p>
+  <div class="type-btns" id="typeBtns"></div>
+  <div class="sheet-sub">
+    <button id="sheetClear">取り消す</button>
+    <button id="sheetClose">閉じる</button>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script>
+const TYPES = {
+  scratch: { label: 'キズ',   work: '塗装' },
+  dent:    { label: 'ヘコミ', work: '板金塗装' },
+  crack:   { label: 'ワレ',   work: '部品交換' },
+  replace: { label: '交換',   work: '部品交換' },
+};
+const WORKS = ['磨き', '塗装', '板金塗装', '部品交換', '脱着のみ'];
+
+// 部位と、その部位で必要になりそうなパーツ
+const PANELS = {};
+function def(id, name, parts, mdl) { PANELS[id] = { name, parts, mdl: !!mdl }; }
+def('bumperF', 'フロントバンパー', ['フロントバンパーカバー', 'バンパーリテーナー', 'クリップ類']);
+def('grille', 'フロントグリル', ['フロントグリル', 'エンブレム']);
+def('hood', 'ボンネット', ['ボンネット']);
+def('windshield', 'フロントガラス', ['フロントガラス', 'ガラスモール']);
+def('mdl_spoilerF', 'フロントスポイラー（モデリスタ）', ['フロントスポイラー（モデリスタ）', '取付クリップ類'], true);
+for (const [s, jp] of [['L', '左'], ['R', '右']]) {
+  const side = (p) => p.endsWith('クリップ類') ? p : `${p}（${jp}）`;
+  def(`headlamp_${s}`, `ヘッドランプ（${jp}）`, ['ヘッドランプ'].map(side));
+  def(`mirror_${s}`, `ドアミラー（${jp}）`, ['ドアミラーカバー', 'ドアミラー本体'].map(side));
+  def(`fender_${s}`, `フロントフェンダー（${jp}）`, ['フロントフェンダー', 'フェンダーライナー'].map(side));
+  def(`doorF_${s}`, `フロントドア（${jp}）`, ['フロントドアパネル', 'ドアベルトモール'].map(side));
+  def(`slide_${s}`, `スライドドア（${jp}）`, ['スライドドアパネル', 'スライドドアモール'].map(side));
+  def(`quarter_${s}`, `リヤフェンダー（${jp}）`, ['リヤクォーターパネル'].map(side));
+  def(`rocker_${s}`, `ロッカーパネル（${jp}）`, ['ロッカーパネル', 'ロッカーモール'].map(side));
+  def(`wheelF_${s}`, `フロントホイール（${jp}）`, ['フロントホイール', 'センターキャップ'].map(side));
+  def(`wheelR_${s}`, `リヤホイール（${jp}）`, ['リヤホイール', 'センターキャップ'].map(side));
+  def(`tail_${s}`, `テールランプ（${jp}）`, ['テールランプ'].map(side));
+  def(`mdl_skirt_${s}`, `サイドスカート（${jp}・モデリスタ）`, [`サイドスカート（${jp}・モデリスタ）`, '取付クリップ類'], true);
+}
+def('roof', 'ルーフ', ['ルーフパネル']);
+def('backdoor', 'バックドア', ['バックドアパネル', 'バックドアガーニッシュ', 'エンブレム']);
+def('rearglass', 'リヤガラス', ['バックドアガラス']);
+def('bumperR', 'リヤバンパー', ['リヤバンパーカバー', 'バンパーリテーナー', 'クリップ類']);
+def('mdl_skirtR', 'リヤスカート（モデリスタ）', ['リヤスカート（モデリスタ）', '取付クリップ類'], true);
+
+// 図の形。id があるものはタップできる部位、cls だけのものは飾り
+const SIDE_VIEW = { w: 400, h: 160, items: [
+  { cls: 'body', pts: [[8,98],[14,88],[40,84],[100,70],[150,24],[372,20],[384,30],[390,104],[390,132],[8,132]] },
+  { id: 'bumperF', pts: [[8,98],[14,88],[34,86],[38,132],[8,132]] },
+  { id: 'fender_*', pts: [[36,86],[100,71],[108,71],[108,128],[40,128]] },
+  { id: 'doorF_*', pts: [[110,71],[151,26],[190,24],[190,122],[110,122]] },
+  { id: 'slide_*', pts: [[192,24],[285,22],[285,122],[192,122]] },
+  { id: 'quarter_*', pts: [[287,22],[371,20],[383,30],[387,106],[358,108],[358,128],[287,128]] },
+  { id: 'bumperR', pts: [[360,110],[388,108],[390,132],[360,132]] },
+  { id: 'rocker_*', pts: [[110,124],[285,124],[285,132],[110,132]] },
+  { cls: 'glass', pts: [[118,70],[154,30],[186,28],[186,70]] },
+  { cls: 'glass', pts: [[196,70],[196,28],[281,26],[281,70]] },
+  { cls: 'glass', pts: [[291,68],[291,26],[366,24],[376,64]] },
+  { id: 'headlamp_*', pts: [[12,92],[34,87],[32,96],[10,100]] },
+  { id: 'tail_*', pts: [[380,36],[385,40],[388,84],[382,84]] },
+  { id: 'mirror_*', pts: [[114,58],[130,54],[132,68],[116,70]] },
+  { cls: 'arch', c: [80,132,28] }, { id: 'wheelF_*', cls: 'tire', c: [80,132,22] }, { cls: 'rim', c: [80,132,12] },
+  { cls: 'arch', c: [322,132,28] }, { id: 'wheelR_*', cls: 'tire', c: [322,132,22] }, { cls: 'rim', c: [322,132,12] },
+  { id: 'mdl_skirt_*', pts: [[104,134],[296,134],[292,142],[108,142]] },
+  { id: 'mdl_spoilerF', pts: [[8,133],[48,133],[44,141],[12,141]] },
+  { id: 'mdl_skirtR', pts: [[352,133],[390,133],[386,141],[354,141]] },
+]};
+
+// 前から見ると、車の右側が向かって左になる
+const FRONT_VIEW = { w: 200, h: 164, items: [
+  { cls: 'body', pts: [[36,14],[164,14],[176,70],[186,92],[190,142],[176,152],[24,152],[10,142],[14,92],[24,70]] },
+  { cls: 'deco-tire', pts: [[22,148],[46,148],[46,162],[22,162]] },
+  { cls: 'deco-tire', pts: [[154,148],[178,148],[178,162],[154,162]] },
+  { id: 'windshield', pts: [[40,18],[160,18],[172,68],[28,68]] },
+  { id: 'hood', pts: [[26,72],[174,72],[182,88],[18,88]] },
+  { id: 'bumperF', pts: [[14,90],[186,90],[190,142],[176,152],[24,152],[10,142]] },
+  { id: 'grille', pts: [[58,92],[142,92],[150,140],[50,140]] },
+  { id: 'headlamp_R', pts: [[16,92],[54,92],[50,108],[14,104]] },
+  { id: 'headlamp_L', pts: [[184,92],[146,92],[150,108],[186,104]] },
+  { id: 'mirror_R', pts: [[4,54],[24,58],[24,72],[6,72]] },
+  { id: 'mirror_L', pts: [[196,54],[176,58],[176,72],[194,72]] },
+  { id: 'mdl_spoilerF', pts: [[22,153],[178,153],[172,162],[28,162]] },
+]};
+
+// 後ろから見ると、車の左側が向かって左
+const REAR_VIEW = { w: 200, h: 164, items: [
+  { cls: 'body', pts: [[36,12],[164,12],[178,40],[186,104],[190,140],[176,150],[24,150],[10,140],[14,104],[22,40]] },
+  { cls: 'deco-tire', pts: [[22,146],[46,146],[46,160],[22,160]] },
+  { cls: 'deco-tire', pts: [[154,146],[178,146],[178,160],[154,160]] },
+  { id: 'backdoor', pts: [[30,14],[170,14],[180,104],[20,104]] },
+  { id: 'rearglass', pts: [[40,20],[160,20],[166,62],[34,62]] },
+  { cls: 'plate', pts: [[82,78],[118,78],[118,96],[82,96]] },
+  { id: 'tail_L', pts: [[20,58],[34,60],[36,100],[16,100]] },
+  { id: 'tail_R', pts: [[180,58],[166,60],[164,100],[184,100]] },
+  { id: 'bumperR', pts: [[14,106],[186,106],[190,140],[176,150],[24,150],[10,140]] },
+  { id: 'mdl_skirtR', pts: [[22,151],[178,151],[172,160],[28,160]] },
+]};
+
+const TOP_VIEW = { w: 400, h: 120, items: [
+  { cls: 'body', pts: [[6,30],[14,16],[30,12],[384,12],[394,22],[394,98],[384,108],[30,108],[14,104],[6,90]] },
+  { id: 'bumperF', pts: [[6,30],[14,16],[22,14],[22,106],[14,104],[6,90]] },
+  { id: 'hood', pts: [[24,15],[98,14],[98,106],[24,105]] },
+  { id: 'windshield', pts: [[100,14],[150,15],[150,105],[100,106]] },
+  { id: 'roof', pts: [[152,15],[370,15],[370,105],[152,105]] },
+  { id: 'backdoor', pts: [[372,15],[386,19],[386,101],[372,105]] },
+  { id: 'bumperR', pts: [[388,20],[394,24],[394,96],[388,100]] },
+  { id: 'mirror_R', pts: [[104,2],[116,2],[118,13],[102,13]] },
+  { id: 'mirror_L', pts: [[104,118],[116,118],[118,107],[102,107]] },
+]};
+
+function renderView(view, opts = {}) {
+  const { side, mirror } = opts;
+  const X = (x) => mirror ? view.w - x : x;
+  const shapes = view.items.map((it) => {
+    const id = it.id && (side ? it.id.replace('*', side) : it.id);
+    const cls = [id ? 'p' : '', it.cls || '', id && PANELS[id].mdl ? 'mdl' : ''].join(' ').trim();
+    const attrs = `class="${cls}"${id ? ` data-id="${id}"` : ''}`;
+    if (it.c) return `<circle ${attrs} cx="${X(it.c[0])}" cy="${it.c[1]}" r="${it.c[2]}"/>`;
+    return `<polygon ${attrs} points="${it.pts.map(([x, y]) => `${X(x)},${y}`).join(' ')}"/>`;
+  }).join('');
+  return `<svg viewBox="0 0 ${view.w} ${view.h}" xmlns="http://www.w3.org/2000/svg">${shapes}</svg>`;
+}
+document.getElementById('v-front').innerHTML = renderView(FRONT_VIEW);
+document.getElementById('v-rear').innerHTML = renderView(REAR_VIEW);
+document.getElementById('v-left').innerHTML = renderView(SIDE_VIEW, { side: 'L' });
+document.getElementById('v-right').innerHTML = renderView(SIDE_VIEW, { side: 'R', mirror: true });
+document.getElementById('v-top').innerHTML = renderView(TOP_VIEW);
+
+// ---- 状態 ----
+const DRAFT_KEY = 'kizuCheck.draft';
+const REC_KEY = 'kizuCheck.records';
+const $ = (id) => document.getElementById(id);
+
+function today() {
+  const d = new Date();
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 10);
+}
+function blank() {
+  return { id: null, plate: '', date: today(), amount: '', odagiri: '', mdl: false, damage: {}, parts: {}, memo: '' };
+}
+function load(key, fallback) {
+  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch { return fallback; }
+}
+function store(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
+}
+
+let S = Object.assign(blank(), load(DRAFT_KEY, {}));
+const saveDraft = () => store(DRAFT_KEY, S);
+
+const yen = (v) => v === '' || v == null ? '' : Number(v).toLocaleString('ja-JP');
+const activeIds = () => Object.keys(PANELS).filter((id) => S.damage[id] && (!PANELS[id].mdl || S.mdl));
+
+// ---- 入力欄 ----
+function fillForm() {
+  $('plate').value = S.plate;
+  $('date').value = S.date;
+  $('amount').value = yen(S.amount);
+  $('odagiri').value = yen(S.odagiri);
+  $('mdl').checked = S.mdl;
+  $('memo').value = S.memo;
+  document.body.classList.toggle('mdl-on', S.mdl);
+  renderDiff();
+}
+function renderDiff() {
+  const el = $('diff');
+  if (S.amount === '' || S.odagiri === '') { el.textContent = ''; return; }
+  const d = Number(S.amount) - Number(S.odagiri);
+  el.className = 'diff' + (d < 0 ? ' minus' : '');
+  el.innerHTML = `差額（手元に残る分）<b>¥${d.toLocaleString('ja-JP')}</b>`;
+}
+$('plate').addEventListener('input', (e) => { S.plate = e.target.value; saveDraft(); });
+$('date').addEventListener('input', (e) => { S.date = e.target.value; saveDraft(); });
+$('memo').addEventListener('input', (e) => { S.memo = e.target.value; saveDraft(); });
+for (const key of ['amount', 'odagiri']) {
+  $(key).addEventListener('input', (e) => {
+    const digits = e.target.value.replace(/[^0-9０-９]/g, '').replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+    S[key] = digits === '' ? '' : String(Number(digits));
+    e.target.value = yen(S[key]);
+    renderDiff();
+    saveDraft();
+  });
+}
+$('mdl').addEventListener('change', (e) => {
+  S.mdl = e.target.checked;
+  document.body.classList.toggle('mdl-on', S.mdl);
+  render();
+  saveDraft();
+});
+
+// ---- 部位をタップ ----
+let current = null;
+$('typeBtns').innerHTML = Object.entries(TYPES)
+  .map(([t, v]) => `<button data-t="${t}" style="background:var(--t-${t})">${v.label}</button>`).join('');
+
+document.querySelector('.views').addEventListener('click', (e) => {
+  const p = e.target.closest('.p');
+  if (p) openSheet(p.dataset.id);
+});
+function openSheet(id) {
+  current = id;
+  $('sheetTitle').textContent = PANELS[id].name;
+  document.querySelectorAll('#typeBtns button').forEach((b) => b.classList.toggle('on', S.damage[id] === b.dataset.t));
+  $('sheetClear').style.visibility = S.damage[id] ? 'visible' : 'hidden';
+  document.body.classList.add('sheet-open');
+}
+function closeSheet() { document.body.classList.remove('sheet-open'); current = null; }
+$('backdrop').addEventListener('click', closeSheet);
+$('sheetClose').addEventListener('click', closeSheet);
+$('sheetClear').addEventListener('click', () => { setDamage(current, null); closeSheet(); });
+$('typeBtns').addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  setDamage(current, b.dataset.t);
+  closeSheet();
+});
+
+function setDamage(id, t) {
+  if (!t) {
+    delete S.damage[id];
+    delete S.parts[id];
+  } else {
+    S.damage[id] = t;
+    const row = S.parts[id] || (S.parts[id] = { sel: [], extra: '' });
+    row.work = TYPES[t].work;
+    if ((t === 'crack' || t === 'replace') && row.sel.length === 0) row.sel.push(PANELS[id].parts[0]);
+  }
+  render();
+  saveDraft();
+}
+
+// ---- パーツ一覧 ----
+function render() {
+  document.querySelectorAll('.p').forEach((el) => {
+    const t = S.damage[el.dataset.id];
+    if (t) el.dataset.t = t; else delete el.dataset.t;
+  });
+  const ids = activeIds();
+  $('spotCount').textContent = ids.length ? `${ids.length}か所` : '';
+
+  $('parts').innerHTML = ids.length === 0
+    ? '<p class="empty">図の部位をタップすると、ここに追加されます</p>'
+    : ids.map((id) => {
+        const t = S.damage[id], row = S.parts[id];
+        const opts = WORKS.map((w) => `<option${w === row.work ? ' selected' : ''}>${w}</option>`).join('');
+        const chips = PANELS[id].parts.map((p) =>
+          `<button class="chip${row.sel.includes(p) ? ' on' : ''}" data-part="${p}">${p}</button>`).join('');
+        return `<div class="part-row" data-id="${id}">
+          <div class="pr-head"><span class="badge b-${t}">${TYPES[t].label}</span><b>${PANELS[id].name}</b><select class="work">${opts}</select></div>
+          <div class="chips">${chips}</div>
+          <input class="extra" type="text" placeholder="ほかに要る部品（、で区切る）" value="${escapeAttr(row.extra)}">
+        </div>`;
+      }).join('');
+  renderSummary();
+}
+function escapeAttr(s) { return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
+
+function partTotals() {
+  const counts = new Map();
+  for (const id of activeIds()) {
+    const row = S.parts[id];
+    const extras = row.extra.split(/[、,，\n]/).map((s) => s.trim()).filter(Boolean);
+    for (const p of [...row.sel, ...extras]) counts.set(p, (counts.get(p) || 0) + 1);
+  }
+  return counts;
+}
+function renderSummary() {
+  const counts = partTotals();
+  $('summary').innerHTML = counts.size === 0 ? '' : `<div class="summary"><h3>注文するパーツ（${counts.size}種類）</h3><ul>${
+    [...counts].map(([p, n]) => `<li><span>${escapeAttr(p)}</span><span>×${n}</span></li>`).join('')}</ul></div>`;
+}
+
+$('parts').addEventListener('click', (e) => {
+  const chip = e.target.closest('.chip');
+  if (!chip) return;
+  const row = S.parts[chip.closest('.part-row').dataset.id];
+  const p = chip.dataset.part;
+  row.sel = row.sel.includes(p) ? row.sel.filter((x) => x !== p) : [...row.sel, p];
+  chip.classList.toggle('on');
+  renderSummary();
+  saveDraft();
+});
+$('parts').addEventListener('change', (e) => {
+  if (!e.target.classList.contains('work')) return;
+  S.parts[e.target.closest('.part-row').dataset.id].work = e.target.value;
+  saveDraft();
+});
+$('parts').addEventListener('input', (e) => {
+  if (!e.target.classList.contains('extra')) return;
+  S.parts[e.target.closest('.part-row').dataset.id].extra = e.target.value;
+  renderSummary();
+  saveDraft();
+});
+
+// ---- 保存・送る ----
+function renderRecords() {
+  const recs = load(REC_KEY, []);
+  $('recCount').textContent = recs.length ? `${recs.length}件` : '';
+  $('records').innerHTML = recs.length === 0
+    ? '<p class="empty">まだありません</p>'
+    : recs.map((r) => `<div class="rec">
+        <div class="rec-main"><b>${escapeAttr(r.plate)}${r.mdl ? '<span class="mini-tag">モデリスタ</span>' : ''}</b>
+          <small>${r.date || '日付なし'}　${r.amount !== '' ? '¥' + yen(r.amount) : '金額未記入'}</small></div>
+        <button data-open="${r.id}">開く</button>
+        <button class="del" data-del="${r.id}">削除</button>
+      </div>`).join('');
+}
+$('records').addEventListener('click', (e) => {
+  const recs = load(REC_KEY, []);
+  const openId = e.target.dataset.open, delId = e.target.dataset.del;
+  if (openId) {
+    const r = recs.find((x) => x.id === openId);
+    if (!r) return;
+    S = Object.assign(blank(), JSON.parse(JSON.stringify(r)));
+    fillForm(); render(); saveDraft();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    toast(`${r.plate} を開きました`);
+  } else if (delId) {
+    const r = recs.find((x) => x.id === delId);
+    if (!r || !confirm(`${r.plate} のシートを削除しますか？`)) return;
+    store(REC_KEY, recs.filter((x) => x.id !== delId));
+    if (S.id === delId) { S.id = null; saveDraft(); }
+    renderRecords();
+  }
+});
+
+$('btnSave').addEventListener('click', () => {
+  if (!S.plate.trim()) { toast('登録番号を入れてください'); $('plate').focus(); return; }
+  const recs = load(REC_KEY, []);
+  S.id = S.id || Date.now().toString(36);
+  S.savedAt = new Date().toISOString();
+  const rec = JSON.parse(JSON.stringify(S));
+  const i = recs.findIndex((x) => x.id === S.id);
+  if (i >= 0) recs.splice(i, 1);
+  recs.unshift(rec);
+  store(REC_KEY, recs);
+  saveDraft();
+  renderRecords();
+  toast('保存しました');
+});
+
+$('btnNew').addEventListener('click', () => {
+  const touched = S.plate || S.amount || S.odagiri || Object.keys(S.damage).length || S.memo;
+  if (touched && !confirm('いまの内容を消して、新しいシートにしますか？\n（保存したシートは残ります）')) return;
+  S = blank();
+  fillForm(); render(); saveDraft();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+});
+
+function shareText() {
+  const lines = [
+    '【キズ修理チェックシート】',
+    `登録番号：${S.plate || '未記入'}`,
+    `見積日：${S.date || '未記入'}`,
+    `車種：アルファード／ヴェルファイア（モデリスタ：${S.mdl ? 'あり' : 'なし'}）`,
+    `見積金額：${S.amount !== '' ? '¥' + yen(S.amount) : '未記入'}`,
+    `小田切さんに渡す金額：${S.odagiri !== '' ? '¥' + yen(S.odagiri) : '未記入'}`,
+    '',
+    '■ キズの場所',
+  ];
+  const ids = activeIds();
+  if (ids.length === 0) lines.push('なし');
+  for (const id of ids) lines.push(`・${PANELS[id].name}：${TYPES[S.damage[id]].label} → ${S.parts[id].work}`);
+  const counts = partTotals();
+  if (counts.size) {
+    lines.push('', '■ 必要なパーツ');
+    for (const [p, n] of counts) lines.push(`・${p}${n > 1 ? ' ×' + n : ''}`);
+  }
+  if (S.memo.trim()) lines.push('', '■ 備考', S.memo.trim());
+  return lines.join('\n');
+}
+$('btnShare').addEventListener('click', async () => {
+  const text = shareText();
+  if (navigator.share) {
+    try { await navigator.share({ text }); } catch {}
+    return;
+  }
+  try { await navigator.clipboard.writeText(text); toast('コピーしました。LINEなどに貼り付けてください'); }
+  catch { prompt('この文章をコピーしてください', text); }
+});
+
+let toastTimer;
+function toast(msg) {
+  const el = $('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
+}
+
+fillForm();
+render();
+renderRecords();
+</script>
+</body>
+</html>
