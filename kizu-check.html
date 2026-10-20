@@ -67,11 +67,11 @@
 
   .field .toggle {
     display: flex; align-items: center; justify-content: space-between; gap: 12px;
-    border: 1.5px solid var(--line); border-radius: 10px; padding: 12px; cursor: pointer; user-select: none;
+    border: 1.5px solid var(--line); border-radius: 10px; padding: 12px; cursor: pointer; user-select: none; position: relative;
   }
   .toggle .t-label { font-weight: 700; font-size: 15px; }
   .toggle .t-label small { display: block; font-weight: 400; font-size: 12px; color: var(--muted); }
-  .toggle input { position: absolute; opacity: 0; pointer-events: none; }
+  .toggle input { position: absolute; left: 0; top: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
   .switch { width: 50px; height: 30px; border-radius: 999px; background: #cfd6de; position: relative; flex-shrink: 0; transition: background .15s; }
   .switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: transform .15s; }
   .toggle input:checked + .switch { background: var(--yellow-dark); }
@@ -79,26 +79,50 @@
   .toggle:has(input:checked) { border-color: var(--yellow-dark); background: #fffbea; }
 
   /* 描く道具 */
-  .tools { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 10px; }
+  .tools { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 8px; flex-shrink: 0; }
   .tool {
     border: 1.5px solid var(--line); background: #fff; border-radius: 10px; padding: 8px 0 6px;
     display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 12px; font-weight: 700;
   }
   .tool svg { width: 26px; height: 18px; }
   .tool.on { background: var(--navy); border-color: var(--navy); color: #fff; }
-  .tabs { display: flex; gap: 4px; border-bottom: 1.5px solid var(--line); margin-bottom: 8px; }
+  .tabs { display: flex; gap: 4px; border-bottom: 1.5px solid var(--line); margin-bottom: 8px; flex-shrink: 0; }
   .tab {
     flex: 1; border: none; background: none; padding: 8px 0; font-size: 14px; font-weight: 700; color: var(--muted);
     border-bottom: 3px solid transparent; margin-bottom: -1.5px; position: relative;
   }
   .tab.on { color: var(--navy); border-bottom-color: var(--yellow); }
   .tab .cnt { display: inline-block; min-width: 16px; height: 16px; line-height: 16px; border-radius: 8px; background: var(--t-crack); color: #fff; font-size: 10px; margin-left: 2px; vertical-align: 1px; }
-  .stage { position: relative; }
-  .stage svg { width: 100%; height: auto; display: none; overflow: visible; touch-action: none; user-select: none; -webkit-user-select: none; }
+  .stage { position: relative; flex: 1; min-height: 0; }
+  .stage svg { width: 100%; height: 100%; display: none; overflow: visible; touch-action: none; user-select: none; -webkit-user-select: none; }
   .stage svg.on { display: block; }
-  .stage svg.narrow { max-width: 340px; margin: 0 auto; }
-  .stage-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; }
-  .stage-foot .cap { font-size: 12px; font-weight: 700; color: var(--muted); }
+  .undo { border: 1.5px solid var(--line); background: #fff; border-radius: 999px; padding: 8px 12px; font-size: 13px; font-weight: 700; }
+  .undo:disabled { opacity: .4; }
+
+  /* 描く画面（全画面） */
+  #editor {
+    position: fixed; inset: 0; z-index: 35; background: var(--bg); display: flex; flex-direction: column;
+    padding: env(safe-area-inset-top, 0px) max(12px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px));
+  }
+  #editor[hidden] { display: none; }
+  body.editing { overflow: hidden; }
+  .ed-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 60px; flex-shrink: 0; }
+  .ed-top b { font-size: 16px; font-weight: 900; }
+  .ed-done { background: var(--yellow); border: none; border-radius: 999px; padding: 10px 24px; font-weight: 900; font-size: 16px; color: var(--navy); }
+  .ed-cap { text-align: center; font-size: 13px; font-weight: 700; color: var(--muted); flex-shrink: 0; }
+  #editor .hint { flex-shrink: 0; }
+  #editor .tab { font-size: 16px; padding: 10px 0; }
+
+  /* ページ本体の図（見るだけ） */
+  .thumbs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .thumb {
+    border: 1.5px solid var(--line); background: #fff; border-radius: 12px; padding: 10px 8px 6px;
+    display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 12px; font-weight: 700; color: var(--muted);
+  }
+  .thumb.wide { grid-column: span 2; }
+  .thumb svg { width: 100%; height: auto; max-height: 150px; display: block; pointer-events: none; }
+  .thumb .tl b { color: var(--t-crack); }
+  .draw-btn { width: 100%; margin-top: 10px; background: var(--navy); color: #fff; border: none; border-radius: 12px; padding: 15px; font-weight: 900; font-size: 16px; }
   .undo { border: 1.5px solid var(--line); background: #fff; border-radius: 999px; padding: 6px 14px; font-size: 13px; font-weight: 700; }
   .undo:disabled { opacity: .4; }
 
@@ -262,10 +286,9 @@
   .note { font-size: 12px; color: var(--muted); margin: 4px 0 24px; }
 
   @media print {
-    header, .actions, #records-card, .note, .hint, .tools, .tabs, .undo, .suggest, .add-part, .x, #sheet, #backdrop { display: none !important; }
+    header, .actions, #records-card, .note, #editor, .draw-btn, .suggest, .add-part, .x, #sheet, #backdrop, #dlg { display: none !important; }
     body { background: #fff; padding: 0; }
     .card { break-inside: avoid; }
-    .stage svg { display: block !important; margin-bottom: 8px; }
   }
 </style>
 </head>
@@ -302,24 +325,9 @@
   </section>
 
   <section class="card" id="draw-card">
-    <h2><span class="num">2</span>キズの場所を描く<span class="aside" id="markCount"></span></h2>
-    <div class="tools" id="tools">
-      <button class="tool on" data-tool="line">
-        <svg viewBox="0 0 26 18"><path d="M3 13 C 8 4, 14 16, 23 5" fill="none" stroke="var(--t-scratch)" stroke-width="3" stroke-linecap="round"/></svg>線＝キズ</button>
-      <button class="tool" data-tool="circle">
-        <svg viewBox="0 0 26 18"><circle cx="13" cy="9" r="7" fill="rgba(47,111,228,.15)" stroke="var(--t-dent)" stroke-width="2.5"/></svg>丸＝ヘコミ</button>
-      <button class="tool" data-tool="cross">
-        <svg viewBox="0 0 26 18"><path d="M7 3 L19 15 M19 3 L7 15" stroke="var(--t-crack)" stroke-width="3" stroke-linecap="round"/></svg>×＝ワレ</button>
-      <button class="tool" data-tool="erase">
-        <svg viewBox="0 0 26 18"><path d="M6 12 L13 5 L20 12 L16 16 L10 16 Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>消す</button>
-    </div>
-    <div class="tabs" id="tabs"></div>
-    <div class="stage" id="stage"></div>
-    <div class="stage-foot">
-      <span class="cap" id="viewCap"></span>
-      <button class="undo" id="undo">↶ 1つ戻す</button>
-    </div>
-    <p class="hint" id="toolHint"></p>
+    <h2><span class="num">2</span>キズの場所<span class="aside" id="markCount"></span></h2>
+    <div class="thumbs" id="thumbs"></div>
+    <button class="draw-btn" id="openEditor">✎ 図に描く</button>
   </section>
 
   <section class="card">
@@ -369,6 +377,28 @@
   </section>
   <p class="note">保存したシートはこのスマホのブラウザの中にだけ残ります。ほかの人に送るときは「送る」を使ってください。</p>
 </main>
+
+<div id="editor" hidden>
+  <div class="ed-top">
+    <button class="undo" id="undo">↶ 1つ戻す</button>
+    <b>キズの場所を描く</b>
+    <button class="ed-done" id="closeEditor">完了</button>
+  </div>
+  <div class="tabs" id="tabs"></div>
+  <div class="stage" id="stage"></div>
+  <p class="ed-cap" id="viewCap"></p>
+  <p class="hint" id="toolHint"></p>
+  <div class="tools" id="tools">
+    <button class="tool on" data-tool="line">
+      <svg viewBox="0 0 26 18"><path d="M3 13 C 8 4, 14 16, 23 5" fill="none" stroke="var(--t-scratch)" stroke-width="3" stroke-linecap="round"/></svg>線＝キズ</button>
+    <button class="tool" data-tool="circle">
+      <svg viewBox="0 0 26 18"><circle cx="13" cy="9" r="7" fill="rgba(47,111,228,.15)" stroke="var(--t-dent)" stroke-width="2.5"/></svg>丸＝ヘコミ</button>
+    <button class="tool" data-tool="cross">
+      <svg viewBox="0 0 26 18"><path d="M7 3 L19 15 M19 3 L7 15" stroke="var(--t-crack)" stroke-width="3" stroke-linecap="round"/></svg>×＝ワレ</button>
+    <button class="tool" data-tool="erase">
+      <svg viewBox="0 0 26 18"><path d="M6 12 L13 5 L20 12 L16 16 L10 16 Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>消す</button>
+  </div>
+</div>
 
 <div class="actions">
   <div class="wrap">
@@ -554,7 +584,8 @@ function renderView(key) {
 
 const $ = (id) => document.getElementById(id);
 $('stage').innerHTML = Object.keys(VIEWS).map(renderView).join('');
-const svgOf = (key) => document.querySelector(`#stage svg[data-view="${key}"]`);
+$('thumbs').innerHTML = Object.keys(VIEWS).map((k) =>
+  `<button class="thumb${VIEWS[k].def.w > 300 ? ' wide' : ''}" data-view="${k}">${renderView(k)}<span class="tl" data-tl="${k}"></span></button>`).join('');
 
 // ---- 状態 ----
 const DRAFT_KEY = 'kizuCheck.draft';
@@ -662,9 +693,27 @@ function setView(key) {
 function renderTabs() {
   const counts = {};
   for (const m of activeMarks()) counts[m.view] = (counts[m.view] || 0) + 1;
+  for (const k of Object.keys(VIEWS)) {
+    document.querySelector(`[data-tl="${k}"]`).innerHTML = VIEWS[k].cap + (counts[k] ? `　<b>${counts[k]}か所</b>` : '');
+  }
   $('tabs').innerHTML = Object.entries(VIEWS).map(([k, v]) =>
     `<button class="tab${k === view ? ' on' : ''}" data-view="${k}">${v.label}${counts[k] ? `<span class="cnt">${counts[k]}</span>` : ''}</button>`).join('');
 }
+function openEditor(key) {
+  setView(key);
+  $('editor').hidden = false;
+  document.body.classList.add('editing');
+}
+function closeEditor() {
+  $('editor').hidden = true;
+  document.body.classList.remove('editing');
+}
+$('openEditor').addEventListener('click', () => openEditor(view));
+$('closeEditor').addEventListener('click', closeEditor);
+$('thumbs').addEventListener('click', (e) => {
+  const b = e.target.closest('.thumb');
+  if (b) openEditor(b.dataset.view);
+});
 $('tabs').addEventListener('click', (e) => {
   const b = e.target.closest('.tab');
   if (b) setView(b.dataset.view);
@@ -712,11 +761,12 @@ function renderMarks() {
   for (const key of Object.keys(VIEWS)) {
     const w = VIEWS[key].def.w;
     const r = w / 48;
-    svgOf(key).querySelector('.marks').innerHTML = S.marks.filter((m) => m.view === key && order.has(m.id)).map((m) => {
+    const html = S.marks.filter((m) => m.view === key && order.has(m.id)).map((m) => {
       const [nx, ny] = numberPos(m, w);
       return `<g class="k-${KINDS[m.type].cls}" data-mark="${m.id}">${markShape(m, w)}
         <g class="mn"><circle cx="${nx}" cy="${ny}" r="${r}"/><text x="${nx}" y="${ny}" font-size="${r * 1.25}">${order.get(m.id)}</text></g></g>`;
     }).join('');
+    document.querySelectorAll(`svg[data-view="${key}"] .marks`).forEach((g) => { g.innerHTML = html; });
   }
 }
 
