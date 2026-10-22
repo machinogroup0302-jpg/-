@@ -245,6 +245,20 @@
   .rec-main small { color: var(--muted); font-size: 12px; }
   .rec button { border: 1.5px solid var(--line); background: #fff; border-radius: 8px; padding: 6px 10px; font-size: 13px; }
   .rec button.del { color: var(--t-crack); }
+  .co-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .co-chip { border: 1.5px solid var(--field); background: #fff; border-radius: 999px; padding: 9px 14px; font-size: 15px; font-weight: 700; }
+  .co-chip.on { background: var(--navy); border-color: var(--navy); color: #fff; }
+  .co-chip.on::before { content: "✓ "; color: var(--yellow); }
+  .co-chip.add { border-style: dashed; color: var(--muted); font-weight: 500; }
+  .co-add { display: flex; gap: 6px; margin-top: 8px; }
+  .co-add[hidden] { display: none; }
+  .co-add input { flex: 1; min-width: 0; border: 1.5px solid var(--field); border-radius: 10px; padding: 10px 12px; font-size: 16px; }
+  .co-add button { border: none; background: var(--yellow); color: var(--navy); font-weight: 900; border-radius: 10px; padding: 0 18px; }
+  .rec-filter { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  .rec-filter:empty { display: none; }
+  .rec-filter button { flex-shrink: 0; border: 1.5px solid var(--line); background: #fff; border-radius: 999px; padding: 5px 12px; font-size: 13px; font-weight: 700; }
+  .rec-filter button.on { background: var(--navy); border-color: var(--navy); color: #fff; }
+  .co-tag { display: inline-block; font-size: 11px; font-weight: 700; background: #e7edf5; color: var(--navy); border-radius: 4px; padding: 0 6px; margin-bottom: 2px; }
   .mini-tag { display: inline-block; font-size: 10px; font-weight: 700; background: #fff3c4; color: #8a6d00; border-radius: 4px; padding: 0 5px; margin-left: 4px; vertical-align: 2px; }
 
   /* 下の操作バー */
@@ -318,7 +332,15 @@
   <p class="lead">アルファード／ヴェルファイア用。車の図に線や丸を描いてキズの場所を記録します。</p>
 
   <section class="card">
-    <h2><span class="num">1</span>車両</h2>
+    <h2><span class="num">1</span>会社・車両</h2>
+    <div class="field">
+      <label>会社</label>
+      <div class="co-chips" id="coChips"></div>
+      <div class="co-add" id="coAdd" hidden>
+        <input id="coName" type="text" placeholder="会社名を入れる" autocomplete="off" aria-label="追加する会社名">
+        <button id="coAddOk">追加</button>
+      </div>
+    </div>
     <div class="field">
       <label for="plate">登録番号</label>
       <input id="plate" type="text" placeholder="例）大宮 300 あ 12-34" autocomplete="off">
@@ -393,6 +415,7 @@
 
   <section class="card" id="records-card">
     <h2>保存したシート<span class="aside" id="recCount"></span></h2>
+    <div class="rec-filter" id="recFilter"></div>
     <div id="records"></div>
   </section>
   <p class="note">保存したシートはこのスマホのブラウザの中にだけ残ります。ほかの人に送るときは「送る」を使ってください。</p>
@@ -617,7 +640,7 @@ function today() {
   return d.toISOString().slice(0, 10);
 }
 function blank() {
-  return { id: null, plate: '', date: today(), workFrom: '', workTo: '', mdl: false, marks: [], parts: [], odagiri: '', memo: '' };
+  return { id: null, company: '', plate: '', date: today(), workFrom: '', workTo: '', mdl: false, marks: [], parts: [], odagiri: '', memo: '' };
 }
 // 前の版で保存したデータも開けるようにそろえる
 function normalize(data) {
@@ -664,8 +687,45 @@ function totals() {
 const activeMarks = () => S.marks.filter((m) => !(m.panel && PANELS[m.panel].mdl && !S.mdl));
 const panelName = (m) => m.panel ? PANELS[m.panel].name : '場所不明';
 
+// ---- 会社 ----
+// サイトは公開されているので、お客さまの会社名はページに書かず、このスマホで追加したものを使う
+const COMPANY_KEY = 'kizuCheck.companies';
+function companyList() {
+  const list = [...(window.KIZU_COMPANIES || []), ...load(COMPANY_KEY, [])];
+  for (const r of load(REC_KEY, [])) if (r.company) list.push(r.company);
+  if (S.company) list.push(S.company);
+  return [...new Set(list)];
+}
+function renderCompanies() {
+  $('coChips').innerHTML = companyList().map((c) =>
+    `<button class="co-chip${c === S.company ? ' on' : ''}" data-co="${escapeHtml(c)}">${escapeHtml(c)}</button>`).join('')
+    + '<button class="co-chip add" id="coAddBtn">＋ 会社を追加</button>';
+}
+$('coChips').addEventListener('click', (e) => {
+  const b = e.target.closest('.co-chip');
+  if (!b) return;
+  if (b.id === 'coAddBtn') { $('coAdd').hidden = false; $('coName').focus(); return; }
+  S.company = b.dataset.co;
+  renderCompanies();
+  saveDraft();
+});
+function addCompany() {
+  const name = $('coName').value.trim();
+  if (!name) { $('coName').focus(); return; }
+  const saved = load(COMPANY_KEY, []);
+  if (!saved.includes(name)) store(COMPANY_KEY, [...saved, name]);
+  S.company = name;
+  $('coName').value = '';
+  $('coAdd').hidden = true;
+  renderCompanies();
+  saveDraft();
+}
+$('coAddOk').addEventListener('click', addCompany);
+$('coName').addEventListener('keydown', (e) => { if (e.key === 'Enter') addCompany(); });
+
 // ---- 入力欄 ----
 function fillForm() {
+  renderCompanies();
   $('plate').value = S.plate;
   $('date').value = S.date;
   $('workFrom').value = S.workFrom;
@@ -1031,18 +1091,32 @@ function renderAll() {
 }
 
 // ---- 保存・送る ----
+let recFilter = 'all';
 function renderRecords() {
-  const recs = load(REC_KEY, []);
-  $('recCount').textContent = recs.length ? `${recs.length}件` : '';
+  const all = load(REC_KEY, []);
+  const cos = [...new Set(all.map((r) => r.company || ''))];
+  if (recFilter !== 'all' && !cos.includes(recFilter)) recFilter = 'all';
+  $('recFilter').innerHTML = cos.length > 1 || (cos.length === 1 && cos[0])
+    ? [['all', 'すべて'], ...cos.map((c) => [c, c || '会社なし'])].map(([k, label]) =>
+        `<button class="${k === recFilter ? 'on' : ''}" data-f="${escapeHtml(k)}">${escapeHtml(label)}（${k === 'all' ? all.length : all.filter((r) => (r.company || '') === k).length}）</button>`).join('')
+    : '';
+  const recs = recFilter === 'all' ? all : all.filter((r) => (r.company || '') === recFilter);
+  $('recCount').textContent = all.length ? `${all.length}件` : '';
   $('records').innerHTML = recs.length === 0
     ? '<p class="empty">まだありません</p>'
     : recs.map((r) => `<div class="rec">
-        <div class="rec-main"><b>${escapeHtml(r.plate)}${r.mdl ? '<span class="mini-tag">モデリスタ</span>' : ''}</b>
+        <div class="rec-main">${r.company ? `<span class="co-tag">${escapeHtml(r.company)}</span>` : ''}<b>${escapeHtml(r.plate)}${r.mdl ? '<span class="mini-tag">モデリスタ</span>' : ''}</b>
           <small>見積 ${r.date ? fmtDate(r.date) : '日付なし'}${r.workFrom ? `　施工 ${fmtDate(r.workFrom)}` : ''}　${r.total != null ? money(r.total) : ''}</small></div>
         <button data-open="${r.id}">開く</button>
         <button class="del" data-del="${r.id}">削除</button>
       </div>`).join('');
 }
+$('recFilter').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-f]');
+  if (!b) return;
+  recFilter = b.dataset.f;
+  renderRecords();
+});
 $('records').addEventListener('click', async (e) => {
   const recs = load(REC_KEY, []);
   const openId = e.target.dataset.open, delId = e.target.dataset.del;
@@ -1081,7 +1155,10 @@ $('btnSave').addEventListener('click', () => {
 $('btnNew').addEventListener('click', async () => {
   const touched = S.plate || S.odagiri || S.marks.length || S.parts.length || S.memo;
   if (touched && !(await ask('いまの内容を消して、新しいシートにしますか？\n（保存したシートは残ります）', '新しくする'))) return;
+  // 同じ会社の車を続けて見ることが多いので、会社はそのまま残す
+  const company = S.company;
   S = blank();
+  S.company = company;
   fillForm(); renderAll(); saveDraft();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 });
@@ -1090,6 +1167,7 @@ function shareText() {
   const t = totals();
   const lines = [
     '【キズ修理チェックシート】',
+    `会社：${S.company || '未選択'}`,
     `登録番号：${S.plate || '未記入'}`,
     `見積日：${fmtDate(S.date) || '未記入'}`,
     `施工日：${workRange() || '未定'}`,
