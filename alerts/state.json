@@ -120,7 +120,9 @@
      "signalTime": 1792633897,
      "signalPrice": 4468,
      "sentAt": "2026-10-22T02:06:40.073Z",
-     "how": "信用で空売り：100株"
+     "how": "信用で空売り：100株",
+     "entryPrice": 4450,
+     "entryTime": 1792635300
     }
    },
    "log": [
