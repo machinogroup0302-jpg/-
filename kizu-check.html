@@ -68,6 +68,9 @@
     min-height: 50px; text-align: left; background: #fff;
   }
   input[type=date]::-webkit-date-and-time-value, input[type=datetime-local]::-webkit-date-and-time-value { text-align: left; }
+  .dt { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 8px; }
+  .field select { width: 100%; min-height: 50px; border: 1.5px solid var(--field); border-radius: 10px; padding: 0 12px; font-size: 16px; background: #fff; color: var(--text); }
+  .field select:focus { outline: none; border-color: var(--yellow-dark); }
   .range { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 8px; align-items: center; }
   .range span { font-size: 14px; font-weight: 700; color: var(--muted); }
   .warn { font-size: 12px; color: var(--t-crack); margin-top: 4px; }
@@ -328,17 +331,20 @@
       <input id="date" type="date">
     </div>
     <div class="field">
-      <label for="pickupAt">取りに行く日時</label>
-      <input id="pickupAt" type="datetime-local">
+      <label for="pickupDay">取りに行く日時</label>
+      <div class="dt"><input id="pickupDay" type="date"><select id="pickupTime" aria-label="取りに行く時間"></select></div>
     </div>
     <div class="field">
       <label for="workDate">施工日</label>
-      <input id="workDate" type="date">
+      <div class="range">
+        <input id="workDate" type="date"><span>から</span>
+        <input id="workDateTo" type="date" aria-label="施工日（終わり）"><span>まで</span>
+      </div>
     </div>
     <div class="field">
-      <label for="returnAt">返す日時</label>
-      <input id="returnAt" type="datetime-local">
-      <p class="warn" id="dateWarn" hidden>返す日時が取りに行く日時より前になっています</p>
+      <label for="returnDay">返す日時</label>
+      <div class="dt"><input id="returnDay" type="date"><select id="returnTime" aria-label="返す時間"></select></div>
+      <p class="warn" id="dateWarn" hidden></p>
     </div>
     <div class="field">
       <label class="toggle">
@@ -606,7 +612,7 @@ function today() {
   return d.toISOString().slice(0, 10);
 }
 function blank() {
-  return { id: null, plate: '', date: today(), pickupAt: '', workDate: '', returnAt: '', mdl: false, marks: [], parts: [], odagiri: '', memo: '' };
+  return { id: null, plate: '', date: today(), pickupAt: '', workDate: '', workDateTo: '', returnAt: '', mdl: false, marks: [], parts: [], odagiri: '', memo: '' };
 }
 // 前の版で保存したデータも開けるようにそろえる
 function normalize(data) {
@@ -615,6 +621,7 @@ function normalize(data) {
   if (!Array.isArray(s.parts)) s.parts = [];
   // 前の版の「施工日（から・まで）」は施工日に移す
   if (s.workFrom && !s.workDate) s.workDate = s.workFrom;
+  if (s.workTo && !s.workDateTo) s.workDateTo = s.workTo;
   delete s.workFrom; delete s.workTo;
   delete s.damage;
   return s;
@@ -660,9 +667,10 @@ const panelName = (m) => m.panel ? PANELS[m.panel].name : '場所不明';
 function fillForm() {
   $('plate').value = S.plate;
   $('date').value = S.date;
-  $('pickupAt').value = S.pickupAt;
+  setDT('pickup', S.pickupAt);
   $('workDate').value = S.workDate;
-  $('returnAt').value = S.returnAt;
+  $('workDateTo').value = S.workDateTo;
+  setDT('return', S.returnAt);
   checkDates();
   $('mdl').checked = S.mdl;
   $('odagiri').value = yen(S.odagiri);
@@ -671,20 +679,59 @@ function fillForm() {
 }
 $('plate').addEventListener('input', (e) => { S.plate = e.target.value; saveDraft(); });
 $('date').addEventListener('input', (e) => { S.date = e.target.value; saveDraft(); });
-function checkDates() {
-  $('dateWarn').hidden = !(S.pickupAt && S.returnAt && S.returnAt < S.pickupAt);
+// 取りに行く・返す時間は 5:00〜24:00 の30分ごとから選ぶ
+const TIMES = [];
+for (let m = 5 * 60; m <= 24 * 60; m += 30) TIMES.push(`${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`);
+for (const k of ['pickup', 'return']) {
+  $(k + 'Time').innerHTML = '<option value="">時間</option>' + TIMES.map((t) => `<option>${t}</option>`).join('');
 }
-$('pickupAt').addEventListener('input', (e) => {
-  S.pickupAt = e.target.value;
-  // 施工日が空なら、取りに行く日を入れておく
-  if (S.pickupAt && !S.workDate) { S.workDate = S.pickupAt.slice(0, 10); $('workDate').value = S.workDate; }
+// 日付と時間を「2026-11-04T09:30」の形で持つ（時間がなければ日付だけ）
+function setDT(k, v) {
+  const [day = '', time = ''] = (v || '').split('T');
+  $(k + 'Day').value = day;
+  const sel = $(k + 'Time');
+  // 前の版で入れた半端な時間も消えないように選択肢に足す
+  if (time && !TIMES.includes(time) && ![...sel.options].some((o) => o.value === time)) sel.add(new Option(time, time));
+  sel.value = time;
+}
+const getDT = (k) => { const day = $(k + 'Day').value, time = $(k + 'Time').value; return day ? (time ? `${day}T${time}` : day) : ''; };
+function checkDates() {
+  const msgs = [];
+  if (S.workDate && S.workDateTo && S.workDateTo < S.workDate) msgs.push('施工日の終わりが始まりより前になっています');
+  if (S.pickupAt && S.returnAt && S.returnAt < S.pickupAt) msgs.push('返す日時が取りに行く日時より前になっています');
+  $('dateWarn').textContent = msgs.join('　');
+  $('dateWarn').hidden = !msgs.length;
+}
+for (const id of ['pickupDay', 'pickupTime']) {
+  $(id).addEventListener('input', () => {
+    S.pickupAt = getDT('pickup');
+    // 施工日が空なら、取りに行く日を入れておく
+    if (S.pickupAt && !S.workDate) {
+      S.workDate = S.pickupAt.slice(0, 10); $('workDate').value = S.workDate;
+      if (!S.workDateTo) { S.workDateTo = S.workDate; $('workDateTo').value = S.workDateTo; }
+    }
+    checkDates();
+    saveDraft();
+  });
+}
+for (const id of ['returnDay', 'returnTime']) {
+  $(id).addEventListener('input', () => { S.returnAt = getDT('return'); checkDates(); saveDraft(); });
+}
+$('workDate').addEventListener('input', (e) => {
+  S.workDate = e.target.value;
+  // 1日で終わる作業が多いので、終わりが空なら同じ日を入れておく
+  if (S.workDate && !S.workDateTo) { S.workDateTo = S.workDate; $('workDateTo').value = S.workDateTo; }
   checkDates();
   saveDraft();
 });
-$('workDate').addEventListener('input', (e) => { S.workDate = e.target.value; saveDraft(); });
-$('returnAt').addEventListener('input', (e) => { S.returnAt = e.target.value; checkDates(); saveDraft(); });
+$('workDateTo').addEventListener('input', (e) => { S.workDateTo = e.target.value; checkDates(); saveDraft(); });
 const fmtDate = (d) => d ? d.replace(/-/g, '/') : '';
 const fmtDateTime = (d) => d ? d.replace('T', ' ').replace(/-/g, '/') : '';
+function workRange() {
+  if (!S.workDate && !S.workDateTo) return '';
+  if (!S.workDateTo || S.workDate === S.workDateTo) return fmtDate(S.workDate);
+  return `${fmtDate(S.workDate) || '？'} 〜 ${fmtDate(S.workDateTo)}`;
+}
 $('memo').addEventListener('input', (e) => { S.memo = e.target.value; saveDraft(); });
 $('odagiri').addEventListener('input', (e) => {
   S.odagiri = toDigits(e.target.value);
@@ -1083,7 +1130,7 @@ function shareText() {
     `登録番号：${S.plate || '未記入'}`,
     `見積日：${fmtDate(S.date) || '未記入'}`,
     `取りに行く日時：${fmtDateTime(S.pickupAt) || '未定'}`,
-    `施工日：${fmtDate(S.workDate) || '未定'}`,
+    `施工日：${workRange() || '未定'}`,
     `返す日時：${fmtDateTime(S.returnAt) || '未定'}`,
     `車種：アルファード／ヴェルファイア（モデリスタ：${S.mdl ? 'あり' : 'なし'}）`,
     '',
