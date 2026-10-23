@@ -81,7 +81,9 @@
      "sentAt": "2026-10-13T07:58:42.655Z",
      "how": "現物で買う：100株＋信用で買う：300株（合計400株）",
      "entryPrice": 2988,
-     "entryTime": 1791936000
+     "entryTime": 1791936000,
+     "closeSent": true,
+     "closeSentAt": "2026-10-23T08:15:18.422Z"
     },
     "swing|5537.T": {
      "kind": "swing",
