@@ -61,13 +61,13 @@
     width: 100%; border: 1.5px solid var(--line); border-radius: 10px; padding: 12px; font-size: 16px; background: #fff;
   }
   /* 入力欄の枠はスマホでもはっきり見えるように濃いめ */
-  input[type=text], input[type=date], input[type=number], textarea { border-color: var(--field) !important; }
+  input[type=text], input[type=date], input[type=datetime-local], input[type=number], textarea { border-color: var(--field) !important; }
   /* iPhoneの日付欄は自前の最小幅を持っていて枠からはみ出すので、幅を枠に合わせる */
-  input[type=date] {
+  input[type=date], input[type=datetime-local] {
     -webkit-appearance: none; appearance: none; display: block; min-width: 0; max-width: 100%;
     min-height: 50px; text-align: left; background: #fff;
   }
-  input[type=date]::-webkit-date-and-time-value { text-align: left; }
+  input[type=date]::-webkit-date-and-time-value, input[type=datetime-local]::-webkit-date-and-time-value { text-align: left; }
   .range { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 8px; align-items: center; }
   .range span { font-size: 14px; font-weight: 700; color: var(--muted); }
   .warn { font-size: 12px; color: var(--t-crack); margin-top: 4px; }
@@ -328,12 +328,17 @@
       <input id="date" type="date">
     </div>
     <div class="field">
-      <label for="workFrom">施工日</label>
-      <div class="range">
-        <input id="workFrom" type="date"><span>から</span>
-        <input id="workTo" type="date" aria-label="施工日（終わり）"><span>まで</span>
-      </div>
-      <p class="warn" id="workWarn" hidden>終わりの日が始まりの日より前になっています</p>
+      <label for="pickupAt">取りに行く日時</label>
+      <input id="pickupAt" type="datetime-local">
+    </div>
+    <div class="field">
+      <label for="workDate">施工日</label>
+      <input id="workDate" type="date">
+    </div>
+    <div class="field">
+      <label for="returnAt">返す日時</label>
+      <input id="returnAt" type="datetime-local">
+      <p class="warn" id="dateWarn" hidden>返す日時が取りに行く日時より前になっています</p>
     </div>
     <div class="field">
       <label class="toggle">
@@ -564,27 +569,11 @@ const REAR_VIEW = { w: 220, h: 226, items: [
   { id: 'mdl_skirtR', pts: [[26,211],[194,211],[188,220],[32,220]] },
 ]};
 
-// 上から見ると、車の左側が下になる
-const TOP_VIEW = { w: 400, h: 160, items: [
-  { cls: 'body', pts: [[8,40],[12,22],[24,12],[384,10],[392,18],[394,142],[386,150],[24,148],[12,138],[8,120]] },
-  { id: 'bumperF', pts: [[8,40],[12,22],[24,13],[24,147],[12,138],[8,120]] },
-  { id: 'hood', pts: [[26,14],[80,12],[80,148],[26,146]] },
-  { id: 'windshield', cls: 'glass-p', pts: [[82,12],[154,11],[154,149],[82,148]] },
-  { id: 'roof', pts: [[156,11],[372,11],[372,149],[156,149]] },
-  { pl: [[162,20],[366,20]], cls: 'crease' },
-  { pl: [[162,140],[366,140]], cls: 'crease' },
-  { id: 'backdoor', pts: [[374,11],[386,14],[386,146],[374,149]] },
-  { id: 'bumperR', pts: [[388,16],[394,20],[394,140],[388,144]] },
-  { id: 'mirror_R', pts: [[118,2],[132,2],[134,11],[116,11]] },
-  { id: 'mirror_L', pts: [[118,158],[132,158],[134,149],[116,149]] },
-]};
-
 const VIEWS = {
   front: { label: '前',   cap: '前から',            def: FRONT_VIEW },
   rear:  { label: '後ろ', cap: '後ろから',          def: REAR_VIEW },
   left:  { label: '左',   cap: '左側面（← 前）',    def: SIDE_VIEW, side: 'L' },
   right: { label: '右',   cap: '右側面（前 →）',    def: SIDE_VIEW, side: 'R', mirror: true },
-  top:   { label: '上',   cap: '上から（← 前）',    def: TOP_VIEW },
 };
 
 function renderView(key) {
@@ -617,13 +606,16 @@ function today() {
   return d.toISOString().slice(0, 10);
 }
 function blank() {
-  return { id: null, plate: '', date: today(), workFrom: '', workTo: '', mdl: false, marks: [], parts: [], odagiri: '', memo: '' };
+  return { id: null, plate: '', date: today(), pickupAt: '', workDate: '', returnAt: '', mdl: false, marks: [], parts: [], odagiri: '', memo: '' };
 }
 // 前の版で保存したデータも開けるようにそろえる
 function normalize(data) {
   const s = Object.assign(blank(), data);
   if (!Array.isArray(s.marks)) s.marks = [];
   if (!Array.isArray(s.parts)) s.parts = [];
+  // 前の版の「施工日（から・まで）」は施工日に移す
+  if (s.workFrom && !s.workDate) s.workDate = s.workFrom;
+  delete s.workFrom; delete s.workTo;
   delete s.damage;
   return s;
 }
@@ -661,16 +653,17 @@ function totals() {
   return { count: marks.length, repair, parts, partsCost, total, net: total - num(S.odagiri) - partsCost };
 }
 // モデリスタをオフにしたら、エアロに描いた印は数えない
-const activeMarks = () => S.marks.filter((m) => !(m.panel && PANELS[m.panel].mdl && !S.mdl));
+const activeMarks = () => S.marks.filter((m) => VIEWS[m.view] && !(m.panel && PANELS[m.panel].mdl && !S.mdl));
 const panelName = (m) => m.panel ? PANELS[m.panel].name : '場所不明';
 
 // ---- 入力欄 ----
 function fillForm() {
   $('plate').value = S.plate;
   $('date').value = S.date;
-  $('workFrom').value = S.workFrom;
-  $('workTo').value = S.workTo;
-  checkWork();
+  $('pickupAt').value = S.pickupAt;
+  $('workDate').value = S.workDate;
+  $('returnAt').value = S.returnAt;
+  checkDates();
   $('mdl').checked = S.mdl;
   $('odagiri').value = yen(S.odagiri);
   $('memo').value = S.memo;
@@ -678,23 +671,20 @@ function fillForm() {
 }
 $('plate').addEventListener('input', (e) => { S.plate = e.target.value; saveDraft(); });
 $('date').addEventListener('input', (e) => { S.date = e.target.value; saveDraft(); });
-function checkWork() {
-  $('workWarn').hidden = !(S.workFrom && S.workTo && S.workTo < S.workFrom);
+function checkDates() {
+  $('dateWarn').hidden = !(S.pickupAt && S.returnAt && S.returnAt < S.pickupAt);
 }
-$('workFrom').addEventListener('input', (e) => {
-  S.workFrom = e.target.value;
-  // 1日で終わる作業が多いので、終わりが空なら同じ日を入れておく
-  if (S.workFrom && !S.workTo) { S.workTo = S.workFrom; $('workTo').value = S.workTo; }
-  checkWork();
+$('pickupAt').addEventListener('input', (e) => {
+  S.pickupAt = e.target.value;
+  // 施工日が空なら、取りに行く日を入れておく
+  if (S.pickupAt && !S.workDate) { S.workDate = S.pickupAt.slice(0, 10); $('workDate').value = S.workDate; }
+  checkDates();
   saveDraft();
 });
-$('workTo').addEventListener('input', (e) => { S.workTo = e.target.value; checkWork(); saveDraft(); });
+$('workDate').addEventListener('input', (e) => { S.workDate = e.target.value; saveDraft(); });
+$('returnAt').addEventListener('input', (e) => { S.returnAt = e.target.value; checkDates(); saveDraft(); });
 const fmtDate = (d) => d ? d.replace(/-/g, '/') : '';
-function workRange() {
-  if (!S.workFrom && !S.workTo) return '';
-  if (S.workFrom === S.workTo) return fmtDate(S.workFrom);
-  return `${fmtDate(S.workFrom) || '？'} 〜 ${fmtDate(S.workTo) || '？'}`;
-}
+const fmtDateTime = (d) => d ? d.replace('T', ' ').replace(/-/g, '/') : '';
 $('memo').addEventListener('input', (e) => { S.memo = e.target.value; saveDraft(); });
 $('odagiri').addEventListener('input', (e) => {
   S.odagiri = toDigits(e.target.value);
@@ -1038,7 +1028,7 @@ function renderRecords() {
     ? '<p class="empty">まだありません</p>'
     : recs.map((r) => `<div class="rec">
         <div class="rec-main"><b>${escapeHtml(r.plate)}${r.mdl ? '<span class="mini-tag">モデリスタ</span>' : ''}</b>
-          <small>見積 ${r.date ? fmtDate(r.date) : '日付なし'}${r.workFrom ? `　施工 ${fmtDate(r.workFrom)}` : ''}　${r.total != null ? money(r.total) : ''}</small></div>
+          <small>見積 ${r.date ? fmtDate(r.date) : '日付なし'}${(r.workDate || r.workFrom) ? `　施工 ${fmtDate(r.workDate || r.workFrom)}` : ''}　${r.total != null ? money(r.total) : ''}</small></div>
         <button data-open="${r.id}">開く</button>
         <button class="del" data-del="${r.id}">削除</button>
       </div>`).join('');
@@ -1092,7 +1082,9 @@ function shareText() {
     '【キズ修理チェックシート】',
     `登録番号：${S.plate || '未記入'}`,
     `見積日：${fmtDate(S.date) || '未記入'}`,
-    `施工日：${workRange() || '未定'}`,
+    `取りに行く日時：${fmtDateTime(S.pickupAt) || '未定'}`,
+    `施工日：${fmtDate(S.workDate) || '未定'}`,
+    `返す日時：${fmtDateTime(S.returnAt) || '未定'}`,
     `車種：アルファード／ヴェルファイア（モデリスタ：${S.mdl ? 'あり' : 'なし'}）`,
     '',
     '■ キズの場所',
