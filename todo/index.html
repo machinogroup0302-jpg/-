@@ -26,6 +26,7 @@
     --now: #e5484d;
     --wait: #3e7bfa;
     --share: #2f9e6e;
+    --private: #c2255c;
     --corp: #6741d9;
     --personal: #d9480f;
     --corp-ink: #6741d9;
@@ -44,7 +45,7 @@
     :root:not([data-theme="light"]) {
       --bg: #0f1620; --card: #17212d; --field: #1d2937; --soft: #1a2430; --text: #e6ebf1; --muted: #9aa8b8; --faint: #5d6b7b;
       --line: #2a3747; --bar: #0a1018; --bar-text: #b8c4d2; --bar-line: #2a3a4e; --primary: #e6ebf1; --on-primary: #0f1620;
-      --hl: #3a3415; --now: #ff6b6f; --wait: #6d9bff; --share: #3fbf89; --corp-ink: #b3a1ff; --personal-ink: #ff9a63;
+      --hl: #3a3415; --now: #ff6b6f; --wait: #6d9bff; --share: #3fbf89; --private: #f06595; --corp-ink: #b3a1ff; --personal-ink: #ff9a63;
       --late: #e0a400; --todo: #3b3518; --ok-bg: #12352b; --bad-bg: #4a1f22; --backdrop: rgba(0, 0, 0, .6);
       color-scheme: dark;
     }
@@ -52,7 +53,7 @@
   :root[data-theme="dark"] {
     --bg: #0f1620; --card: #17212d; --field: #1d2937; --soft: #1a2430; --text: #e6ebf1; --muted: #9aa8b8; --faint: #5d6b7b;
     --line: #2a3747; --bar: #0a1018; --bar-text: #b8c4d2; --bar-line: #2a3a4e; --primary: #e6ebf1; --on-primary: #0f1620;
-    --hl: #3a3415; --now: #ff6b6f; --wait: #6d9bff; --share: #3fbf89; --corp-ink: #b3a1ff; --personal-ink: #ff9a63;
+    --hl: #3a3415; --now: #ff6b6f; --wait: #6d9bff; --share: #3fbf89; --private: #f06595; --corp-ink: #b3a1ff; --personal-ink: #ff9a63;
     --late: #e0a400; --todo: #3b3518; --ok-bg: #12352b; --bad-bg: #4a1f22; --backdrop: rgba(0, 0, 0, .6);
     color-scheme: dark;
   }
@@ -152,6 +153,10 @@
   .task.now { border-left-color: var(--now); }
   .task.wait { border-left-color: var(--wait); }
   .task.share { border-left-color: var(--share); }
+  .task.private { border-left-color: var(--private); }
+  #move-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+  #move-list button { text-align: left; padding: 10px 12px; font-size: .95rem; }
+  #move-list button[disabled] { opacity: .45; cursor: default; }
   .task.corp { border-left-color: var(--corp); }
   .task.personal { border-left-color: var(--personal); }
   .task.no-check { grid-template-columns: 1fr auto; }
@@ -311,6 +316,7 @@
           <option value="now">すぐやる</option>
           <option value="wait">返事待ち</option>
           <option value="share">山川共有</option>
+          <option value="private">プライベート</option>
         </select>
         <select name="priority" id="task-pri">
           <option value="高">優先度：高</option>
@@ -639,6 +645,12 @@
   </form>
 </dialog>
 
+<dialog id="move-dialog">
+  <h3 id="move-title" style="font-size:1rem;margin-bottom:12px"></h3>
+  <div id="move-list"></div>
+  <div class="btns"><button class="btn" id="move-cancel">やめる</button></div>
+</dialog>
+
 <dialog id="ask-dialog">
   <p id="ask-msg" style="margin-bottom:14px"></p>
   <div class="btns">
@@ -656,7 +668,7 @@
   const K_FIXED = 'yarukoto-fixed-v2';
   const K_CHECKS = 'yarukoto-checks-v1';
   const K_VAULT = 'yarukoto-vault-v1';
-  const CATS = { now: 'すぐやる', wait: '返事待ち', share: '山川共有' };
+  const CATS = { now: 'すぐやる', wait: '返事待ち', share: '山川共有', private: 'プライベート' };
   const OWNERS = { corp: '法人', personal: '個人' };
   const CK_GROUPS = { personal: '個人', corp: '法人', net: 'ネット決済' };
   const INK = { corp: 'var(--corp-ink)', personal: 'var(--personal-ink)' };
@@ -915,6 +927,10 @@
     if (e.target.dataset.act === 'del' && await ask(`「${t.title}」を削除しますか？`)) {
       tasks = tasks.filter(x => x !== t); save('tasks'); renderTodo();
     }
+    if (e.target.dataset.act === 'move') {
+      const to = await pickCategory(t);
+      if (to && to !== t.category) { t.category = to; save('tasks'); renderTodo(); toast(`「${CATS[to]}」に移動しました`); }
+    }
     if (e.target.dataset.act === 'edit') {
       const f = taskForm;
       f.title.value = t.title; f.category.value = t.category; f.priority.value = t.priority; f.memo.value = t.memo || '';
@@ -922,6 +938,19 @@
       f.scrollIntoView({ behavior: 'smooth', block: 'center' }); f.title.focus();
     }
   });
+  // どの分類に移すかを選ぶ
+  function pickCategory(t) {
+    return new Promise(res => {
+      const d = $('move-dialog');
+      $('move-title').textContent = `「${t.title}」をどこに移しますか？`;
+      $('move-list').innerHTML = Object.entries(CATS).map(([k, label]) =>
+        `<button class="btn" data-cat="${k}" ${k === t.category ? 'disabled' : ''}>${label}${k === t.category ? '（今ここ）' : ''}</button>`).join('');
+      $('move-list').onclick = e => { const b = e.target.closest('button[data-cat]'); if (b && !b.disabled) { d.close(); res(b.dataset.cat); } };
+      $('move-cancel').onclick = () => { d.close(); res(null); };
+      d.oncancel = () => res(null);
+      d.showModal();
+    });
+  }
   $('sort').addEventListener('change', renderTodo);
   $('show-done').addEventListener('change', renderTodo);
 
@@ -946,7 +975,7 @@
           <div class="t-meta"><span class="badge pri-${t.priority}">${t.priority}</span><span>${CATS[t.category]}</span></div>
           ${t.memo ? `<div class="t-memo">${esc(t.memo)}</div>` : ''}
         </div>
-        <div class="t-actions"><button data-act="edit">編集</button><button data-act="del">削除</button></div>
+        <div class="t-actions"><button data-act="move">移動</button><button data-act="edit">編集</button><button data-act="del">削除</button></div>
       </li>`).join('') : '<li class="empty">やることはありません</li>';
   }
 
@@ -1660,6 +1689,16 @@
     try {
       const data = JSON.parse(await file.text());
       if (data.app !== 'yarukoto') throw 0;
+      if (data.merge && Array.isArray(data.tasks)) {
+        // 今のToDoは消さずに、まだ入っていないものだけ足す
+        const have = new Set(tasks.map(t => t.id));
+        const add = data.tasks.filter(t => t && t.id && t.title && !have.has(t.id));
+        if (!add.length) return toast('追加するものはありませんでした（もう入っています）');
+        const by = Object.entries(CATS).map(([k, l]) => [l, add.filter(t => t.category === k).length]).filter(([, n]) => n).map(([l, n]) => `${l} ${n}件`).join('、');
+        if (!await ask(`ToDoリストに ${add.length}件 を追加します（${by}）。今入っているものは消えません。`, '追加する')) return;
+        tasks = tasks.concat(add); save('tasks'); renderAll(); toast(`${add.length}件 追加しました`);
+        return;
+      }
       const parts = [data.tasks && 'ToDoリスト', data.schedule && 'スケジュール', data.fixed && '支払い', data.checks && 'チェック', data.vault && 'ID・パスワード'].filter(Boolean);
       if (!parts.length || !await ask(`「${parts.join('・')}」をファイルの内容で置き換えます。よろしいですか？`, '置き換える')) return;
       if (data.tasks) { tasks = data.tasks.filter(t => !t.due); save('tasks'); }
