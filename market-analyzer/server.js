@@ -7,6 +7,7 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { getChart, getHistory } from './lib/market.js';
 import { getNews } from './lib/news.js';
+import { getEarningsOutlook } from './lib/earnoutlook.js';
 import { getThemes } from './lib/themes.js';
 import { getCrowd } from './lib/crowd.js';
 import { getEcon } from './lib/econ.js';
@@ -327,6 +328,14 @@ async function handleApi(req, res, url) {
       maxPrice: Number(q.get('max')) || 0,
       limit: Number(q.get('limit')) || 100,
     }));
+  }
+  if (route === 'GET /api/stocks/earnings-outlook') {
+    // 決算のあと上がりやすいか・下がりやすいか（過去の決算の動き・業績・ニュース・みんなの声から）
+    const q = url.searchParams;
+    const symbol = String(q.get('symbol') || '').toUpperCase().slice(0, 20);
+    const date = String(q.get('date') || '');
+    if (!/^[0-9][0-9A-Z]{3}\.T$/.test(symbol) || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return json(res, 400, { error: '銘柄か日付が正しくありません' });
+    try { return json(res, 200, await getEarningsOutlook(symbol, String(q.get('name') || '').slice(0, 60), date)); } catch (e) { return json(res, 502, { error: e.message }); }
   }
   if (route === 'GET /api/econ') {
     try { return json(res, 200, await getEcon()); } catch (e) { return json(res, 502, { error: e.message }); }

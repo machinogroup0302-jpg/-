@@ -60,6 +60,23 @@ export function renderEarnings(items, today, name) {
   return { badge, html };
 }
 
+// 決算後の見通し：上がりやすい・下がりやすい・五分五分と、その理由
+export function outlookHtml(o) {
+  const V = { up: ['📈 決算のあと、上がりやすい', 'ok'], down: ['📉 決算のあと、下がりやすい', 'danger'], even: ['⚖️ 決算のあとは、どちらとも言えない（五分五分）', 'warn'] };
+  const [label, cls] = V[o.verdict] || V.even;
+  const mark = (p) => (p > 0 ? '<span class="plus">＋</span>' : p < 0 ? '<span class="minus">－</span>' : '<span class="muted">・</span>');
+  return `<div class="stat" style="margin-top:10px">
+    <div class="label">決算後の見通し（目安）</div>
+    <div class="verdict ${cls}" style="font-size:15px">${label}</div>
+    ${o.swing != null ? `<p class="small" style="margin:4px 0">この会社は、決算の翌日にふだん<b>±${(o.swing * 100).toFixed(1)}%くらい</b>動きます。</p>` : ''}
+    <ul class="why" style="font-size:13px;color:var(--text)">${o.items.map((x) => `<li>${mark(x.pts)} ${esc(x.text)}</li>`).join('')}</ul>
+    ${o.reactions?.length ? `<details class="more-box"><summary>過去の決算の翌日の動き（${o.reactions.length}回）</summary><div class="tbl-wrap"><table class="tbl"><thead><tr><th>日付（推定）</th><th class="r">翌日</th><th class="r">2日間</th><th class="r">出来高</th></tr></thead><tbody>
+      ${o.reactions.slice().reverse().map((r) => `<tr><td class="small">${esc(r.date.slice(0, 4))}/${Number(r.date.slice(5, 7))}/${Number(r.date.slice(8, 10))}</td><td class="r small ${r.ret >= 0 ? 'plus' : 'minus'}">${r.ret >= 0 ? '+' : ''}${(r.ret * 100).toFixed(1)}%</td><td class="r small ${r.ret2 >= 0 ? 'plus' : 'minus'}">${r.ret2 >= 0 ? '+' : ''}${(r.ret2 * 100).toFixed(1)}%</td><td class="r small">${r.volRatio.toFixed(1)}倍</td></tr>`).join('')}
+      </tbody></table></div><p class="small muted" style="margin:4px 0 0">過去の発表日は、3か月ごとに出来高が急に増えた日から推定しています。</p></details>` : ''}
+    <p class="small muted" style="margin:6px 0 0">過去の決算の動き・業績（売上・利益の伸びなど）・ニュース・掲示板やSNSの声・発表前の値動きを点数にした目安です（＋が上がる材料、－が下がる材料）。決算の中身しだいで、逆に動くこともよくあります。持ち越すなら、損切りの値段を決めておきましょう。</p>
+  </div>`;
+}
+
 export async function updateEarningsCard(st, mode) {
   const box = $('earn-box'), q = $('q-earn');
   if (mode !== 'stock') { q.hidden = true; return; }
@@ -82,6 +99,16 @@ export async function updateEarningsCard(st, mode) {
     if (key !== lastKey) return;
     const { badge, html } = renderEarnings(d.items || [], today, st.name);
     box.innerHTML = html;
+    // 次の決算のあと、上がりやすいか・下がりやすいか
+    const next = (d.items || []).find((x) => x.date >= today);
+    if (next) {
+      const ob = document.createElement('div');
+      ob.innerHTML = '<p class="small muted"><span class="spinner"></span> 決算のあと上がりやすいか、過去の決算・業績・ニュース・みんなの声から調べています…</p>';
+      box.appendChild(ob);
+      api(`/api/stocks/earnings-outlook?symbol=${encodeURIComponent(`${code}.T`)}&name=${encodeURIComponent(st.name || next.name || '')}&date=${next.date}`)
+        .then((o) => { if (key === lastKey) ob.innerHTML = outlookHtml(o); })
+        .catch(() => { if (key === lastKey) ob.innerHTML = '<p class="small muted">決算後の見通しは、今は調べられませんでした。</p>'; });
+    }
     q.innerHTML = badge;
     q.hidden = !badge;
     q.onclick = () => box.scrollIntoView({ behavior: 'smooth', block: 'center' });

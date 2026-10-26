@@ -1116,3 +1116,26 @@ test('テーマ：下落のニュースが多ければ「下がる」と判断�
   assert.equal(t.mood, 'down');
   assert.ok(t.down >= 2);
 });
+
+test('決算後の見通し：過去の決算の翌日を出来高から見つけ、点数で上がりやすい・下がりやすいを出す', async () => {
+  const { pastReactions, judgeOutlook } = await import('../lib/earnoutlook.js');
+  const day = 86400;
+  const t0 = Date.parse('2026-11-10T00:00:00Z') / 1000;
+  const candles = [];
+  let p = 1000;
+  for (let i = 0; i < 500; i++) {
+    const time = t0 - (500 - i) * day;
+    let vol = 1000, r = 0.001 * Math.sin(i);
+    // 3か月ごとに出来高が5倍・+4%の日（決算の翌日）
+    for (let k = 1; k <= 5; k++) if (Math.abs(time - (t0 - k * 91.3 * day)) < day) { vol = 5000; r = 0.04; }
+    const o = p; p *= 1 + r;
+    candles.push({ time, open: o, high: Math.max(o, p), low: Math.min(o, p), close: p, volume: vol });
+  }
+  const re = pastReactions(candles, '2026-11-10');
+  assert.ok(re.length >= 4);
+  assert.ok(re.every((x) => x.ret > 0.03));
+  const o = judgeOutlook({ reactions: re, fund: { rows: [{ name: '利益の伸び（前年比）', value: '20%', signal: '上がる要因', detail: '' }] }, runup: 0.02 });
+  assert.equal(o.verdict, 'up');
+  const d = judgeOutlook({ reactions: re.map((x) => ({ ...x, ret: -0.05 })), fund: { rows: [{ name: '利益の伸び（前年比）', value: '-20%', signal: '下がる要因', detail: '' }] }, runup: 0.3 });
+  assert.equal(d.verdict, 'down');
+});
