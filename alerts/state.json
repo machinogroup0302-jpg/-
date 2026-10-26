@@ -73,21 +73,6 @@
      "sentAt": "2026-10-13T07:58:42.655Z",
      "how": "現物で買う：100株＋信用で買う：400株（合計500株）"
     },
-    "swing|7203.T": {
-     "kind": "swing",
-     "mode": "stock",
-     "symbol": "7203.T",
-     "name": "トヨタ自動車",
-     "side": 1,
-     "signalTime": 1791849600,
-     "signalPrice": 2984,
-     "sentAt": "2026-10-13T07:58:42.655Z",
-     "how": "現物で買う：100株＋信用で買う：300株（合計400株）",
-     "entryPrice": 2988,
-     "entryTime": 1791936000,
-     "closeSent": true,
-     "closeSentAt": "2026-10-23T08:15:18.422Z"
-    },
     "swing|5537.T": {
      "kind": "swing",
      "mode": "stock",
@@ -182,6 +167,21 @@
      "exitPrice": 4335,
      "ret": -0.003461573967228235,
      "reasonOut": "その日の取引時間が終わるので決済（持ち越さない）"
+    },
+    {
+     "kind": "swing",
+     "mode": "stock",
+     "symbol": "7203.T",
+     "name": "トヨタ自動車",
+     "side": 1,
+     "notifiedAt": "2026-10-13T07:58:42.655Z",
+     "closeNotifiedAt": "2026-10-23T08:15:18.422Z",
+     "entryTime": 1791936000,
+     "entryPrice": 2988,
+     "exitTime": 1792972800,
+     "exitPrice": 3072,
+     "ret": 0.025112449799196693,
+     "reasonOut": "持つ日数の上限（7日）になったので決済"
     }
    ]
   }
