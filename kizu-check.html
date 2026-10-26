@@ -124,6 +124,12 @@
   .ed-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 60px; flex-shrink: 0; }
   .ed-top b { font-size: 16px; font-weight: 900; }
   .ed-done { background: var(--yellow); border: none; border-radius: 999px; padding: 10px 24px; font-weight: 900; font-size: 16px; color: var(--navy); }
+  .zoombar { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 6px 0 2px; flex-shrink: 0; }
+  .zoombar button { border: 1.5px solid var(--line); background: #fff; border-radius: 999px; min-width: 44px; height: 36px; padding: 0 12px; font-size: 18px; font-weight: 900; }
+  .zoombar #zoomReset { font-size: 13px; font-weight: 700; }
+  .zoombar span { min-width: 44px; text-align: center; font-size: 13px; font-weight: 700; color: var(--muted); }
+  .stage.zoomed { overflow: hidden; }
+  .stage.zoomed svg { overflow: hidden; }
   .ed-cap { text-align: center; font-size: 13px; font-weight: 700; color: var(--muted); flex-shrink: 0; }
   #editor .hint { flex-shrink: 0; }
   #editor .tab { font-size: 16px; padding: 10px 0; }
@@ -417,6 +423,7 @@
   </div>
   <div class="tabs" id="tabs"></div>
   <div class="stage" id="stage"></div>
+  <div class="zoombar"><button type="button" id="zoomOut" aria-label="小さくする">－</button><span id="zoomLv">1倍</span><button type="button" id="zoomIn" aria-label="大きくする">＋</button><button type="button" id="zoomReset">元の大きさ</button></div>
   <p class="ed-cap" id="viewCap"></p>
   <p class="hint" id="toolHint"></p>
   <div class="tools" id="tools">
@@ -764,7 +771,7 @@ function setTool(t) {
   tool = t;
   document.querySelectorAll('.tool').forEach((b) => b.classList.toggle('on', b.dataset.tool === t));
   $('stage').classList.toggle('erase-mode', t === 'erase');
-  $('toolHint').textContent = t === 'erase' ? '消したい印をタップしてください' : KINDS[t].hint;
+  $('toolHint').textContent = t === 'erase' ? '消したい印をタップしてください' : KINDS[t].hint + '（2本指で拡大）';
 }
 $('tools').addEventListener('click', (e) => {
   const b = e.target.closest('.tool');
@@ -773,6 +780,7 @@ $('tools').addEventListener('click', (e) => {
 
 function setView(key) {
   view = key;
+  try { resetZoom(); } catch {}
   document.querySelectorAll('#stage svg').forEach((s) => s.classList.toggle('on', s.dataset.view === key));
   $('viewCap').textContent = VIEWS[key].cap;
   renderTabs();
@@ -792,6 +800,7 @@ function openEditor(key) {
   document.body.classList.add('editing');
 }
 function closeEditor() {
+  resetZoom();
   $('editor').hidden = true;
   document.body.classList.remove('editing');
 }
@@ -845,31 +854,104 @@ function numberPos(m, w) {
 }
 function renderMarks() {
   const order = new Map(activeMarks().map((m, i) => [m.id, i + 1]));
-  for (const key of Object.keys(VIEWS)) {
-    const w = VIEWS[key].def.w;
+  // 拡大中の図では、×や番号が大きくなりすぎないよう、倍率で割った大きさで描く
+  const draw = (key, w) => {
     const r = w / 48;
-    const html = S.marks.filter((m) => m.view === key && order.has(m.id)).map((m) => {
+    return S.marks.filter((m) => m.view === key && order.has(m.id)).map((m) => {
       const [nx, ny] = numberPos(m, w);
       return `<g class="k-${KINDS[m.type].cls}" data-mark="${m.id}">${markShape(m, w)}
         <g class="mn"><circle cx="${nx}" cy="${ny}" r="${r}"/><text x="${nx}" y="${ny}" font-size="${r * 1.25}">${order.get(m.id)}</text></g></g>`;
     }).join('');
-    document.querySelectorAll(`svg[data-view="${key}"] .marks`).forEach((g) => { g.innerHTML = html; });
+  };
+  let k = 1;
+  try { k = zoom.k; } catch {}
+  for (const key of Object.keys(VIEWS)) {
+    const w = VIEWS[key].def.w;
+    const html = draw(key, w);
+    const zoomed = k > 1.01 && key === view ? draw(key, w / k) : html;
+    document.querySelectorAll(`svg[data-view="${key}"] .marks`).forEach((g) => { g.innerHTML = g.closest('#stage') ? zoomed : html; });
   }
 }
 
 let drawing = null;
+// ---- 拡大（2本指で広げる・ボタン）。1本指は今までどおり描く ----
+const ZMAX = 4;
+let zoom = { k: 1, x: 0, y: 0 };
+const pointers = new Map();
+let pinch = null, erasing = null;
+const curSvg = () => document.querySelector(`#stage svg[data-view="${view}"]`);
+function applyZoom() {
+  const { w, h } = VIEWS[view].def;
+  const vw = w / zoom.k, vh = h / zoom.k;
+  zoom.x = Math.min(Math.max(zoom.x, 0), w - vw);
+  zoom.y = Math.min(Math.max(zoom.y, 0), h - vh);
+  curSvg().setAttribute('viewBox', `${zoom.x} ${zoom.y} ${vw} ${vh}`);
+  $('stage').classList.toggle('zoomed', zoom.k > 1.01);
+  $('zoomLv').textContent = `${Math.round(zoom.k * 10) / 10}倍`;
+  renderMarks();
+}
+// 図の上の点 (sx, sy) が画面の同じ場所に残るように倍率を変える
+function zoomAt(k, sx, sy) {
+  const { w, h } = VIEWS[view].def;
+  const rx = (sx - zoom.x) / (w / zoom.k), ry = (sy - zoom.y) / (h / zoom.k);
+  zoom.k = Math.min(ZMAX, Math.max(1, k));
+  zoom.x = sx - rx * w / zoom.k;
+  zoom.y = sy - ry * h / zoom.k;
+  applyZoom();
+}
+function resetZoom() {
+  zoom = { k: 1, x: 0, y: 0 };
+  document.querySelectorAll('#stage svg').forEach((s) => { const d = VIEWS[s.dataset.view].def; s.setAttribute('viewBox', `0 0 ${d.w} ${d.h}`); });
+  $('stage').classList.remove('zoomed');
+  $('zoomLv').textContent = '1倍';
+  renderMarks();
+}
+const zoomCenter = (k) => { const { w, h } = VIEWS[view].def; zoomAt(k, zoom.x + w / zoom.k / 2, zoom.y + h / zoom.k / 2); };
+$('zoomIn').addEventListener('click', () => zoomCenter(zoom.k * 1.5));
+$('zoomOut').addEventListener('click', () => zoomCenter(zoom.k / 1.5));
+$('zoomReset').addEventListener('click', resetZoom);
+function startPinch() {
+  const [a, b] = [...pointers.values()];
+  const svg = curSvg();
+  const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  const pt = svg.createSVGPoint(); pt.x = mid.x; pt.y = mid.y;
+  const sp = pt.matrixTransform(svg.getScreenCTM().inverse());
+  pinch = { d0: Math.hypot(a.x - b.x, a.y - b.y) || 1, mid0: mid, s0: [sp.x, sp.y], z0: { ...zoom } };
+}
+function movePinch() {
+  const [a, b] = [...pointers.values()];
+  const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  zoom = { ...pinch.z0 };
+  zoomAt(pinch.z0.k * Math.hypot(a.x - b.x, a.y - b.y) / pinch.d0, pinch.s0[0], pinch.s0[1]);
+  const ppu = curSvg().getScreenCTM().a;
+  zoom.x -= (mid.x - pinch.mid0.x) / ppu;
+  zoom.y -= (mid.y - pinch.mid0.y) / ppu;
+  applyZoom();
+}
 $('stage').addEventListener('pointerdown', (e) => {
   const svg = e.target.closest('svg');
   if (!svg) return;
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pointers.size >= 2) {
+    // 2本目の指が来たら、描きかけをやめて拡大に切りかえる
+    if (drawing) { drawing.g.remove(); drawing = null; }
+    erasing = null;
+    e.preventDefault();
+    try { svg.setPointerCapture(e.pointerId); } catch {}
+    startPinch();
+    return;
+  }
+  if (pinch) return;
   if (tool === 'erase') {
     const g = e.target.closest('[data-mark]');
-    if (g) removeMark(g.dataset.mark);
+    erasing = g ? g.dataset.mark : null;
     return;
   }
   e.preventDefault();
-  svg.setPointerCapture(e.pointerId);
+  try { svg.setPointerCapture(e.pointerId); } catch {}
   const p = toSvgPoint(svg, e);
-  const w = VIEWS[view].def.w;
+  // 拡大中は、線の細かさや×の大きさを画面の見た目に合わせる
+  const w = VIEWS[view].def.w / zoom.k;
   const m = { id: uid(), view, type: tool, size: 'M', amount: SIZES.M.price };
   if (tool === 'line') m.pts = [p];
   else { m.cx = p[0]; m.cy = p[1]; m.r = tool === 'circle' ? 0 : undefined; }
@@ -877,11 +959,12 @@ $('stage').addEventListener('pointerdown', (e) => {
   g.setAttribute('class', `k-${KINDS[tool].cls}`);
   svg.querySelector('.marks').appendChild(g);
   drawing = { svg, m, g, w, start: p };
-  if (tool === 'cross') finishDrawing();
-  else g.innerHTML = markShape(m, w);
+  g.innerHTML = markShape(m, w);
 });
 $('stage').addEventListener('pointermove', (e) => {
-  if (!drawing) return;
+  if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pinch) { if (pointers.size >= 2) movePinch(); return; }
+  if (!drawing || drawing.m.type === 'cross') return;
   const { m, g, w, svg, start } = drawing;
   const p = toSvgPoint(svg, e);
   if (m.type === 'line') {
@@ -893,9 +976,16 @@ $('stage').addEventListener('pointermove', (e) => {
   }
   g.innerHTML = markShape(m, w);
 });
-const endDrawing = () => { if (drawing) finishDrawing(); };
+// × は指を離したときに置く（2本指の拡大と見分けるため）。消すのも同じ
+const endDrawing = (e) => {
+  pointers.delete(e.pointerId);
+  if (pinch) { if (pointers.size === 0) pinch = null; return; }
+  if (erasing && e.type === 'pointerup') removeMark(erasing);
+  erasing = null;
+  if (drawing) finishDrawing();
+};
 $('stage').addEventListener('pointerup', endDrawing);
-$('stage').addEventListener('pointercancel', endDrawing);
+$('stage').addEventListener('pointercancel', (e) => { if (drawing) { drawing.g.remove(); drawing = null; } endDrawing(e); });
 
 function finishDrawing() {
   const { svg, m, g, w } = drawing;
