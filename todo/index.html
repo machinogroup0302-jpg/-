@@ -673,8 +673,15 @@
 <dialog id="login-dialog">
   <div id="google-login" hidden>
     <h3>やることボード</h3>
-    <p class="note" style="margin-bottom:14px">持ち主の Google アカウント（machino-crm と同じもの）でログインしてください。</p>
+    <p class="note" style="margin-bottom:14px">mochizuki_wataru@machino-group.com でログインしてください。</p>
     <button class="btn primary teal" id="google-btn" style="width:100%;padding:12px;font-size:1rem">Google でログイン</button>
+    <p class="note" style="text-align:center;margin:14px 0 8px">または メールアドレスとパスワード</p>
+    <form id="mail-login" class="add" style="margin:0">
+      <input id="ml-email" class="full" type="email" autocomplete="username" value="mochizuki_wataru@machino-group.com" required>
+      <input id="ml-pass" class="full" type="password" autocomplete="current-password" placeholder="パスワード" required>
+      <div class="actions"><button type="submit">ログイン</button></div>
+    </form>
+    <button type="button" class="linkbtn note" id="ml-reset" style="margin-top:8px;color:var(--wait)">はじめての方・パスワードを忘れたとき（メールで設定）</button>
   </div>
   <form id="login-form">
     <h3>やることボード</h3>
@@ -883,7 +890,7 @@
   });
   // ---- Firebase（machino-yarukoto.web.app）で開いたとき：Google でログイン、データは Firestore ----
   // 寝ないサーバー。ほかの端末で変えた分は、すぐ（数秒以内に）届く
-  const OWNER_EMAILS = ['machinogroup0302@gmail.com']; // firestore.rules の持ち主と同じ
+  const OWNER_EMAILS = ['mochizuki_wataru@machino-group.com']; // このアドレスだけ（firestore.rules の yarukoto と同じ）
   if (window.BOARD_FIREBASE && window.firebase?.apps?.length) {
     const auth = firebase.auth(), fdb = firebase.firestore();
     const provider = new firebase.auth.GoogleAuthProvider();
@@ -929,6 +936,18 @@
     };
     $('login-form').hidden = true; $('google-login').hidden = false;
     $('google-btn').onclick = signIn;
+    // メールアドレスとパスワード（Google アカウントでないアドレスのため）
+    $('mail-login').addEventListener('submit', async e => {
+      e.preventDefault(); $('login-err').textContent = '';
+      try { await auth.signInWithEmailAndPassword($('ml-email').value.trim(), $('ml-pass').value); $('ml-pass').value = ''; }
+      catch { $('login-err').textContent = 'メールアドレスかパスワードが違います。はじめての方は下の「メールで設定」を押してください'; }
+    });
+    $('ml-reset').onclick = async () => {
+      const email = $('ml-email').value.trim().toLowerCase();
+      if (!OWNER_EMAILS.includes(email)) { $('login-err').textContent = 'このアドレスでは使えません'; return; }
+      try { await auth.sendPasswordResetEmail(email); $('login-err').textContent = ''; toast(`${email} にパスワード設定のメールを送りました`); }
+      catch { $('login-err').textContent = 'メールを送れませんでした。少し待ってからもう一度押してください'; }
+    };
     $('logout-btn').hidden = false;
     $('logout-btn').onclick = async () => { if (await ask('ログアウトしますか？', 'ログアウト')) { unsubs.forEach(u => u()); unsubs = []; await auth.signOut(); } };
     auth.getRedirectResult().catch(() => {});
@@ -936,7 +955,7 @@
       const d = $('login-dialog');
       if (!u) { unsubs.forEach(x => x()); unsubs = []; if (!d.open) d.showModal(); status('ログインしてください'); return; }
       if (!OWNER_EMAILS.includes((u.email || '').toLowerCase())) {
-        $('login-err').textContent = `${u.email} では開けません。持ち主の Google アカウントでログインしてください`;
+        $('login-err').textContent = `${u.email} では開けません。mochizuki_wataru@machino-group.com でログインしてください`;
         auth.signOut(); return;
       }
       if (d.open) d.close();

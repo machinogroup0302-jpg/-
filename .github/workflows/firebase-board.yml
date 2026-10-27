@@ -23,6 +23,7 @@ jobs:
     env:
       HAS_SA: ${{ secrets.FIREBASE_SA != '' }}
       SITE: machino-yarukoto
+      OWNER_EMAIL: mochizuki_wataru@machino-group.com  # ログインできるのはこのアドレスだけ
     steps:
       - name: Firebase のカギがまだなら、何もしないで終わる
         if: env.HAS_SA != 'true'

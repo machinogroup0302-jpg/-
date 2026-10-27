@@ -1,12 +1,13 @@
 // 公開の前の準備（GitHub Actions から動かす。何度動かしても大丈夫）
 //  1. 新しいサイトの住所で Google ログインができるように「ログインを許すドメイン」に足す
-//  2. Firebase にまだデータがなければ、Render のやることボードから中身を写す
+//  2. メールアドレスとパスワードのログインをオンにして、使う人（OWNER_EMAIL）を登録する
+//  3. Firebase にまだデータがなければ、Render のやることボードから中身を写す
 // 使うもの: GOOGLE_APPLICATION_CREDENTIALS（Firebase の秘密鍵）, PROJECT, SITE
 //           BOARD_URL・BOARD_PASSWORD（Render のやることボード。なければ 2 はしない）
 import admin from 'firebase-admin';
 import { GoogleAuth } from 'google-auth-library';
 
-const { PROJECT, SITE, BOARD_URL, BOARD_PASSWORD } = process.env;
+const { PROJECT, SITE, BOARD_URL, BOARD_PASSWORD, OWNER_EMAIL } = process.env;
 const DOCS = ['tasks', 'schedule', 'fixed', 'checks', 'settings'];
 
 // 1. ログインを許すドメイン
@@ -24,8 +25,31 @@ try {
   console.log(`::warning::ログインを許すドメインを自動で足せませんでした（${e.message}）。Firebase の Authentication → 設定 → 承認済みドメイン に ${SITE}.web.app を足してください`);
 }
 
-// 2. Render から写す（Firebase にまだ何もないときだけ）
 admin.initializeApp({ projectId: PROJECT });
+
+// 2. メールアドレスとパスワードのログイン
+try {
+  const client = await new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/cloud-platform'] }).getClient();
+  const url = `https://identitytoolkit.googleapis.com/admin/v2/projects/${PROJECT}/config`;
+  const { data } = await client.request({ url, headers: { 'x-goog-user-project': PROJECT } });
+  if (!data.signIn?.email?.enabled || !data.signIn?.email?.passwordRequired) {
+    await client.request({ url: `${url}?updateMask=signIn.email.enabled,signIn.email.passwordRequired`, method: 'PATCH', headers: { 'x-goog-user-project': PROJECT }, data: { signIn: { email: { enabled: true, passwordRequired: true } } } });
+    console.log('メールアドレスとパスワードのログインをオンにしました');
+  }
+} catch (e) {
+  console.log(`::warning::メールアドレスのログインを自動でオンにできませんでした（${e.message}）。Firebase の Authentication → ログイン方法 で「メール/パスワード」を有効にしてください`);
+}
+if (OWNER_EMAIL) {
+  try { await admin.auth().getUserByEmail(OWNER_EMAIL); console.log('使う人は登録済みです'); }
+  catch (e) {
+    if (e.code !== 'auth/user-not-found') throw e;
+    // パスワードはまだ決めない（画面の「メールで設定」から本人が決める）
+    await admin.auth().createUser({ email: OWNER_EMAIL, emailVerified: true });
+    console.log(`使う人を登録しました: ${OWNER_EMAIL}`);
+  }
+}
+
+// 3. Render から写す（Firebase にまだ何もないときだけ）
 const db = admin.firestore();
 const existing = await db.collection('yarukoto').get();
 if (!existing.empty) {
