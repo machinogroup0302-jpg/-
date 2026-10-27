@@ -6,6 +6,7 @@
 import { getChart } from './market.js';
 import { getFundamentals } from './fundamentals.js';
 import { getCrowd } from './crowd.js';
+import { getJpPerformance, tanshinTone } from './jpperf.js';
 
 const DAY = 86400;
 
@@ -44,7 +45,7 @@ export function pastReactions(candles, nextDate, { quarters = 8 } = {}) {
 const raw = (v) => (v && typeof v === 'object' ? v.raw : v) ?? null;
 
 // 材料を点数にして、決算後に上がりやすいか下がりやすいかを出す
-export function judgeOutlook({ reactions = [], fund = null, crowd = null, runup = null }) {
+export function judgeOutlook({ reactions = [], fund = null, crowd = null, runup = null, perf = null }) {
   const items = [];
   const add = (name, pts, text) => items.push({ name, pts, text });
   // 1) 過去の決算のあとの動き
@@ -65,7 +66,22 @@ export function judgeOutlook({ reactions = [], fund = null, crowd = null, runup 
   if (pm && pm.signal === '下がる要因') add('利益率', -0.5, `利益率 ${pm.value}：${pm.detail}`);
   if (per && per.signal === '下がる要因') add('株価の高さ', -0.5, `PER ${per.value}：期待が大きいので、良い決算でも「思ったほどではない」と売られやすい`);
   if (tg) add('アナリストの見方', sig(tg) * 0.5, `目標株価との差 ${tg.value}：${tg.detail}`);
-  if (!eg && !rg) add('業績', 0, '業績の数字が取れなかったので、判断に入れていません');
+  // 日本の業績ページ（通期の前年比）と、直近の決算短信の要約
+  const L = perf?.latest;
+  const yoy = (v) => (v == null || !Number.isFinite(Number(v)) ? null : Number(v));
+  if (!eg && L) {
+    const profit = yoy(L.operatingIncomeYoy) ?? yoy(L.ordinaryIncomeYoy) ?? yoy(L.netIncomeYoy);
+    const pname = yoy(L.operatingIncomeYoy) != null ? '営業利益' : yoy(L.ordinaryIncomeYoy) != null ? '経常利益' : '純利益';
+    const term = L.endDate ? `${String(L.endDate).slice(0, 4)}年${Number(String(L.endDate).slice(5, 7))}月期` : '前の期';
+    if (profit != null) add('利益の伸び', profit > 10 ? 1 : profit < 0 ? -1 : 0, `${term}の${pname}：前年比 ${profit >= 0 ? '+' : ''}${profit.toFixed(1)}%${profit > 10 ? '（大きく伸びた）' : profit < 0 ? '（減った）' : ''}`);
+    const sales = yoy(L.netSalesYoy);
+    if (!rg && sales != null) add('売上の伸び', sales > 5 ? 0.5 : sales < 0 ? -0.5 : 0, `${term}の売上：前年比 ${sales >= 0 ? '+' : ''}${sales.toFixed(1)}%`);
+  }
+  if (perf?.tanshin) {
+    const t = tanshinTone(perf.tanshin);
+    add('直近の決算の中身', t, `直近の決算のまとめ：「${perf.tanshin.slice(0, 90)}${perf.tanshin.length > 90 ? '…' : ''}」`);
+  }
+  if (!eg && !rg && !L && !perf?.tanshin) add('業績', 0, '業績の数字が取れなかったので、判断に入れていません');
   // 3) ニュースの雰囲気
   const nw = row('最近のニュースの雰囲気');
   if (nw) add('ニュース', sig(nw) * 0.5, `ニュース：${nw.value}（${nw.detail}）`);
@@ -90,15 +106,16 @@ export async function getEarningsOutlook(symbol, name, nextDate) {
   const key = `${symbol}|${nextDate}`;
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < 60 * 60 * 1000) return hit.data;
-  const [chart, fund, crowd] = await Promise.all([
+  const [chart, fund, crowd, perf] = await Promise.all([
     getChart(symbol, '1d').catch(() => null),
     getFundamentals(symbol, name).catch(() => null),
     getCrowd({ symbol, name, mode: 'stock' }).catch(() => null),
+    getJpPerformance(symbol.replace(/\.T$/, '')).catch(() => null),
   ]);
   const c = chart?.candles || [];
   const reactions = pastReactions(c, nextDate);
   const runup = c.length > 22 ? c[c.length - 1].close / c[c.length - 22].close - 1 : null;
-  const data = { symbol, nextDate, reactions, ...judgeOutlook({ reactions, fund, crowd, runup }), at: Date.now() };
+  const data = { symbol, nextDate, reactions, ...judgeOutlook({ reactions, fund, crowd, runup, perf }), at: Date.now() };
   cache.set(key, { at: Date.now(), data });
   return data;
 }

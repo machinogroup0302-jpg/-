@@ -1139,3 +1139,18 @@ test('決算後の見通し：過去の決算の翌日を出来高から見つ�
   const d = judgeOutlook({ reactions: re.map((x) => ({ ...x, ret: -0.05 })), fund: { rows: [{ name: '利益の伸び（前年比）', value: '-20%', signal: '下がる要因', detail: '' }] }, runup: 0.3 });
   assert.equal(d.verdict, 'down');
 });
+
+test('日本の業績ページ（エスケープされたJSON）と決算短信の要約を読む', async () => {
+  const { parsePerformance, parseTanshin, tanshinTone } = await import('../lib/jpperf.js');
+  const html = 'x\\"preloaded\\":false},\\"performance\\":{\\"performance\\":[{\\"fiscalYear\\":\\"2025\\",\\"fiscalQuarter\\":\\"Q4\\",\\"endDate\\":\\"2026-03-31\\",\\"netSales\\":18915995000000,\\"netSalesYoy\\":1.6,\\"operatingIncome\\":null,\\"operatingIncomeYoy\\":null,\\"ordinaryIncomeYoy\\":-21.34,\\"netIncomeYoy\\":-15.8,\\"accountingStandard\\":\\"IFRS\\"}],\\"x\\":1}';
+  const rows = parsePerformance(html);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].ordinaryIncomeYoy, -21.34);
+  const top = '<p class="yOGU5a_PressRelease__summaryMessage">三菱商事の2027年3月期第1四半期は、<b>大幅な増収増益</b>となりました。</p>';
+  assert.match(parseTanshin(top), /増収増益/);
+  assert.equal(tanshinTone(parseTanshin(top)), 1);
+  const { judgeOutlook } = await import('../lib/earnoutlook.js');
+  const o = judgeOutlook({ perf: { latest: rows[0], tanshin: '大幅な増収増益となりました。' } });
+  assert.ok(o.items.some((x) => /経常利益：前年比 -21.3%/.test(x.text) && x.pts < 0));
+  assert.ok(o.items.some((x) => x.name === '直近の決算の中身' && x.pts > 0));
+});
