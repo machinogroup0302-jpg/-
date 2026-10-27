@@ -167,6 +167,11 @@ async function main() {
         const r = await fetch(url, { headers: { 'User-Agent': UA, 'Accept-Language': 'ja' }, signal: AbortSignal.timeout(20000) });
         const t = await r.text();
         console.log(`== ${url} → ${r.status}・${t.length}文字`);
+        console.log('scripts:', [...t.matchAll(/<script[^>]*(id|type)="([^"]+)"/g)].map((m) => m[2]).join(','), '| vars:', [...new Set([...t.matchAll(/window\.(__[A-Z_]+__)/g)].map((m) => m[1]))].join(','));
+        for (const w of ['売上高', '営業利益', '経常利益', '純利益', '決算期', 'netSales', 'operatingProfit', 'operatingIncome']) {
+          const j = t.indexOf(w);
+          if (j >= 0) console.log(`[${w}]`, t.slice(Math.max(0, j - 120), j + 380).replace(/\s+/g, ' '));
+        }
         const i = t.indexOf('__PRELOADED_STATE__');
         if (i >= 0) {
           const js = t.slice(i, i + 400000);
