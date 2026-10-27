@@ -159,6 +159,28 @@ async function earningsCheck(H, { verbose = false } = {}) {
 
 async function main() {
   if (!KEY) { console.log('SITE_PASSWORD が登録されていないので見張れません'); return; }
+  if (MODE === 'probe') {
+    // 業績の数字をどこから取れるか調べる（公開されているページだけ。結果はログに出す）
+    const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36';
+    for (const url of ['https://finance.yahoo.co.jp/quote/8058.T/performance', 'https://finance.yahoo.co.jp/quote/8058.T', 'https://query2.finance.yahoo.com/v10/finance/quoteSummary/8058.T?modules=financialData']) {
+      try {
+        const r = await fetch(url, { headers: { 'User-Agent': UA, 'Accept-Language': 'ja' }, signal: AbortSignal.timeout(20000) });
+        const t = await r.text();
+        console.log(`== ${url} → ${r.status}・${t.length}文字`);
+        const i = t.indexOf('__PRELOADED_STATE__');
+        if (i >= 0) {
+          const js = t.slice(i, i + 400000);
+          const keys = [...new Set([...js.matchAll(/"([a-zA-Z]+)":/g)].map((m) => m[1]))].slice(0, 400);
+          console.log('keys:', keys.join(','));
+          for (const w of ['netSales', 'sales', 'operatingIncome', 'ordinaryIncome', 'netIncome', 'performance', 'forecast', 'per', 'pbr']) {
+            const j = js.indexOf(`"${w}`);
+            if (j >= 0) console.log(`[${w}]`, js.slice(j, j + 300).replace(/\s+/g, ' '));
+          }
+        } else console.log(t.slice(0, 300).replace(/\s+/g, ' '));
+      } catch (e) { console.log(`== ${url} → エラー ${e.message}`); }
+    }
+    return;
+  }
   if (MODE === 'earnings') {
     let st = null;
     const t0 = Date.now();
