@@ -49,11 +49,13 @@ if (OWNER_EMAIL) {
   }
 }
 
-// 3. Render から写す（Firebase にまだ何もないときだけ）
+// 3. Render から写す（Firebase にまだない種類だけ。あるものは上書きしない）
 const db = admin.firestore();
 const existing = await db.collection('yarukoto').get();
-if (!existing.empty) {
-  console.log('Firebase にはもうデータがあるので、写しません');
+const have = new Set(existing.docs.map((d) => d.id));
+console.log('Firebase にあるもの:', [...have].join(', ') || 'なし');
+if (DOCS.every((n) => have.has(n))) {
+  console.log('全部そろっているので、写しません');
   process.exit(0);
 }
 if (!BOARD_URL || !BOARD_PASSWORD) {
@@ -78,6 +80,7 @@ if (!docs) { console.log('::warning::Render から写せませんでした（画
 let n = 0;
 for (const name of DOCS) {
   const d = docs[name];
-  if (d && d.value) { await db.doc(`yarukoto/${name}`).set({ value: d.value, ts: d.ts || Date.now() }); n++; }
+  if (have.has(name)) continue;
+  if (d && d.value) { await db.doc(`yarukoto/${name}`).set({ value: d.value, ts: d.ts || Date.now() }); n++; console.log(`写しました: ${name}`); }
 }
 console.log(`Render から ${n}種類のデータを写しました`);
