@@ -2,7 +2,8 @@
 #   毎朝7時（日本時間）ごろ、次の日に予定・引き落としがあれば、サイトの「設定」に入れたアドレスへ送る
 #   中身は claude/jolly-goldberg-1a7dqb の board-server/mail.mjs
 # 事前準備（GitHub の Settings → Secrets and variables → Actions）:
-#   BOARD_URL      … やることボードのURL（例 https://yarukoto-board.onrender.com）
+#   FIREBASE_SA    … Firebase 版（machino-yarukoto.web.app）の秘密鍵。あれば Firebase から読む（こちらが優先）
+#   BOARD_URL      … （Render 版のとき）やることボードのURL（例 https://yarukoto-board.onrender.com）
 #   BOARD_PASSWORD … やることボードのパスワード（Render の BOARD_PASSWORD と同じ）
 #   MAIL_USER・MAIL_PASS … 売買サインのメールと同じもの（登録済みならそのまま使う）
 name: やることボードのメール
@@ -36,11 +37,12 @@ jobs:
       - name: 明日の予定・引き落としを調べてメールを送る
         working-directory: board-server
         env:
+          FIREBASE_SA: ${{ secrets.FIREBASE_SA }}
           BOARD_URL: ${{ secrets.BOARD_URL }}
           BOARD_PASSWORD: ${{ secrets.BOARD_PASSWORD }}
           MAIL_USER: ${{ secrets.MAIL_USER }}
           MAIL_PASS: ${{ secrets.MAIL_PASS }}
           TEST_MAIL: ${{ github.event.inputs.test == 'true' && '1' || '' }}
         run: |
-          npm install --no-save --no-audit --no-fund --ignore-scripts nodemailer@6
+          npm install --no-save --no-audit --no-fund --ignore-scripts nodemailer@6 firebase-admin@12
           node mail.mjs
