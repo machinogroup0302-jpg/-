@@ -27,6 +27,13 @@
     --wait: #3e7bfa;
     --share: #2f9e6e;
     --private: #c2255c;
+    --teal: #4bb5a6;
+    --teal-shadow: rgba(75,181,166,.35);
+    --check: #a9b0b8;
+    --row-blue: #dff3f9;
+    --row-green: #e2f5dc;
+    --row-pink: #fbeaf5;
+    --row-yellow: #fff5cf;
     --corp: #6741d9;
     --personal: #d9480f;
     --corp-ink: #6741d9;
@@ -45,7 +52,7 @@
     :root:not([data-theme="light"]) {
       --bg: #0f1620; --card: #17212d; --field: #1d2937; --soft: #1a2430; --text: #e6ebf1; --muted: #9aa8b8; --faint: #5d6b7b;
       --line: #2a3747; --bar: #0a1018; --bar-text: #b8c4d2; --bar-line: #2a3a4e; --primary: #e6ebf1; --on-primary: #0f1620;
-      --hl: #3a3415; --now: #ff6b6f; --wait: #6d9bff; --share: #3fbf89; --private: #f06595; --corp-ink: #b3a1ff; --personal-ink: #ff9a63;
+      --hl: #3a3415; --now: #ff6b6f; --wait: #6d9bff; --share: #3fbf89; --private: #f06595; --teal: #45a99b; --teal-shadow: rgba(0,0,0,.4); --check: #6b7684; --row-blue: #183844; --row-green: #1d3a22; --row-pink: #3d2236; --row-yellow: #3a3418; --corp-ink: #b3a1ff; --personal-ink: #ff9a63;
       --late: #e0a400; --todo: #3b3518; --ok-bg: #12352b; --bad-bg: #4a1f22; --backdrop: rgba(0, 0, 0, .6);
       color-scheme: dark;
     }
@@ -53,7 +60,7 @@
   :root[data-theme="dark"] {
     --bg: #0f1620; --card: #17212d; --field: #1d2937; --soft: #1a2430; --text: #e6ebf1; --muted: #9aa8b8; --faint: #5d6b7b;
     --line: #2a3747; --bar: #0a1018; --bar-text: #b8c4d2; --bar-line: #2a3a4e; --primary: #e6ebf1; --on-primary: #0f1620;
-    --hl: #3a3415; --now: #ff6b6f; --wait: #6d9bff; --share: #3fbf89; --private: #f06595; --corp-ink: #b3a1ff; --personal-ink: #ff9a63;
+    --hl: #3a3415; --now: #ff6b6f; --wait: #6d9bff; --share: #3fbf89; --private: #f06595; --teal: #45a99b; --teal-shadow: rgba(0,0,0,.4); --check: #6b7684; --row-blue: #183844; --row-green: #1d3a22; --row-pink: #3d2236; --row-yellow: #3a3418; --corp-ink: #b3a1ff; --personal-ink: #ff9a63;
     --late: #e0a400; --todo: #3b3518; --ok-bg: #12352b; --bad-bg: #4a1f22; --backdrop: rgba(0, 0, 0, .6);
     color-scheme: dark;
   }
@@ -154,9 +161,63 @@
   .task.wait { border-left-color: var(--wait); }
   .task.share { border-left-color: var(--share); }
   .task.private { border-left-color: var(--private); }
-  #move-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
-  #move-list button { text-align: left; padding: 10px 12px; font-size: .95rem; }
-  #move-list button[disabled] { opacity: .45; cursor: default; }
+  /* ToDoリスト（スマホのToDoアプリ風：丸いチェック・線で区切った行・右下の＋） */
+  .tp { max-width: 760px; margin: 0 auto; }
+  .tp-tabs { display: flex; gap: 10px; overflow-x: auto; padding: 4px 2px 14px; scrollbar-width: none; }
+  .tp-tabs::-webkit-scrollbar { display: none; }
+  .tp-tabs button {
+    flex-shrink: 0; border: 1px solid var(--line); background: var(--card); color: var(--text);
+    border-radius: 999px; padding: 9px 18px; font: inherit; font-size: .95rem; cursor: pointer;
+    box-shadow: 0 1px 3px rgba(0,0,0,.06); white-space: nowrap;
+  }
+  .tp-tabs button .n { margin-left: 8px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .tp-tabs button.active { background: var(--teal); border-color: var(--teal); color: #fff; box-shadow: 0 2px 8px var(--teal-shadow); }
+  .tp-tabs button.active .n { color: rgba(255,255,255,.85); }
+  .tp-list { list-style: none; background: var(--card); border-radius: var(--radius); border: 1px solid var(--line); overflow: hidden; }
+  .tp-row { display: flex; align-items: center; gap: 14px; padding: 0 0 0 14px; cursor: pointer; background: var(--row, var(--card)); transition: opacity .3s; }
+  .tp-row .tp-text { flex: 1; min-width: 0; padding: 15px 16px 15px 0; border-bottom: 1px solid var(--line); font-size: 1.02rem; line-height: 1.5; word-break: break-word; }
+  .tp-row:last-child .tp-text { border-bottom: 0; }
+  .tp-row .tp-memo { font-size: .8rem; color: var(--muted); margin-top: 2px; white-space: pre-wrap; }
+  .tp-check {
+    flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--check);
+    background: transparent; cursor: pointer; display: grid; place-items: center; padding: 0; color: #fff;
+  }
+  .tp-check svg { width: 16px; height: 16px; opacity: 0; }
+  .tp-row.checked .tp-check, .tp-donelist .tp-check { background: var(--teal); border-color: var(--teal); }
+  .tp-row.checked .tp-check svg, .tp-donelist .tp-check svg { opacity: 1; }
+  .tp-row.checked { opacity: .45; }
+  .tp-row.checked .tp-text { text-decoration: line-through; }
+  .tp-row.c-blue { --row: var(--row-blue); } .tp-row.c-green { --row: var(--row-green); }
+  .tp-row.c-pink { --row: var(--row-pink); } .tp-row.c-yellow { --row: var(--row-yellow); }
+  .tp-empty { padding: 36px 16px; text-align: center; color: var(--muted); }
+  .tp-fab, .tp-trash { position: fixed; z-index: 15; border-radius: 50%; display: grid; place-items: center; cursor: pointer; }
+  .tp-fab {
+    right: max(20px, env(safe-area-inset-right, 0px)); bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+    width: 62px; height: 62px; border: 0; background: var(--teal); color: #fff; box-shadow: 0 4px 14px var(--teal-shadow);
+  }
+  .tp-fab svg { width: 30px; height: 30px; }
+  .tp-trash {
+    left: max(20px, env(safe-area-inset-left, 0px)); bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+    width: 58px; height: 58px; border: 1px solid var(--line); background: var(--card); color: var(--teal); box-shadow: 0 2px 10px rgba(0,0,0,.12);
+  }
+  .tp-trash svg { width: 28px; height: 28px; }
+  .tp-trash-n { position: absolute; top: -4px; right: -4px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px; background: var(--teal); color: #fff; font-size: .72rem; display: grid; place-items: center; }
+  #view-todo { padding-bottom: 96px; }
+  .tp-donelist { margin-bottom: 14px; max-height: 55vh; overflow-y: auto; }
+  .tp-donelist .tp-row { cursor: default; }
+  .tp-donelist .tp-back { margin-right: 12px; flex-shrink: 0; }
+  /* 追加・編集のシート */
+  dialog.sheet { width: min(520px, calc(100vw - 24px)); }
+  dialog.sheet textarea { font: inherit; font-size: 1rem; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; width: 100%; background: var(--field); color: var(--text); resize: vertical; margin-bottom: 12px; }
+  dialog.sheet .row { flex-direction: row; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+  .sheet-label { font-size: .8rem; color: var(--muted); width: 2.6em; flex-shrink: 0; }
+  .seg { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; }
+  .seg button { border: 1px solid var(--line); background: var(--field); color: var(--text); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: .85rem; cursor: pointer; }
+  .seg button.on { background: var(--teal); border-color: var(--teal); color: #fff; }
+  .swatches { display: flex; gap: 10px; }
+  .swatches button { width: 32px; height: 32px; border-radius: 50%; border: 2px solid var(--line); background: var(--sw); cursor: pointer; padding: 0; font-size: .7rem; color: var(--muted); }
+  .swatches button.on { border-color: var(--teal); box-shadow: 0 0 0 2px var(--teal); }
+  .btn.teal { background: var(--teal); border-color: var(--teal); color: #fff; }
   .task.corp { border-left-color: var(--corp); }
   .task.personal { border-left-color: var(--personal); }
   .task.no-check { grid-template-columns: 1fr auto; }
@@ -253,6 +314,7 @@
   }
   .toast.show { opacity: 1; }
   .hidden { display: none !important; }
+  [hidden] { display: none !important; }
   :focus-visible { outline: 2px solid var(--wait); outline-offset: 2px; }
   @media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
   /* スマホ：メニューは画面の下に固定（親指で押せるように） */
@@ -269,14 +331,14 @@
     nav .sm { display: inline; }
     main { padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
     .toast { bottom: calc(80px + env(safe-area-inset-bottom, 0px)); }
+    .tp-fab, .tp-trash { bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
+    .tp-fab { right: max(16px, env(safe-area-inset-right, 0px)); }
+    .tp-trash { left: max(16px, env(safe-area-inset-left, 0px)); }
     /* iPhone で入力欄を押したときに画面が拡大されないように */
     input, select, textarea { font-size: 16px !important; }
     .card { padding: 14px; }
     .total { padding: 10px 12px; }
     .total .yen { font-size: 1.25rem; }
-    /* ToDoリストは追加欄を上に */
-    #view-todo > .card:last-child { order: -1; }
-    #view-todo { display: flex; flex-direction: column; align-items: stretch; }
   }
 </style>
 <header>
@@ -293,43 +355,16 @@
 
 <main>
   <!-- やること（メモ） -->
-  <section id="view-todo" class="grid">
-    <div class="card">
-      <h2>ToDoリスト</h2>
-      <div class="tabs" id="tabs"></div>
-      <div class="filters">
-        <label>並び順
-          <select id="sort">
-            <option value="priority">優先度順</option>
-            <option value="created">追加した順</option>
-          </select>
-        </label>
-        <label><input type="checkbox" id="show-done"> 終わったものも表示</label>
-      </div>
-      <ul class="tasks" id="list"></ul>
-    </div>
-    <div class="card">
-      <h2 id="task-form-title">やることを追加</h2>
-      <form class="add" id="add-form">
-        <input name="title" id="task-title" class="full" placeholder="やることを入力" required>
-        <select name="category" id="task-cat">
-          <option value="now">すぐやる</option>
-          <option value="wait">返事待ち</option>
-          <option value="share">山川共有</option>
-          <option value="private">プライベート</option>
-        </select>
-        <select name="priority" id="task-pri">
-          <option value="高">優先度：高</option>
-          <option value="中" selected>優先度：中</option>
-          <option value="低">優先度：低</option>
-        </select>
-        <textarea name="memo" id="task-memo" class="full" placeholder="メモ（任意）"></textarea>
-        <div class="actions">
-          <button type="submit">追加する</button>
-          <button type="button" class="btn cancel hidden">やめる</button>
-        </div>
-      </form>
-    </div>
+  <section id="view-todo" class="tp">
+    <div class="tp-tabs" id="tabs" role="tablist" aria-label="ToDoの分類"></div>
+    <ul class="tp-list" id="list"></ul>
+    <button class="tp-trash" id="tp-trash" aria-label="終わったもの">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 13h9l1-13M10 11v6M14 11v6"/></svg>
+      <span class="tp-trash-n" id="tp-trash-n" hidden></span>
+    </button>
+    <button class="tp-fab" id="tp-add" aria-label="やることを追加">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+    </button>
   </section>
 
   <!-- スケジュール -->
@@ -645,10 +680,30 @@
   </form>
 </dialog>
 
-<dialog id="move-dialog">
-  <h3 id="move-title" style="font-size:1rem;margin-bottom:12px"></h3>
-  <div id="move-list"></div>
-  <div class="btns"><button class="btn" id="move-cancel">やめる</button></div>
+<dialog id="task-dialog" class="sheet">
+  <form id="task-form" method="dialog">
+    <h3 id="task-dlg-title">やることを追加</h3>
+    <textarea name="title" id="task-title" rows="2" placeholder="やることを入力" required></textarea>
+    <div class="row"><span class="sheet-label">分類</span><div class="seg" id="task-cats"></div></div>
+    <div class="row"><span class="sheet-label">色</span><div class="swatches" id="task-colors"></div></div>
+    <textarea name="memo" id="task-memo" rows="2" placeholder="メモ（任意）"></textarea>
+    <div class="btns">
+      <button type="button" class="btn danger" id="task-del">削除</button>
+      <span style="flex:1"></span>
+      <button type="button" class="btn" id="task-cancel">やめる</button>
+      <button type="submit" class="btn primary teal">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="done-dialog" class="sheet">
+  <h3 id="done-title">終わったもの</h3>
+  <ul class="tp-list tp-donelist" id="done-list"></ul>
+  <div class="btns">
+    <button class="btn danger" id="done-clear">全部消す</button>
+    <span style="flex:1"></span>
+    <button class="btn" id="done-close">閉じる</button>
+  </div>
 </dialog>
 
 <dialog id="ask-dialog">
@@ -902,81 +957,96 @@
   const dayLabel = p => !p.day ? '日付未定' : (+p.shift ? '翌月' : '') + (p.day === 'end' ? '末日' : `${p.day}日`);
   const daySort = p => !p.day ? 999 : (+p.shift ? 40 : 0) + (p.day === 'end' ? 31 : +p.day);
 
-  // ---------- やること（メモ） ----------
-  let cat = 'now', editingTask = null;
-  const taskForm = $('add-form');
-  function resetTaskForm() {
-    taskForm.reset(); taskForm.priority.value = '中';
-    taskForm.category.value = cat;
-    editingTask = null; formMode(taskForm, false, $('task-form-title'), 'やることを追加', 'やることを編集');
+  // ---------- ToDoリスト ----------
+  let cat = 'now', editingTask = null, taskCat = 'now', taskColor = '';
+  const ROW_COLORS = { '': 'なし', blue: 'var(--row-blue)', green: 'var(--row-green)', pink: 'var(--row-pink)', yellow: 'var(--row-yellow)' };
+  const CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+
+  function renderTaskPickers() {
+    $('task-cats').innerHTML = Object.entries(CATS).map(([k, l]) => `<button type="button" data-cat="${k}" class="${k === taskCat ? 'on' : ''}">${l}</button>`).join('');
+    $('task-colors').innerHTML = Object.entries(ROW_COLORS).map(([k, v]) =>
+      `<button type="button" data-color="${k}" class="${k === taskColor ? 'on' : ''}" style="--sw:${k ? v : 'var(--card)'}" aria-label="${k ? '色' : '色なし'}">${k ? '' : 'なし'}</button>`).join('');
   }
-  taskForm.addEventListener('submit', e => {
+  $('task-cats').addEventListener('click', e => { const b = e.target.closest('[data-cat]'); if (b) { taskCat = b.dataset.cat; renderTaskPickers(); } });
+  $('task-colors').addEventListener('click', e => { const b = e.target.closest('[data-color]'); if (b) { taskColor = b.dataset.color; renderTaskPickers(); } });
+  // t があれば編集、なければ追加
+  function openTask(t) {
+    editingTask = t?.id || null;
+    taskCat = t?.category || cat; taskColor = t?.color || '';
+    $('task-title').value = t?.title || ''; $('task-memo').value = t?.memo || '';
+    $('task-dlg-title').textContent = t ? 'やることを編集' : 'やることを追加';
+    $('task-del').hidden = !t;
+    renderTaskPickers();
+    $('task-dialog').showModal();
+    if (!t) setTimeout(() => $('task-title').focus(), 50);
+  }
+  $('task-form').addEventListener('submit', e => {
     e.preventDefault();
-    const f = taskForm;
-    const data = { title: f.title.value.trim(), category: f.category.value, priority: f.priority.value, memo: f.memo.value.trim() };
-    if (!data.title) return;
-    if (editingTask) Object.assign(tasks.find(t => t.id === editingTask), data);
-    else tasks.push({ id: uid(), done: false, created: Date.now(), ...data });
-    save('tasks'); resetTaskForm(); renderTodo();
+    const title = $('task-title').value.trim(); if (!title) return;
+    const data = { title, memo: $('task-memo').value.trim(), category: taskCat, color: taskColor };
+    const t = editingTask && tasks.find(x => x.id === editingTask);
+    if (t) {
+      if (t.category !== taskCat) toast(`「${CATS[taskCat]}」に移しました`);
+      Object.assign(t, data);
+    } else tasks.push({ id: uid(), done: false, created: Date.now(), priority: '中', ...data });
+    $('task-dialog').close(); save('tasks'); renderTodo();
   });
-  taskForm.querySelector('.cancel').onclick = resetTaskForm;
-  $('list').addEventListener('click', async e => {
-    const li = e.target.closest('.task'); if (!li) return;
-    const t = tasks.find(x => x.id === li.dataset.id);
-    if (e.target.matches('input[type=checkbox]')) { t.done = e.target.checked; save('tasks'); renderTodo(); }
-    if (e.target.dataset.act === 'del' && await ask(`「${t.title}」を削除しますか？`)) {
-      tasks = tasks.filter(x => x !== t); save('tasks'); renderTodo();
+  $('task-cancel').onclick = () => $('task-dialog').close();
+  $('task-del').onclick = async () => {
+    const t = tasks.find(x => x.id === editingTask); if (!t) return;
+    if (!await ask(`「${t.title}」を削除しますか？`)) return;
+    tasks = tasks.filter(x => x !== t); $('task-dialog').close(); save('tasks'); renderTodo();
+  };
+  $('tp-add').onclick = () => openTask(null);
+
+  $('list').addEventListener('click', e => {
+    const li = e.target.closest('.tp-row'); if (!li) return;
+    const t = tasks.find(x => x.id === li.dataset.id); if (!t) return;
+    if (e.target.closest('.tp-check')) {
+      // 丸を押したら終わり：少し見せてから消す（ゴミ箱から戻せる）
+      li.classList.add('checked');
+      t.done = true; t.doneAt = Date.now(); save('tasks');
+      setTimeout(renderTodo, 450);
+      return;
     }
-    if (e.target.dataset.act === 'move') {
-      const to = await pickCategory(t);
-      if (to && to !== t.category) { t.category = to; save('tasks'); renderTodo(); toast(`「${CATS[to]}」に移動しました`); }
-    }
-    if (e.target.dataset.act === 'edit') {
-      const f = taskForm;
-      f.title.value = t.title; f.category.value = t.category; f.priority.value = t.priority; f.memo.value = t.memo || '';
-      editingTask = t.id; formMode(f, true, $('task-form-title'), 'やることを追加', 'やることを編集');
-      f.scrollIntoView({ behavior: 'smooth', block: 'center' }); f.title.focus();
-    }
+    openTask(t);
   });
-  // どの分類に移すかを選ぶ
-  function pickCategory(t) {
-    return new Promise(res => {
-      const d = $('move-dialog');
-      $('move-title').textContent = `「${t.title}」をどこに移しますか？`;
-      $('move-list').innerHTML = Object.entries(CATS).map(([k, label]) =>
-        `<button class="btn" data-cat="${k}" ${k === t.category ? 'disabled' : ''}>${label}${k === t.category ? '（今ここ）' : ''}</button>`).join('');
-      $('move-list').onclick = e => { const b = e.target.closest('button[data-cat]'); if (b && !b.disabled) { d.close(); res(b.dataset.cat); } };
-      $('move-cancel').onclick = () => { d.close(); res(null); };
-      d.oncancel = () => res(null);
-      d.showModal();
-    });
+
+  // 終わったもの（ゴミ箱）
+  function renderDone() {
+    const done = tasks.filter(t => t.done && t.category === cat).sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
+    $('done-title').textContent = `終わったもの（${CATS[cat]}）`;
+    $('done-list').innerHTML = done.length ? done.map(t => `<li class="tp-row checked c-${t.color || ''}" data-id="${t.id}">
+        <span class="tp-check">${CHECK_SVG}</span><div class="tp-text">${esc(t.title)}</div>
+        <button class="btn small tp-back" data-back="${t.id}">戻す</button></li>`).join('')
+      : '<li class="tp-empty">終わったものはありません</li>';
+    $('done-clear').hidden = !done.length;
   }
-  $('sort').addEventListener('change', renderTodo);
-  $('show-done').addEventListener('change', renderTodo);
+  $('tp-trash').onclick = () => { renderDone(); $('done-dialog').showModal(); };
+  $('done-close').onclick = () => $('done-dialog').close();
+  $('done-list').addEventListener('click', e => {
+    const id = e.target.dataset.back; if (!id) return;
+    const t = tasks.find(x => x.id === id); if (!t) return;
+    t.done = false; delete t.doneAt; save('tasks'); renderDone(); renderTodo();
+  });
+  $('done-clear').onclick = async () => {
+    const n = tasks.filter(t => t.done && t.category === cat).length;
+    if (!await ask(`終わったもの ${n}件 を消します。元に戻せません。`, '消す')) return;
+    tasks = tasks.filter(t => !(t.done && t.category === cat)); save('tasks'); renderDone(); renderTodo();
+  };
 
   function renderTodo() {
     const open = tasks.filter(t => !t.done);
-    $('tabs').innerHTML = Object.entries(CATS).map(([k, label]) => {
-      const n = open.filter(t => t.category === k).length;
-      return `<button data-cat="${k}" class="${cat === k ? 'active' : ''}">${label}<span class="count">${n}</span></button>`;
-    }).join('');
-    $('tabs').querySelectorAll('button').forEach(b => b.onclick = () => {
-      cat = b.dataset.cat;
-      if (!editingTask) taskForm.category.value = cat;
-      renderTodo();
-    });
-    const showDone = $('show-done').checked, sort = $('sort').value;
-    const list = tasks.filter(t => t.category === cat && (showDone || !t.done));
-    list.sort((a, b) => (a.done - b.done) || (sort === 'priority' ? PRI[a.priority] - PRI[b.priority] : 0) || a.created - b.created);
-    $('list').innerHTML = list.length ? list.map(t => `<li class="task ${t.category} ${t.done ? 'done' : ''}" data-id="${t.id}">
-        <input type="checkbox" ${t.done ? 'checked' : ''} aria-label="終わった">
-        <div>
-          <div class="t-title">${esc(t.title)}</div>
-          <div class="t-meta"><span class="badge pri-${t.priority}">${t.priority}</span><span>${CATS[t.category]}</span></div>
-          ${t.memo ? `<div class="t-memo">${esc(t.memo)}</div>` : ''}
-        </div>
-        <div class="t-actions"><button data-act="move">移動</button><button data-act="edit">編集</button><button data-act="del">削除</button></div>
-      </li>`).join('') : '<li class="empty">やることはありません</li>';
+    $('tabs').innerHTML = Object.entries(CATS).map(([k, label]) =>
+      `<button role="tab" data-cat="${k}" class="${cat === k ? 'active' : ''}" aria-selected="${cat === k}">${label}<span class="n">${open.filter(t => t.category === k).length}</span></button>`).join('');
+    $('tabs').querySelectorAll('button').forEach(b => b.onclick = () => { cat = b.dataset.cat; renderTodo(); });
+    const list = open.filter(t => t.category === cat).sort((a, b) => a.created - b.created);
+    $('list').innerHTML = list.length ? list.map(t => `<li class="tp-row c-${t.color || ''}" data-id="${t.id}">
+        <button class="tp-check" aria-label="終わった">${CHECK_SVG}</button>
+        <div class="tp-text">${esc(t.title)}${t.memo ? `<div class="tp-memo">${esc(t.memo)}</div>` : ''}</div>
+      </li>`).join('') : '<li class="tp-empty">やることはありません。右下の ＋ で追加できます。</li>';
+    const doneN = tasks.filter(t => t.done && t.category === cat).length;
+    $('tp-trash-n').hidden = !doneN; $('tp-trash-n').textContent = doneN;
   }
 
   // ---------- スケジュール ----------
