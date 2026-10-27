@@ -235,6 +235,8 @@ async function handleApi(req, res, url) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   try {
+    // 起こしておく用（cron-job.org などが数分ごとに呼ぶ）：軽く「ok」だけ返す。データには触らない
+    if (url.pathname === '/healthz') return send(res, 200, req.method === 'HEAD' ? '' : 'ok', { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
     if (url.pathname.startsWith('/api/')) return await handleApi(req, res, url);
     if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, 'method not allowed');
     if (url.pathname === '/icon.svg') return send(res, 200, ICON, { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'public, max-age=86400' });
