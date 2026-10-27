@@ -66,17 +66,6 @@
  "book": {
   "admin": {
    "open": {
-    "swing|8084.T": {
-     "kind": "swing",
-     "mode": "stock",
-     "symbol": "8084.T",
-     "name": "RYODEN",
-     "side": 1,
-     "signalTime": 1791849600,
-     "signalPrice": 2502,
-     "sentAt": "2026-10-13T07:58:42.655Z",
-     "how": "現物で買う：100株＋信用で買う：400株（合計500株）"
-    },
     "swing|5537.T": {
      "kind": "swing",
      "mode": "stock",
@@ -98,17 +87,6 @@
      "signalPrice": 4430,
      "sentAt": "2026-10-13T07:58:42.655Z",
      "how": "現物で買う：100株＋信用で買う：200株（合計300株）"
-    },
-    "swing|3968.T": {
-     "kind": "swing",
-     "mode": "stock",
-     "symbol": "3968.T",
-     "name": "セグエグループ",
-     "side": 1,
-     "signalTime": 1792540800,
-     "signalPrice": 804,
-     "sentAt": "2026-10-21T08:16:23.479Z",
-     "how": "現物で買う：400株＋信用で買う：400株（合計800株）"
     }
    },
    "log": [
@@ -186,6 +164,21 @@
      "exitPrice": 3072,
      "ret": 0.025112449799196693,
      "reasonOut": "持つ日数の上限（7日）になったので決済"
+    },
+    {
+     "kind": "swing",
+     "mode": "stock",
+     "symbol": "8084.T",
+     "name": "RYODEN",
+     "side": 1,
+     "notifiedAt": "2026-10-13T07:58:42.655Z",
+     "closeNotifiedAt": "2026-10-27T08:21:14.121Z",
+     "entryTime": 1791936000,
+     "entryPrice": 2502,
+     "exitTime": 1792627200,
+     "exitPrice": 2479,
+     "ret": -0.012192645883293381,
+     "reasonOut": "持つ日数の上限（5日）になったので決済"
     }
    ]
   }
