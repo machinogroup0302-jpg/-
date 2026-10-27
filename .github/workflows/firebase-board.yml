@@ -1,0 +1,80 @@
+# やることボードを Firebase（https://machino-yarukoto.web.app）に公開する
+#   machino-crm と同じ Firebase プロジェクトの中の「別のサイト」。machino-crm の画面や決まりには触らない
+#   todo/index.html を変えて push すると、自動でサイトも新しくなる
+# 事前準備（このリポジトリの Settings → Secrets and variables → Actions → New repository secret）:
+#   FIREBASE_SA … Firebase の「サービスアカウント」で作った秘密鍵（JSONファイルの中身をそのまま）
+#   （あれば）BOARD_URL・BOARD_PASSWORD … Render のやることボード。はじめての公開のとき、そこからデータを写す
+name: やることボードを Firebase に公開
+
+on:
+  push:
+    branches: [claude/jolly-goldberg-1a7dqb]
+    paths: ['todo/index.html', 'firebase-board/**', '.github/workflows/firebase-board.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: firebase-board
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      HAS_SA: ${{ secrets.FIREBASE_SA != '' }}
+      SITE: machino-yarukoto
+    steps:
+      - name: Firebase のカギがまだなら、何もしないで終わる
+        if: env.HAS_SA != 'true'
+        run: echo "::notice::FIREBASE_SA（Firebase の秘密鍵）がまだ入っていないので、公開はしませんでした"
+
+      - uses: actions/checkout@v4
+        if: env.HAS_SA == 'true'
+
+      - uses: actions/setup-node@v4
+        if: env.HAS_SA == 'true'
+        with:
+          node-version: 22
+
+      - name: Firebase のカギを用意する
+        if: env.HAS_SA == 'true'
+        env:
+          SA: ${{ secrets.FIREBASE_SA }}
+        run: |
+          printf '%s' "$SA" > "$RUNNER_TEMP/sa.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/sa.json" >> "$GITHUB_ENV"
+          echo "PROJECT=$(node -p "require('$RUNNER_TEMP/sa.json').project_id")" >> "$GITHUB_ENV"
+
+      - name: 部品を入れる
+        if: env.HAS_SA == 'true'
+        working-directory: firebase-board
+        run: npm install --no-save --no-audit --no-fund firebase-tools@13 firebase-admin@12 google-auth-library@9
+
+      - name: ページを組み立てる
+        if: env.HAS_SA == 'true'
+        run: node firebase-board/build.mjs
+
+      - name: はじめてのときの準備（公開先のサイトを作る）
+        if: env.HAS_SA == 'true'
+        working-directory: firebase-board
+        run: |
+          fb() { npx firebase "$@" --project "$PROJECT" --non-interactive; }
+          if ! fb hosting:sites:get "$SITE" > /dev/null 2>&1; then
+            fb hosting:sites:create "$SITE" || { echo "::error::公開先 $SITE を作れませんでした（名前がほかの人に使われている可能性があります）"; exit 1; }
+          fi
+
+      - name: ログインの準備・Render からデータを写す（はじめてのときだけ）
+        if: env.HAS_SA == 'true'
+        working-directory: firebase-board
+        env:
+          BOARD_URL: ${{ secrets.BOARD_URL }}
+          BOARD_PASSWORD: ${{ secrets.BOARD_PASSWORD }}
+        run: node setup.mjs
+
+      - name: 公開する
+        if: env.HAS_SA == 'true'
+        working-directory: firebase-board
+        run: |
+          npx firebase deploy --only "hosting:$SITE" --project "$PROJECT" --non-interactive
+          echo "### 公開しました: https://$SITE.web.app" >> "$GITHUB_STEP_SUMMARY"
+          echo "公開しました: https://$SITE.web.app"

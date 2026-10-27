@@ -204,6 +204,12 @@ async function handleApi(req, res, url) {
     const site = `${req.headers['x-forwarded-proto'] || 'http'}://${req.headers.host}/`;
     return json(res, 200, buildDigest(Object.fromEntries(DOCS.map((n) => [n, data[n]?.value])), ds, site));
   }
+  // Firebase 版へ引っ越すとき用（GitHub Actions がパスワードを x-board-key に入れて呼ぶ）
+  if (route === 'GET /api/export') {
+    if (!PASSWORD || !samePassword(req.headers['x-board-key'] || '')) return json(res, 401, { error: 'パスワードが違います' });
+    if (!restored) return json(res, 503, { error: 'データをまだ読み込めていません' });
+    return json(res, 200, { docs: Object.fromEntries(DOCS.map((n) => [n, data[n] || null])) });
+  }
   if (!loggedIn(req)) return json(res, 401, { error: 'ログインしてください' });
 
   // GitHub のコピーを読み込むまでは、読み書きさせない（空っぽの状態で端末の古いデータが上書きしないように）

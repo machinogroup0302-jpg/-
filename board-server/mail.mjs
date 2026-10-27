@@ -4,10 +4,13 @@
 //   BOARD_URL      … やることボードのURL（例 https://yarukoto-board.onrender.com）
 //   BOARD_PASSWORD … やることボードのパスワード（Render と同じもの）
 //   MAIL_USER・MAIL_PASS … 送るのに使う Gmail とアプリパスワード（売買サインのメールと同じもの）
+//   FIREBASE_SA … Firebase 版（machino-yarukoto.web.app）を使うときの秘密鍵。あれば Firebase から読む
 // TEST_MAIL=1 のときは、予定がなくても送る
-const { BOARD_URL, BOARD_PASSWORD, MAIL_USER, MAIL_PASS, TEST_MAIL } = process.env;
+import { buildDigest, aheadJst } from './digest.js';
+const { BOARD_URL, BOARD_PASSWORD, MAIL_USER, MAIL_PASS, TEST_MAIL, FIREBASE_SA } = process.env;
+const FIREBASE_SITE = 'https://machino-yarukoto.web.app/';
 
-if (!BOARD_URL || !BOARD_PASSWORD) {
+if (!FIREBASE_SA && (!BOARD_URL || !BOARD_PASSWORD)) {
   console.log('BOARD_URL・BOARD_PASSWORD が登録されていないため送れません');
   process.exit(0);
 }
@@ -32,7 +35,17 @@ async function getDigest() {
   throw lastErr;
 }
 
-const d = await getDigest();
+// Firebase 版：Firestore の yarukoto/◯◯ を読んで、ここでまとめる
+async function getDigestFromFirebase() {
+  const admin = (await import('firebase-admin')).default;
+  admin.initializeApp({ credential: admin.credential.cert(JSON.parse(FIREBASE_SA)) });
+  const snaps = await admin.firestore().collection('yarukoto').get();
+  const docs = {};
+  snaps.forEach((s) => { docs[s.id] = s.data().value; });
+  return buildDigest(docs, aheadJst(), FIREBASE_SITE);
+}
+
+const d = FIREBASE_SA ? await getDigestFromFirebase() : await getDigest();
 console.log(`${d.date}: 予定・引き落とし ${d.count}件 / 宛先 ${d.to ? 'あり' : 'なし'}`);
 if (!d.to) { console.log('サイトの「設定」でメールが登録されていないか、オフになっています'); process.exit(0); }
 if (!d.count && !TEST_MAIL) { console.log('2日後は何もないので送りません'); process.exit(0); }

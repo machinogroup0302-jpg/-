@@ -624,6 +624,7 @@
     <div class="card" id="sync-card" hidden>
       <h2>パソコン・スマホの同期 <button class="btn small" id="sync-now">今すぐ同期</button></h2>
       <p class="note" id="sync-info"></p>
+      <button class="btn small" id="logout-btn" hidden style="margin-top:10px">ログアウト</button>
     </div>
     <div class="card">
       <h2>バックアップ</h2>
@@ -670,14 +671,19 @@
 </dialog>
 
 <dialog id="login-dialog">
+  <div id="google-login" hidden>
+    <h3>やることボード</h3>
+    <p class="note" style="margin-bottom:14px">持ち主の Google アカウント（machino-crm と同じもの）でログインしてください。</p>
+    <button class="btn primary teal" id="google-btn" style="width:100%;padding:12px;font-size:1rem">Google でログイン</button>
+  </div>
   <form id="login-form">
     <h3>やることボード</h3>
     <p class="note" style="margin-bottom:10px">パスワードを入れてください。一度ログインすると、この端末では90日間そのまま使えます。</p>
     <input type="text" name="username" value="やることボード" autocomplete="username" hidden>
     <div class="row"><label for="login-pass">パスワード</label><input id="login-pass" type="password" autocomplete="current-password" required></div>
-    <p class="note" id="login-err" style="color:var(--now);min-height:1.2em"></p>
     <div class="btns"><button class="btn primary" type="submit">ログイン</button></div>
   </form>
+  <p class="note" id="login-err" style="color:var(--now);min-height:1.2em;margin-top:8px"></p>
 </dialog>
 
 <dialog id="task-dialog" class="sheet">
@@ -875,7 +881,70 @@
       $('login-pass').value = ''; $('login-dialog').close(); pullRemote(true);
     } catch { $('login-err').textContent = '通信できませんでした'; }
   });
-  if (sync.remote) {
+  // ---- Firebase（machino-yarukoto.web.app）で開いたとき：Google でログイン、データは Firestore ----
+  // 寝ないサーバー。ほかの端末で変えた分は、すぐ（数秒以内に）届く
+  const OWNER_EMAILS = ['machinogroup0302@gmail.com']; // firestore.rules の持ち主と同じ
+  if (window.BOARD_FIREBASE && window.firebase?.apps?.length) {
+    const auth = firebase.auth(), fdb = firebase.firestore();
+    const provider = new firebase.auth.GoogleAuthProvider();
+    const ref = name => fdb.doc('yarukoto/' + name);
+    sync.realtime = true;
+    sync.remote = {
+      // 見ていた版より新しい版があれば、上書きせずに最新を返す
+      save: (name, body) => fdb.runTransaction(async tx => {
+        const snap = await tx.get(ref(name));
+        const cur = snap.exists ? snap.data() : null;
+        if (cur && cur.ts > (sync.ts[name] || 0)) return { conflict: true, value: cur.value, ts: cur.ts };
+        const ts = Math.max(Date.now(), (cur?.ts || 0) + 1);
+        tx.set(ref(name), { value: body, ts });
+        return { ts };
+      }),
+    };
+    let unsubs = [];
+    const startFirestore = () => {
+      unsubs.forEach(u => u()); status('読み込み中…');
+      unsubs = Object.keys(DOCS).map(name => {
+        let first = true;
+        return ref(name).onSnapshot(snap => {
+          if (snap.metadata.hasPendingWrites) return;
+          if (!snap.exists) {
+            if (first && JSON.stringify(DOCS[name].get()) !== JSON.stringify(DOCS[name].empty)) sync.push(name);
+          } else if (!sync.writing[name]) {
+            const d = snap.data();
+            sync.ts[name] = d.ts || 0;
+            if (sync.apply(name, d.value)) renderAll();
+          }
+          first = false; sync.lastPull = Date.now(); sync.pullError = '';
+          if (!Object.values(sync.writing).some(Boolean)) status('');
+        }, err => { sync.pullError = err?.code === 'permission-denied' ? 'このアカウントでは開けません' : '読み込めませんでした。通信を確認してください'; status(sync.pullError); });
+      });
+    };
+    const signIn = async () => {
+      $('login-err').textContent = '';
+      try { await auth.signInWithPopup(provider); }
+      catch (err) {
+        if (['auth/popup-blocked', 'auth/operation-not-supported-in-this-environment', 'auth/cancelled-popup-request'].includes(err?.code)) auth.signInWithRedirect(provider);
+        else if (err?.code !== 'auth/popup-closed-by-user') $('login-err').textContent = 'ログインできませんでした。もう一度押してください';
+      }
+    };
+    $('login-form').hidden = true; $('google-login').hidden = false;
+    $('google-btn').onclick = signIn;
+    $('logout-btn').hidden = false;
+    $('logout-btn').onclick = async () => { if (await ask('ログアウトしますか？', 'ログアウト')) { unsubs.forEach(u => u()); unsubs = []; await auth.signOut(); } };
+    auth.getRedirectResult().catch(() => {});
+    auth.onAuthStateChanged(u => {
+      const d = $('login-dialog');
+      if (!u) { unsubs.forEach(x => x()); unsubs = []; if (!d.open) d.showModal(); status('ログインしてください'); return; }
+      if (!OWNER_EMAILS.includes((u.email || '').toLowerCase())) {
+        $('login-err').textContent = `${u.email} では開けません。持ち主の Google アカウントでログインしてください`;
+        auth.signOut(); return;
+      }
+      if (d.open) d.close();
+      startFirestore();
+    });
+  }
+
+  if (sync.remote && !sync.realtime) {
     status('読み込み中…');
     pullRemote(true);
     // ほかの端末で変えた分を取り込む（画面に戻ったとき・通信が戻ったとき・15秒ごと）
@@ -1710,14 +1779,23 @@
   function renderSettings() {
     if (document.activeElement !== $('mail-email')) $('mail-email').value = settings.email;
     $('mail-on').checked = settings.notify;
-    $('mail-note').textContent = !window.BOARD_SERVER
-      ? 'メールは、Render に置いた やることボード で開いているときだけ届きます。'
+    $('mail-note').textContent = !window.BOARD_SERVER && !window.BOARD_FIREBASE
+      ? 'メールは、自分のサイト（machino-yarukoto.web.app）で開いているときだけ届きます。'
       : settings.notify && settings.email ? `今は ${settings.email} に届く設定です。` : '今はメールを送らない設定です。';
   }
   async function renderSyncInfo() {
+    const t = ms => ms ? new Date(ms).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+    if (sync.realtime) {
+      $('sync-card').hidden = false; $('sync-now').hidden = true;
+      const u = firebase.auth().currentUser;
+      $('sync-info').innerHTML = [
+        sync.pullError ? `⚠ ${sync.pullError}` : `Firebase に保存しています。ほかの端末で変えた分は、数秒で自動で届きます。（最後に届いた時刻：${t(sync.lastPull)}）`,
+        u ? `ログイン中：${u.email}` : '',
+      ].filter(Boolean).map(esc).join('<br>');
+      return;
+    }
     if (!window.BOARD_SERVER) return;
     $('sync-card').hidden = false;
-    const t = ms => ms ? new Date(ms).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
     let st = null;
     try { st = await (await fetch('/api/status', { credentials: 'same-origin' })).json(); } catch {}
     const lines = [
