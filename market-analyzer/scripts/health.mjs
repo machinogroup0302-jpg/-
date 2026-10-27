@@ -133,12 +133,13 @@ async function smoke() {
 
 // 決算後の見通しが、本物のデータで出るか（よく知られた大きい会社を中心に、決算が近い銘柄で確かめる）
 // ※ 出すのは株価・業績などの公開情報だけ（持っている株や金額は出さない）
-async function earningsCheck(H, { verbose = false } = {}) {
+async function earningsCheck(H, { verbose = false, codes = null } = {}) {
   const problems = [];
   const today = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
   const to = new Date(Date.now() + 9 * 3600e3 + 45 * 86400e3).toISOString().slice(0, 10);
   const big = ['7203', '6758', '9984', '8306', '6861', '8035', '9432', '6501', '7974', '4063', '6098', '8058', '6857', '6146', '7011'];
-  const r = await get(`/api/stocks/earnings?from=${today}&to=${to}&codes=${big.join(',')}`, H);
+  // 銘柄を指定したとき（例：earnings:4062）は、その銘柄の次の決算を見る
+  const r = await get(codes ? `/api/stocks/earnings?from=${today}&codes=${codes.join(',')}` : `/api/stocks/earnings?from=${today}&to=${to}&codes=${big.join(',')}`, H);
   let items = r.body?.items || [];
   if (!items.length) { const any = await get(`/api/stocks/earnings?from=${today}&to=${to}`, H); items = (any.body?.items || []).filter((x) => /プライム/.test(x.market || '')); }
   if (!items.length) { problems.push('決算の予定が読めません'); return problems; }
@@ -186,7 +187,8 @@ async function main() {
     }
     return;
   }
-  if (MODE === 'earnings') {
+  if (MODE === 'earnings' || MODE.startsWith('earnings:')) {
+    const codes = MODE.includes(':') ? MODE.split(':')[1].split(',').filter((c) => /^[0-9][0-9A-Z]{3}$/.test(c)) : null;
     let st = null;
     const t0 = Date.now();
     for (let i = 0; i < 6 && !st; i++) { try { const r = await get('/api/status'); if (r.status === 200) st = r.body; } catch { await sleep(15000); } }
@@ -196,7 +198,7 @@ async function main() {
     console.log(`サイトの版：${st?.version}`);
     const login = await get('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: '', password: KEY }) });
     const cookie = (login.headers.getSetCookie?.() || []).map((c) => c.split(';')[0].trim()).join('; ');
-    const problems = await earningsCheck({ headers: { cookie } }, { verbose: true });
+    const problems = await earningsCheck({ headers: { cookie } }, { verbose: true, codes });
     console.log(`見つかった問題：${problems.length}件`);
     problems.forEach((p) => console.log(`・${p}`));
     return;
