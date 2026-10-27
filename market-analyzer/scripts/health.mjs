@@ -64,6 +64,7 @@ async function smoke() {
   const cookie = (login.headers.getSetCookie?.() || []).map((c) => c.split(';')[0].trim()).join('; ');
   if (login.status !== 200 || !cookie) { problems.push(`ログインできません（${login.status}）`); return problems; }
   const H = { headers: { cookie } };
+  try { problems.push(...await earningsCheck(H)); } catch (e) { problems.push(`決算後の見通しを確かめられません（${e.message}）`); }
   // 3) データの読み込み
   const checks = [
     ['チャート（ドル円）', '/api/chart?symbol=USDJPY&tf=1d', (b) => b?.candles?.length > 100],
@@ -130,8 +131,45 @@ async function smoke() {
   return problems;
 }
 
+// 決算後の見通しが、本物のデータで出るか（よく知られた大きい会社を中心に、決算が近い銘柄で確かめる）
+// ※ 出すのは株価・業績などの公開情報だけ（持っている株や金額は出さない）
+async function earningsCheck(H, { verbose = false } = {}) {
+  const problems = [];
+  const today = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
+  const to = new Date(Date.now() + 9 * 3600e3 + 45 * 86400e3).toISOString().slice(0, 10);
+  const big = ['7203', '6758', '9984', '8306', '6861', '8035', '9432', '6501', '7974', '4063', '6098', '8058', '6857', '6146', '7011'];
+  const r = await get(`/api/stocks/earnings?from=${today}&to=${to}&codes=${big.join(',')}`, H);
+  let items = r.body?.items || [];
+  if (!items.length) { const any = await get(`/api/stocks/earnings?from=${today}&to=${to}`, H); items = (any.body?.items || []).filter((x) => /プライム/.test(x.market || '')); }
+  if (!items.length) { problems.push('決算の予定が読めません'); return problems; }
+  let ok = 0;
+  for (const x of items.slice(0, verbose ? 6 : 2)) {
+    const o = await get(`/api/stocks/earnings-outlook?symbol=${x.code}.T&name=${encodeURIComponent(x.name)}&date=${x.date}`, H);
+    if (o.status !== 200 || !o.body?.verdict) { problems.push(`決算後の見通し（${x.name}）：うまく出せません（${o.status}${o.body?.error ? `・${o.body.error}` : ''}）`); continue; }
+    ok++;
+    const b = o.body;
+    if (verbose) {
+      console.log(`■ ${x.name}（${x.code}）決算 ${x.date} → ${b.verdict === 'up' ? '上がりやすい' : b.verdict === 'down' ? '下がりやすい' : '五分五分'}（点数 ${b.score}・過去の決算 ${b.reactions.length}回${b.swing != null ? `・ふだん±${(b.swing * 100).toFixed(1)}%` : ''}）`);
+      for (const it of b.items) console.log(`   ${it.pts > 0 ? '＋' : it.pts < 0 ? '－' : '・'} ${it.text}`);
+    }
+  }
+  console.log(`決算後の見通し：${ok}銘柄で確認`);
+  return problems;
+}
+
 async function main() {
   if (!KEY) { console.log('SITE_PASSWORD が登録されていないので見張れません'); return; }
+  if (MODE === 'earnings') {
+    let st = null;
+    for (let i = 0; i < 6 && !st; i++) { try { const r = await get('/api/status'); if (r.status === 200) st = r.body; } catch { await sleep(15000); } }
+    console.log(`サイトの版：${st?.version}`);
+    const login = await get('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: '', password: KEY }) });
+    const cookie = (login.headers.getSetCookie?.() || []).map((c) => c.split(';')[0].trim()).join('; ');
+    const problems = await earningsCheck({ headers: { cookie } }, { verbose: true });
+    console.log(`見つかった問題：${problems.length}件`);
+    problems.forEach((p) => console.log(`・${p}`));
+    return;
+  }
   if (MODE === 'smoke') {
     const problems = await smoke();
     console.log(`見つかった問題：${problems.length}件`);
