@@ -161,7 +161,11 @@ async function main() {
   if (!KEY) { console.log('SITE_PASSWORD が登録されていないので見張れません'); return; }
   if (MODE === 'earnings') {
     let st = null;
+    const t0 = Date.now();
     for (let i = 0; i < 6 && !st; i++) { try { const r = await get('/api/status'); if (r.status === 200) st = r.body; } catch { await sleep(15000); } }
+    const sec = (Date.now() - t0) / 1000;
+    // 寝ていたサイトは起きるまで30秒〜1分かかる。すぐ返ってくれば、起きていた（5分ごとに起こす仕組みが効いている）
+    console.log(`サイトの応答：${sec.toFixed(1)}秒（${sec < 8 ? '起きていました' : '寝ていたので起こしました'}）`);
     console.log(`サイトの版：${st?.version}`);
     const login = await get('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: '', password: KEY }) });
     const cookie = (login.headers.getSetCookie?.() || []).map((c) => c.split(';')[0].trim()).join('; ');
