@@ -7,7 +7,16 @@ import { fileURLToPath } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const FB = '10.14.1';
 const body = await fs.readFile(path.join(here, '..', 'todo', 'index.html'), 'utf8');
-const icon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#0d1b2a"/><rect x="14" y="16" width="36" height="34" rx="5" fill="#fff"/><rect x="14" y="16" width="36" height="9" rx="4" fill="#4bb5a6"/><path d="M22 37l5 5 11-12" stroke="#0d1b2a" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const ICONS = ['icon.svg', 'icon-180.png', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png'];
+const manifest = {
+  name: 'やることボード', short_name: 'やること', start_url: '/', display: 'standalone',
+  background_color: '#0d1b2a', theme_color: '#3fae9f',
+  icons: [
+    { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+    { src: '/icon-512.png', sizes: '512x512', type: 'image/png' },
+    { src: '/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+  ],
+};
 const html = `<!doctype html>
 <html lang="ja">
 <head>
@@ -19,7 +28,9 @@ const html = `<!doctype html>
 <meta name="apple-mobile-web-app-title" content="やることボード">
 <meta name="robots" content="noindex, nofollow">
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="/icon.svg">
+<link rel="icon" href="/icon-192.png" type="image/png" sizes="192x192">
+<link rel="apple-touch-icon" href="/icon-180.png">
+<link rel="manifest" href="/manifest.webmanifest">
 <script src="/__/firebase/${FB}/firebase-app-compat.js"></script>
 <script src="/__/firebase/${FB}/firebase-auth-compat.js"></script>
 <script src="/__/firebase/${FB}/firebase-firestore-compat.js"></script>
@@ -34,5 +45,7 @@ ${body}
 `;
 await fs.mkdir(path.join(here, 'dist'), { recursive: true });
 await fs.writeFile(path.join(here, 'dist', 'index.html'), html);
-await fs.writeFile(path.join(here, 'dist', 'icon.svg'), icon);
+// ホーム画面のアイコン（icons/ の中身をそのまま置く）
+for (const f of ICONS) await fs.copyFile(path.join(here, 'icons', f), path.join(here, 'dist', f));
+await fs.writeFile(path.join(here, 'dist', 'manifest.webmanifest'), JSON.stringify(manifest, null, 2));
 console.log('dist/index.html を作りました');
