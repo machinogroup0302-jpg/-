@@ -73,7 +73,9 @@ export function judgeOutlook({ reactions = [], fund = null, crowd = null, runup 
     const profit = yoy(L.operatingIncomeYoy) ?? yoy(L.ordinaryIncomeYoy) ?? yoy(L.netIncomeYoy);
     const pname = yoy(L.operatingIncomeYoy) != null ? '営業利益' : yoy(L.ordinaryIncomeYoy) != null ? '経常利益' : '純利益';
     const term = L.endDate ? `${String(L.endDate).slice(0, 4)}年${Number(String(L.endDate).slice(5, 7))}月期` : '前の期';
-    if (profit != null) add('利益の伸び', profit > 10 ? 1 : profit < 0 ? -1 : 0, `${term}の${pname}：前年比 ${profit >= 0 ? '+' : ''}${profit.toFixed(1)}%${profit > 10 ? '（大きく伸びた）' : profit < 0 ? '（減った）' : ''}`);
+    // 通期の数字は少し前のもの。直近の決算のまとめがあるときは、そちらを重く見る
+    const w = perf?.tanshin ? 0.5 : 1;
+    if (profit != null) add('利益の伸び', (profit > 10 ? 1 : profit < 0 ? -1 : 0) * w, `${term}の${pname}：前年比 ${profit >= 0 ? '+' : ''}${profit.toFixed(1)}%${profit > 10 ? '（大きく伸びた）' : profit < 0 ? '（減った）' : ''}`);
     const sales = yoy(L.netSalesYoy);
     if (!rg && sales != null) add('売上の伸び', sales > 5 ? 0.5 : sales < 0 ? -0.5 : 0, `${term}の売上：前年比 ${sales >= 0 ? '+' : ''}${sales.toFixed(1)}%`);
   }
