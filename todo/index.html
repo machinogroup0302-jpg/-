@@ -1028,7 +1028,7 @@
     const data = { title: f.title.value.trim(), category: f.category.value, priority: f.priority.value, memo: f.memo.value.trim() };
     if (!data.title) return;
     if (editingTask) Object.assign(tasks.find(t => t.id === editingTask), data);
-    else tasks.push({ id: uid(), done: false, created: Date.now(), order: Math.max(Date.now(), ...tasks.map(t => orderOf(t) + 1)), ...data });
+    else tasks.push({ id: uid(), done: false, created: Date.now(), order: Math.min(0, ...tasks.map(t => orderOf(t) - 1)), ...data });
     save('tasks'); resetTaskForm(); renderTodo();
   });
   taskForm.querySelector('.cancel').onclick = resetTaskForm;
