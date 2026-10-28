@@ -54,6 +54,19 @@ try {
   console.log(`::warning::ログインの住所を確かめられませんでした（${e.message}）`);
 }
 
+// 2b. メールのリンクでのログイン（パスワードなし）を使えるようにする
+try {
+  const client = await new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/cloud-platform'] }).getClient();
+  const url = `https://identitytoolkit.googleapis.com/admin/v2/projects/${PROJECT}/config`;
+  const { data } = await client.request({ url, headers: { 'x-goog-user-project': PROJECT } });
+  if (!data.signIn?.email?.enabled || data.signIn?.email?.passwordRequired !== false) {
+    await client.request({ url: `${url}?updateMask=signIn.email.enabled,signIn.email.passwordRequired`, method: 'PATCH', headers: { 'x-goog-user-project': PROJECT }, data: { signIn: { email: { enabled: true, passwordRequired: false } } } });
+    console.log('メールのリンクでのログインをオンにしました');
+  } else console.log('メールのリンクでのログインはオンです');
+} catch (e) {
+  console.log(`::warning::メールのリンクでのログインをオンにできませんでした（${e.message}）`);
+}
+
 // 3. Render から写す（Firebase にまだない種類だけ。あるものは上書きしない）
 const db = admin.firestore();
 const existing = await db.collection('yarukoto').get();
