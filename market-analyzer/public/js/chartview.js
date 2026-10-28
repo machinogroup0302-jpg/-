@@ -14,7 +14,7 @@ const LC = window.LightweightCharts;
 export const TF_LABELS = { '5m': '5分足', '15m': '15分足', '1h': '1時間足', '4h': '4時間足', '1d': '日足', '1wk': '週足' };
 const TF_SPAN = { '5m': '約1時間40分', '15m': '約5時間', '1h': '約1日', '4h': '約3〜4日', '1d': '約1か月', '1wk': '約5か月' };
 const LAYERS = [
-  ['ma', '平均線'], ['bb', 'いつもの範囲'], ['ichi', '雲（一目）'], ['levels', '壁と支え'], ['trend', '流れの線'], ['pivot', '今日の目安'], ['forecast', '予想の幅'], ['vol', '売買の量', 'equity'],
+  ['ma', '平均線'], ['bb', 'いつもの範囲'], ['ichi', '雲（一目）'], ['levels', '壁と支え'], ['trend', '流れの線'], ['pivot', '今日の目安'], ['forecast', '動く幅の目安'], ['vol', '売買の量', 'equity'],
 ];
 const SUBS = [['rsi', '買われすぎ度（RSI）'], ['macd', '勢い（MACD）'], ['none', 'なし']];
 
@@ -180,12 +180,12 @@ function render() {
     const fut = futureTimes(candles, 20, tf);
     const start = { time: last.time, value: last.close };
     const band = (key) => [start, ...fut.map((time, i) => ({ time, value: fc.bands[i][key] }))];
+    // 「真ん中の線」は今の値段を横に伸ばしただけになり、予想しているように見えてしまうので描かない。ふだんの揺れ幅だけを出す
     addLine(main, overlay, band('p95'), '#a0aec088', { lineStyle: LC.LineStyle.Dotted });
     addLine(main, overlay, band('p75'), '#f2c94caa', { lineStyle: LC.LineStyle.Dashed });
-    addLine(main, overlay, band('p50'), '#f2c94c', { lineWidth: 2, lineStyle: LC.LineStyle.Dashed });
     addLine(main, overlay, band('p25'), '#f2c94caa', { lineStyle: LC.LineStyle.Dashed });
     addLine(main, overlay, band('p05'), '#a0aec088', { lineStyle: LC.LineStyle.Dotted });
-    legend.push(['#f2c94c', '予想の中心'], ['#a0aec0', '予想の幅']);
+    legend.push(['#f2c94c', '半分くらいの確率で入る幅'], ['#a0aec0', 'ほぼ（90%）入る幅']);
   }
 
   // ストップ高・ストップ安の値段（株のみ）
@@ -333,15 +333,13 @@ function renderLevels(levels, tls, pv, price, digits) {
 function renderForecast(fc, digits) {
   if (!fc) { $('forecast-box').innerHTML = '<p class="empty">データが足りません</p>'; return; }
   const end = fc.bands[fc.bands.length - 1];
-  const upPct = Math.round(fc.upProb * 100);
   $('forecast-box').innerHTML = `
     <div class="grid2">
-      <div class="stat"><div class="label">${TF_SPAN[state.tf]}後に今より上がっている確率</div><div class="value ${upPct >= 50 ? 'plus' : 'minus'}">${upPct}%</div></div>
-      <div class="stat"><div class="label">予想の中心（${TF_SPAN[state.tf]}後）</div><div class="value">${fmtPrice(end.p50, digits)}</div></div>
-      <div class="stat"><div class="label">半分くらいの確率で入る範囲</div><div class="value small num">${fmtPrice(end.p25, digits)} 〜 ${fmtPrice(end.p75, digits)}</div></div>
-      <div class="stat"><div class="label">ほぼ（90%）この中に入る範囲</div><div class="value small num">${fmtPrice(end.p05, digits)} 〜 ${fmtPrice(end.p95, digits)}</div></div>
+      <div class="stat"><div class="label">${TF_SPAN[state.tf]}後に、半分くらいの確率で入る範囲</div><div class="value small num">${fmtPrice(end.p25, digits)} 〜 ${fmtPrice(end.p75, digits)}</div></div>
+      <div class="stat"><div class="label">${TF_SPAN[state.tf]}後に、ほぼ（90%）入る範囲</div><div class="value small num">${fmtPrice(end.p05, digits)} 〜 ${fmtPrice(end.p95, digits)}</div></div>
     </div>
-    <p class="small muted" style="margin:8px 0 0">過去の値動きのくせを使って、これからの動きを2,000通り計算した結果です。ニュースなどの急な動きは入っていません。</p>`;
+    <p class="small" style="margin:8px 0 0">これは<b>「上がる・下がる」の予想ではありません</b>。この銘柄のふだんの揺れ幅から、「これくらいの範囲で動くことが多い」という幅を出したものです。損切りや利益確定の値段を決めるときの目安にしてください。</p>
+    <p class="small muted" style="margin:4px 0 0">上がるか下がるかは、この計算では当てられません（五分五分になります）。向きの判断は「テクニカル分析」や「あなた専用」のサインを見てください。ニュースなどの急な動きは入っていません。</p>`;
 }
 
 let keepRange = null;

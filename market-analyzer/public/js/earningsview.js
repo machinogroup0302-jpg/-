@@ -62,7 +62,7 @@ export function renderEarnings(items, today, name) {
 
 // 決算後の見通し：上がりやすい・下がりやすい・五分五分と、その理由
 export function outlookHtml(o) {
-  const V = { up: ['📈 決算のあと、上がりやすい', 'ok'], down: ['📉 決算のあと、下がりやすい', 'danger'], even: ['⚖️ 決算のあとは、どちらとも言えない（五分五分）', 'warn'] };
+  const V = { up: ['📈 上がる材料の方が多い', 'ok'], down: ['📉 下がる材料の方が多い', 'danger'], even: ['⚖️ 材料はまちまち（どちらとも言えない）', 'warn'] };
   const [label, cls] = V[o.verdict] || V.even;
   const mark = (p) => (p > 0 ? '<span class="plus">＋</span>' : p < 0 ? '<span class="minus">－</span>' : '<span class="muted">・</span>');
   return `<div class="stat" style="margin-top:10px">
@@ -73,7 +73,7 @@ export function outlookHtml(o) {
     ${o.reactions?.length ? `<details class="more-box"><summary>過去の決算の翌日の動き（${o.reactions.length}回）</summary><div class="tbl-wrap"><table class="tbl"><thead><tr><th>日付（推定）</th><th class="r">翌日</th><th class="r">2日間</th><th class="r">出来高</th></tr></thead><tbody>
       ${o.reactions.slice().reverse().map((r) => `<tr><td class="small">${esc(r.date.slice(0, 4))}/${Number(r.date.slice(5, 7))}/${Number(r.date.slice(8, 10))}</td><td class="r small ${r.ret >= 0 ? 'plus' : 'minus'}">${r.ret >= 0 ? '+' : ''}${(r.ret * 100).toFixed(1)}%</td><td class="r small ${r.ret2 >= 0 ? 'plus' : 'minus'}">${r.ret2 >= 0 ? '+' : ''}${(r.ret2 * 100).toFixed(1)}%</td><td class="r small">${r.volRatio.toFixed(1)}倍</td></tr>`).join('')}
       </tbody></table></div><p class="small muted" style="margin:4px 0 0">過去の発表日は、3か月ごとに出来高が急に増えた日から推定しています。</p></details>` : ''}
-    <p class="small muted" style="margin:6px 0 0">過去の決算の動き・業績（売上・利益の伸びなど）・ニュース・掲示板やSNSの声・発表前の値動きを点数にした目安です（＋が上がる材料、－が下がる材料）。決算の中身しだいで、逆に動くこともよくあります。持ち越すなら、損切りの値段を決めておきましょう。</p>
+    <p class="small muted" style="margin:6px 0 0">過去の決算の動き・業績・ニュース・掲示板やSNSの声・発表前の値動きを、上がる材料（＋）と下がる材料（－）として数えたものです。<b>確率ではありません</b>。決算は中身と「期待との差」で動くので、材料が多くても逆に動くことはよくあります。持ち越すなら、損切りの値段を決めておきましょう。</p>
   </div>`;
 }
 

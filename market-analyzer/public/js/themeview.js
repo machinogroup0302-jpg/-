@@ -31,7 +31,7 @@ export function themeOdds(candles) {
   const k = 15;
   const p = (hitUp + k * base) / (hit + k);
   return {
-    p, hits: hit, avgRet: hit ? sum / hit : 0,
+    p, base, hits: hit, avgRet: hit ? sum / hit : 0,
     r5: c[n - 1] / c[n - 6] - 1, r20: now.r20, vr: now.vr,
   };
 }
@@ -56,8 +56,9 @@ function stockLine(sym, name, o, dir = 1) {
   if (dir < 0) notes.push('持っていたら損切りの線を確認／空売りするなら信用で');
   if (o.vr > 1.3) notes.push(`出来高がふだんの${o.vr.toFixed(1)}倍（注目が集まっている）`);
   return `<li><div class="li-head"><span class="name"><a href="#" class="sym-link theme-sym" data-symbol="${esc(sym)}" data-name="${esc(name)}">${esc(name)}</a> <span class="small muted">${esc(sym.replace(/\.T$/, ''))}</span></span>
-    <span class="badge ${dir > 0 ? oddsBadge(p) : p >= 0.6 ? 'sell' : p >= 0.5 ? 'neutral' : 'buy'}">${dir > 0 ? '上がる' : '下がる'}確率 ${Math.round(p * 100)}%</span></div>
-    <div class="small muted">5日 ${pct(o.r5, 1)}・20日 ${pct(o.r20, 1)}・似た形${o.hits}回の10日後の平均 ${pct(o.avgRet, 1)}</div>
+    ${(() => { const b = dir > 0 ? o.base : 1 - o.base; const diff = p - b; return Math.abs(diff) < 0.05 || o.hits < 10 ? '<span class="badge neutral">ふだんと変わらない</span>' : `<span class="badge ${diff > 0 ? (dir > 0 ? 'buy' : 'sell') : 'neutral'}">${dir > 0 ? '上がりやすい' : '下がりやすい'}${diff > 0 ? '' : 'とは言えない'}</span>`; })()}</div>
+    <div class="small">似た形（${o.hits}回）のあと10日で${dir > 0 ? '上がった' : '下がった'}割合 <b>${Math.round(p * 100)}%</b>（この銘柄のふだんは ${Math.round((dir > 0 ? o.base : 1 - o.base) * 100)}%）</div>
+    <div class="small muted">5日 ${pct(o.r5, 1)}・20日 ${pct(o.r20, 1)}・似た形のあと10日の平均 ${pct(o.avgRet, 1)}</div>
     ${notes.length ? `<div class="small" style="color:var(--warn)">${esc(notes.join('／'))}</div>` : ''}</li>`;
 }
 
@@ -82,7 +83,8 @@ async function fillStocks(t, el) {
   const rows = list.map(([s, n]) => ({ s, n, o: oddsCache.get(s) })).sort((a, b) => pv(b.o) - pv(a.o));
   const ok = rows.filter((r) => r.o);
   const avgP = ok.length ? ok.reduce((a, r) => a + pv(r.o), 0) / ok.length : null;
-  el.innerHTML = `${avgP != null ? `<p class="small" style="margin:6px 0">このテーマの銘柄の平均：<b>10営業日後に${dir > 0 ? '上がって' : '下がって'}いる確率 ${Math.round(avgP * 100)}%</b></p>` : ''}
+  const avgB = ok.length ? ok.reduce((a, r) => a + (dir > 0 ? r.o.base : 1 - r.o.base), 0) / ok.length : null;
+  el.innerHTML = `${avgP != null ? `<p class="small" style="margin:6px 0">このテーマの銘柄の平均：今と似た形のあと10日で${dir > 0 ? '上がった' : '下がった'}割合 <b>${Math.round(avgP * 100)}%</b>（ふだんは ${Math.round(avgB * 100)}%${Math.abs(avgP - avgB) < 0.05 ? '。ふだんとほとんど変わらないので、このテーマの話題だけで動くとは言えません' : ''}）</p>` : ''}
     <ul class="list">${rows.map((r) => stockLine(r.s, r.n, r.o, dir)).join('')}</ul>`;
 }
 

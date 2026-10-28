@@ -3,7 +3,6 @@ import { api, $, esc, store, fmtPrice, digitsFor, signalClass } from './util.js'
 import { technicalSummary } from './indicators.js';
 import { pagedList } from './stockscreener.js';
 import { supportResistance } from './levels.js';
-import { monteCarlo } from './forecast.js';
 import { getProfile } from './favorites.js';
 import { sizeFor, orderText, wayOf, wayProfile, forMode } from './plan.js';
 
@@ -39,19 +38,19 @@ function sizeNote(r) {
 
 function scoreOf(candles) {
   const t = technicalSummary(candles);
-  const fc = monteCarlo(candles, { horizon: 10, paths: 800 });
   const price = candles[candles.length - 1].close;
   const lv = supportResistance(candles);
   const res = lv.filter((l) => l.kind === 'resistance').sort((a, b) => a.price - b.price)[0];
   const sup = lv.filter((l) => l.kind === 'support').sort((a, b) => b.price - a.price)[0];
   // 上値余地（次のレジスタンスまで）と下値余地（次のサポートまで）の比
   const room = res && sup ? (res.price - price) / Math.max(price - sup.price, price * 0.0005) : null;
-  const total = t.ratio * 70 + ((fc?.upProb ?? 0.5) - 0.5) * 60;
+  // 点数はテクニカルのサインだけで決める（値動きのばらつきから出す「上がる確率」は五分五分にしかならないので使わない）
+  const total = t.ratio * 100;
   // 損切りの目安：値動きの平均の幅（14日）の2倍
   let tr = 0;
   for (let i = Math.max(1, candles.length - 14); i < candles.length; i++) tr += Math.max(candles[i].high, candles[i - 1].close) - Math.min(candles[i].low, candles[i - 1].close);
   const atr = tr / Math.min(14, candles.length - 1);
-  return { tech: t, upProb: fc?.upProb ?? null, res, sup, room, total, price, atr };
+  return { tech: t, res, sup, room, total, price, atr };
 }
 
 function render() {
@@ -66,7 +65,7 @@ function render() {
     return `<li data-code="${esc(r.symbol)}" data-name="${esc(r.name)}" style="cursor:pointer">
       <div class="li-head"><span class="name">${esc(r.name)} <span class="small muted">${esc(r.symbol)}</span></span>
       <span class="badge ${signalClass(r.tech.label)}">${esc(r.tech.label)}</span></div>
-      <div class="small num">現在 ${fmtPrice(r.price, d)}　上昇確率 ${r.upProb != null ? Math.round(r.upProb * 100) + '%' : '—'}　点数 ${Math.round(r.total)}</div>
+      <div class="small num">現在 ${fmtPrice(r.price, d)}　サインの強さ ${Math.round(r.total)}点</div>
       <div class="small muted">${r.res ? `上の壁 ${fmtPrice(r.res.price, d)}` : ''}${r.sup ? `　下の支え ${fmtPrice(r.sup.price, d)}` : ''}${r.room != null ? `　上値余地/下値余地 ${r.room.toFixed(1)}倍` : ''}</div>
       <div class="small muted">${esc(reasons)}</div>${sizeNote(r)}</li>`;
   }, { empty: '条件に合う候補はありません' });
