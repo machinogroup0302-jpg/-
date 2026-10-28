@@ -7,9 +7,13 @@ import { fileURLToPath } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const FB = '10.14.1';
 const body = await fs.readFile(path.join(here, '..', 'todo', 'index.html'), 'utf8');
+// AUTH_SELF=1（setup.mjs が確かめた）なら、ログインもこのサイトの住所で行う
+// そうでないときは、ホーム画面のアイコンから開いても Safari で開くようにする
+//（iPhone の「アプリのような画面」では、別の住所を通す Google ログインが戻ってこないため）
+const SELF = !!process.env.AUTH_SELF;
 const ICONS = ['icon.svg', 'icon-180.png', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png'];
 const manifest = {
-  name: 'やることボード', short_name: 'やること', start_url: '/', display: 'standalone',
+  name: 'やることボード', short_name: 'やること', start_url: '/', display: SELF ? 'standalone' : 'browser',
   background_color: '#0d1b2a', theme_color: '#0d1b2a',
   icons: [
     { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
@@ -17,20 +21,17 @@ const manifest = {
     { src: '/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
   ],
 };
-// AUTH_SELF=1（setup.mjs が確かめた）なら、ログインもこのサイトの住所で行う（iPhone でログインが続くように）
-const init = process.env.AUTH_SELF
+const init = SELF
   ? `<script>(function(){var x=new XMLHttpRequest();x.open('GET','/__/firebase/init.json',false);x.send();var c=JSON.parse(x.responseText);if(/\\.web\\.app$/.test(location.hostname))c.authDomain=location.host;firebase.initializeApp(c);})();</script>`
   : '<script src="/__/firebase/init.js"></script>';
-console.log(process.env.AUTH_SELF ? 'ログイン: このサイトの住所' : 'ログイン: いつもの住所');
+console.log(SELF ? 'ログイン: このサイトの住所' : 'ログイン: いつもの住所');
 const html = `<!doctype html>
 <html lang="ja">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0d1b2a">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="やることボード">
+${SELF ? '<meta name="apple-mobile-web-app-capable" content="yes">\n<meta name="mobile-web-app-capable" content="yes">\n' : ''}<meta name="apple-mobile-web-app-title" content="やることボード">
 <meta name="robots" content="noindex, nofollow">
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
 <link rel="icon" href="/icon-192.png" type="image/png" sizes="192x192">
@@ -40,7 +41,7 @@ const html = `<!doctype html>
 <script src="/__/firebase/${FB}/firebase-auth-compat.js"></script>
 <script src="/__/firebase/${FB}/firebase-firestore-compat.js"></script>
 ${init}
-<script>window.BOARD_FIREBASE = true;</script>
+<script>window.BOARD_FIREBASE = true; window.BOARD_AUTH_SELF = ${SELF};</script>
 <style>:root{padding-top:env(safe-area-inset-top,0px)}</style>
 </head>
 <body>

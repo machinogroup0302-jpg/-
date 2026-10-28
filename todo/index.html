@@ -927,12 +927,17 @@
       $('login-err').textContent = '';
       try { await auth.signInWithPopup(provider); }
       catch (err) {
-        if (['auth/popup-blocked', 'auth/operation-not-supported-in-this-environment', 'auth/cancelled-popup-request'].includes(err?.code)) auth.signInWithRedirect(provider);
+        // ページを移ってログインする方法は、このサイトの住所でログインできるときだけ使う（それ以外の iPhone ではログイン画面に戻ってしまう）
+        if (window.BOARD_AUTH_SELF && ['auth/popup-blocked', 'auth/operation-not-supported-in-this-environment'].includes(err?.code)) auth.signInWithRedirect(provider);
+        else if (err?.code === 'auth/popup-blocked') $('login-err').textContent = 'ログインの窓が開けませんでした。もう一度「Google でログイン」を押してください';
+        else if (err?.code === 'auth/cancelled-popup-request') return;
         else if (err?.code !== 'auth/popup-closed-by-user') $('login-err').textContent = `ログインできませんでした。もう一度押してください（${err?.code || err?.message || '不明'}）`;
       }
     };
     $('login-form').hidden = true; $('google-login').hidden = false;
     $('google-btn').onclick = signIn;
+    // 前に足したホーム画面のアイコン（アプリのような画面）からだと、Google ログインが戻ってこない
+    if (navigator.standalone && !window.BOARD_AUTH_SELF) $('login-err').textContent = 'このアイコンからはログインできません。Safari で machino-yarukoto.web.app を開いて、ホーム画面に入れ直してください';
     $('logout-btn').hidden = false;
     $('logout-btn').onclick = async () => { if (await ask('ログアウトしますか？', 'ログアウト')) { unsubs.forEach(u => u()); unsubs = []; await auth.signOut(); } };
     auth.getRedirectResult().catch(err => { $('login-err').textContent = `ログインできませんでした（${err?.code || err?.message || '不明'}）`; });
