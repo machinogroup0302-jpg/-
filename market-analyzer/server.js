@@ -150,7 +150,7 @@ async function handleApi(req, res, url) {
   // 不具合の見張り（GitHub Actions だけが使う）：画面で起きたエラーの一覧・知らせ終わったものを消す
   if (route === 'GET /api/errors' || route === 'POST /api/errors/ack') {
     if (!SITE_PASSWORD || !samePassword(req.headers['x-site-key'] || '')) return json(res, 401, { error: 'パスワードが違います' });
-    if (req.method === 'GET') return json(res, 200, { items: await getErrors(), version: (process.env.RENDER_GIT_COMMIT || 'local').slice(0, 7) });
+    if (req.method === 'GET') return json(res, 200, { items: await getErrors({ all: url.searchParams.get('all') === '1' }), version: (process.env.RENDER_GIT_COMMIT || 'local').slice(0, 7) });
     await ackErrors(Number((await readBody(req)).upTo) || 0);
     return json(res, 200, { ok: true });
   }

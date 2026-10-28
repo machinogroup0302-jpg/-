@@ -223,16 +223,17 @@ export async function addError(e) {
   const key = `${e.where}|${e.message}`;
   const now = Date.now();
   const same = list.find((x) => `${x.where}|${x.message}` === key);
-  if (same) { same.count = (same.count || 1) + 1; same.last = now; same.version = e.version; }
+  if (same) { same.count = (same.count || 1) + 1; same.last = now; same.version = e.version; same.notified = false; }
   else list.push({ ...e, count: 1, first: now, last: now });
   data[ERRORS] = { value: list.sort((a, b) => b.last - a.last).slice(0, 100), ts: Math.max(now, (data[ERRORS]?.ts || 0) + 1) };
   saveLocal();
 }
-export async function getErrors() { await loadPrefs(); return data[ERRORS]?.value || []; }
-// 知らせ終わったものを消す（upTo より前に最後に起きたもの）
+// all=false：まだ知らせていないものだけ（メールで知らせる用）／all=true：知らせたものも含めて全部（直すときに見る用）
+export async function getErrors({ all = false } = {}) { await loadPrefs(); const list = data[ERRORS]?.value || []; return all ? list : list.filter((x) => !x.notified); }
+// 知らせ終わったものは消さずに「知らせた」印を付ける（あとで原因を調べられるように残す）
 export async function ackErrors(upTo) {
   await loadPrefs();
-  const list = (data[ERRORS]?.value || []).filter((x) => x.last > upTo);
+  const list = (data[ERRORS]?.value || []).map((x) => (x.last <= upTo ? { ...x, notified: true } : x));
   data[ERRORS] = { value: list, ts: Math.max(Date.now(), (data[ERRORS]?.ts || 0) + 1) };
   saveLocal();
 }

@@ -160,6 +160,14 @@ async function earningsCheck(H, { verbose = false, codes = null } = {}) {
 
 async function main() {
   if (!KEY) { console.log('SITE_PASSWORD が登録されていないので見張れません'); return; }
+  if (MODE === 'errorlog') {
+    // 前に知らせたエラーも含めて、どこで何が起きたかを出す（エラーの文と画面の名前だけ。持っている株や金額は入っていない）
+    const r = await get('/api/errors?all=1', { headers: { 'x-site-key': KEY } });
+    const fmt = (t) => new Date(t).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
+    for (const x of r.body?.items || []) console.log(`[${x.where}] ${String(x.message).slice(0, 160)}（${x.count}回・最後 ${fmt(x.last)}・版 ${x.version || '—'}・画面 ${x.page || '—'}）${x.stack ? `\n    ${String(x.stack).split('\n').slice(0, 3).join(' / ').slice(0, 300)}` : ''}`);
+    console.log(`記録されているエラー：${r.body?.items?.length ?? '読めません'}種類`);
+    return;
+  }
   if (MODE === 'probe') {
     // 業績の数字をどこから取れるか調べる（公開されているページだけ。結果はログに出す）
     const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36';
