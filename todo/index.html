@@ -674,7 +674,7 @@
 <dialog id="login-dialog">
   <div id="google-login" hidden>
     <h3>やることボード</h3>
-    <p class="note" style="margin-bottom:14px">mochizuki_wataru@machino-group.com の Google アカウントでログインしてください。一度ログインすれば、ログアウトするまでそのまま使えます。</p>
+    <p class="note" style="margin-bottom:14px">mochizuki_wataru@machino-group.com の Google アカウントでログインしてください。一度ログインすれば、最後に使った日から90日間はログインしたままです（使うたびに延びます）。</p>
     <button class="btn primary teal" id="google-btn" style="width:100%;padding:12px;font-size:1rem">Google でログイン</button>
   </div>
   <form id="login-form">
@@ -936,14 +936,24 @@
     $('logout-btn').hidden = false;
     $('logout-btn').onclick = async () => { if (await ask('ログアウトしますか？', 'ログアウト')) { unsubs.forEach(u => u()); unsubs = []; await auth.signOut(); } };
     auth.getRedirectResult().catch(() => {});
+    // ログインの期限：最後に使った日から90日。開くたび・画面に戻るたびに延びる
+    const KEEP_DAYS = 90, LAST_KEY = 'yarukoto-last-used';
+    const lastUsed = () => { try { return +localStorage.getItem(LAST_KEY) || 0; } catch { return 0; } };
+    const touch = () => { if (auth.currentUser) try { localStorage.setItem(LAST_KEY, String(Date.now())); } catch {} };
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) touch(); });
     auth.onAuthStateChanged(u => {
       const d = $('login-dialog');
-      if (!u) { unsubs.forEach(x => x()); unsubs = []; if (!d.open) d.showModal(); status('ログインしてください'); return; }
+      if (u && lastUsed() && Date.now() - lastUsed() > KEEP_DAYS * 864e5) {
+        $('login-err').textContent = `${KEEP_DAYS}日間使っていなかったので、もう一度ログインしてください`;
+        auth.signOut(); return;
+      }
+      if (!u) { try { localStorage.removeItem(LAST_KEY); } catch {} unsubs.forEach(x => x()); unsubs = []; if (!d.open) d.showModal(); status('ログインしてください'); return; }
       if (!OWNER_EMAILS.includes((u.email || '').toLowerCase())) {
         $('login-err').textContent = `${u.email} では開けません。mochizuki_wataru@machino-group.com でログインしてください`;
         auth.signOut(); return;
       }
       if (d.open) d.close();
+      touch();
       startFirestore();
     });
   }
