@@ -168,6 +168,9 @@
   .task.corp { border-left-color: var(--corp); }
   .task.personal { border-left-color: var(--personal); }
   .task.no-check { grid-template-columns: 1fr auto; }
+  .trash { margin-top: 14px; }
+  .trash summary { cursor: pointer; font-size: .85rem; color: var(--muted); }
+  .trash .task { opacity: .8; }
   .task.done .t-title { text-decoration: line-through; color: var(--muted); }
   .task input[type=checkbox] { width: 18px; height: 18px; margin-top: 3px; cursor: pointer; }
   .t-title { font-weight: 700; word-break: break-word; }
@@ -321,9 +324,13 @@
             <option value="created">追加した順</option>
           </select>
         </label>
-        <label><input type="checkbox" id="show-done"> 終わったものも表示</label>
       </div>
       <ul class="tasks" id="list"></ul>
+      <details class="trash" id="trash">
+        <summary>削除したもの（<span id="trash-n">0</span>件）</summary>
+        <p class="note" style="margin:6px 0">削除してから1か月たつと、ここからも自動で消えます。</p>
+        <ul class="tasks" id="trash-list"></ul>
+      </details>
     </div>
     <div class="card">
       <h2 id="task-form-title">やることを追加</h2>
@@ -1042,9 +1049,8 @@
   $('list').addEventListener('click', async e => {
     const li = e.target.closest('.task'); if (!li) return;
     const t = tasks.find(x => x.id === li.dataset.id);
-    if (e.target.matches('input[type=checkbox]')) { t.done = e.target.checked; save('tasks'); renderTodo(); }
-    if (e.target.dataset.act === 'del' && await ask(`「${t.title}」を削除しますか？`)) {
-      tasks = tasks.filter(x => x !== t); save('tasks'); renderTodo();
+    if (e.target.dataset.act === 'del') {
+      t.deletedAt = Date.now(); save('tasks'); renderTodo(); toast(`「${t.title}」を削除しました（下の「削除したもの」から戻せます）`);
     }
     if (e.target.dataset.act === 'move') {
       const to = await pickCategory(t);
@@ -1119,10 +1125,26 @@
     listEl.addEventListener('contextmenu', e => { if ($('sort').value === 'manual' && e.target.closest('li.task')) e.preventDefault(); });
     listEl.addEventListener('click', e => { if (justDragged) { e.stopPropagation(); e.preventDefault(); } }, true);
   }
-  $('show-done').addEventListener('change', renderTodo);
+  // 削除したもの：戻す・すぐ消す
+  $('trash-list').addEventListener('click', async e => {
+    const li = e.target.closest('li[data-id]'); if (!li) return;
+    const t = tasks.find(x => x.id === li.dataset.id); if (!t) return;
+    if (e.target.dataset.act === 'restore') { delete t.deletedAt; t.done = false; t.order = Math.min(0, ...tasks.map(x => orderOf(x) - 1)); cat = t.category; save('tasks'); renderTodo(); toast(`「${t.title}」を戻しました`); }
+    if (e.target.dataset.act === 'purge' && await ask(`「${t.title}」を完全に消しますか？（戻せなくなります）`, '消す')) { tasks = tasks.filter(x => x !== t); save('tasks'); renderTodo(); }
+  });
+  // 前の「終わった」は削除したものへ。削除して1か月たったものは消す
+  const TRASH_DAYS = 30;
+  function tidyTasks() {
+    let changed = false;
+    for (const t of tasks) if (t.done && !t.deletedAt) { t.deletedAt = t.doneAt || Date.now(); changed = true; }
+    const limit = Date.now() - TRASH_DAYS * 864e5, before = tasks.length;
+    tasks = tasks.filter(t => !(t.deletedAt && t.deletedAt < limit));
+    if (changed || tasks.length !== before) save('tasks');
+  }
 
   function renderTodo() {
-    const open = tasks.filter(t => !t.done);
+    tidyTasks();
+    const open = tasks.filter(t => !t.deletedAt);
     $('tabs').innerHTML = Object.entries(CATS).map(([k, label]) => {
       const n = open.filter(t => t.category === k).length;
       return `<button data-cat="${k}" class="${cat === k ? 'active' : ''}">${label}<span class="count">${n}</span></button>`;
@@ -1132,17 +1154,23 @@
       if (!editingTask) taskForm.category.value = cat;
       renderTodo();
     });
-    const showDone = $('show-done').checked, sort = $('sort').value;
-    const list = tasks.filter(t => t.category === cat && (showDone || !t.done));
-    list.sort((a, b) => (a.done - b.done) || (sort === 'priority' ? PRI[a.priority] - PRI[b.priority] : 0) || (sort === 'manual' ? orderOf(a) - orderOf(b) : 0) || a.created - b.created);
-    $('list').innerHTML = list.length ? list.map(t => `<li class="task ${t.category} ${{ '高': 'p-high', '中': 'p-mid' }[t.priority] || 'p-low'} ${t.done ? 'done' : ''}" data-id="${t.id}">
-        <input type="checkbox" ${t.done ? 'checked' : ''} aria-label="終わった">
+    const sort = $('sort').value;
+    const list = open.filter(t => t.category === cat);
+    list.sort((a, b) => (sort === 'priority' ? PRI[a.priority] - PRI[b.priority] : 0) || (sort === 'manual' ? orderOf(a) - orderOf(b) : 0) || a.created - b.created);
+    $('list').innerHTML = list.length ? list.map(t => `<li class="task no-check ${t.category} ${{ '高': 'p-high', '中': 'p-mid' }[t.priority] || 'p-low'}" data-id="${t.id}">
         <div>
           <div class="t-title">${esc(t.title)}</div>
           ${t.memo ? `<div class="t-memo">${esc(t.memo)}</div>` : ''}
         </div>
         <div class="t-actions"><button data-act="move">移動</button><button data-act="edit">編集</button><button data-act="del">削除</button></div>
       </li>`).join('') : '<li class="empty">やることはありません</li>';
+    const trash = tasks.filter(t => t.deletedAt).sort((a, b) => b.deletedAt - a.deletedAt);
+    $('trash-n').textContent = trash.length;
+    const md = ms => { const d = new Date(ms); return `${d.getMonth() + 1}/${d.getDate()}`; };
+    $('trash-list').innerHTML = trash.length ? trash.map(t => `<li class="task no-check p-low" data-id="${t.id}">
+        <div><div class="t-title" style="font-weight:500">${esc(t.title)}</div><div class="t-meta">${CATS[t.category] || ''}・${md(t.deletedAt)} に削除</div></div>
+        <div class="t-actions"><button data-act="restore">戻す</button><button data-act="purge">消す</button></div>
+      </li>`).join('') : '<li class="empty">ありません</li>';
   }
 
   // ---------- スケジュール ----------
