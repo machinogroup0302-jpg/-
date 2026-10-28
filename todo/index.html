@@ -330,7 +330,7 @@
           <option value="中" selected>優先度：中</option>
           <option value="低">優先度：低</option>
         </select>
-        <textarea name="memo" id="task-memo" class="full" placeholder="メモ（任意）"></textarea>
+        <input type="hidden" name="memo" id="task-memo">
         <div class="actions">
           <button type="submit">追加する</button>
           <button type="button" class="btn cancel hidden">やめる</button>
@@ -1081,7 +1081,6 @@
         <input type="checkbox" ${t.done ? 'checked' : ''} aria-label="終わった">
         <div>
           <div class="t-title">${esc(t.title)}</div>
-          <div class="t-meta"><span class="badge pri-${t.priority}">${t.priority}</span><span>${CATS[t.category]}</span></div>
           ${t.memo ? `<div class="t-memo">${esc(t.memo)}</div>` : ''}
         </div>
         <div class="t-actions"><button data-act="move">移動</button><button data-act="edit">編集</button><button data-act="del">削除</button></div>
