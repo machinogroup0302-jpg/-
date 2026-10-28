@@ -180,7 +180,8 @@
   .t-actions { display: flex; gap: 4px; }
   .t-actions button { border: 0; background: transparent; cursor: pointer; color: var(--muted); font-size: .8rem; padding: 2px 4px; }
   .t-actions button:hover { color: var(--text); }
-  .t-actions button[data-act=up], .t-actions button[data-act=down] { font-size: 1rem; padding: 2px 8px; color: var(--text); }
+  #list .task { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  #list .task.dragging { position: relative; z-index: 5; box-shadow: 0 8px 24px rgba(0,0,0,.25); transform: scale(1.02); opacity: .95; }
   .empty { color: var(--muted); font-size: .9rem; text-align: center; padding: 20px 0; }
 
   /* 固定費 */
@@ -308,7 +309,7 @@
       <div class="filters">
         <label>並び順
           <select id="sort">
-            <option value="manual">自分で並べる（↑↓）</option>
+            <option value="manual">自分で並べる（長押しで動かす）</option>
             <option value="priority">優先度順</option>
             <option value="created">追加した順</option>
           </select>
@@ -1034,7 +1035,6 @@
   $('list').addEventListener('click', async e => {
     const li = e.target.closest('.task'); if (!li) return;
     const t = tasks.find(x => x.id === li.dataset.id);
-    if (e.target.dataset.act === 'up' || e.target.dataset.act === 'down') return moveTask(t.id, e.target.dataset.act === 'up' ? -1 : 1);
     if (e.target.matches('input[type=checkbox]')) { t.done = e.target.checked; save('tasks'); renderTodo(); }
     if (e.target.dataset.act === 'del' && await ask(`「${t.title}」を削除しますか？`)) {
       tasks = tasks.filter(x => x !== t); save('tasks'); renderTodo();
@@ -1067,13 +1067,50 @@
   $('sort').addEventListener('change', () => { try { localStorage.setItem('yarukoto-sort', $('sort').value); } catch {} renderTodo(); });
   // 自分で並べる：表示している順に番号をふり直してから、となりと入れ替える
   const orderOf = t => t.order ?? t.created;
-  function moveTask(id, dir) {
-    const list = [...$('list').querySelectorAll('li[data-id]')].map(li => tasks.find(t => t.id === li.dataset.id)).filter(Boolean);
-    const i = list.findIndex(t => t.id === id), j = i + dir;
-    if (i < 0 || j < 0 || j >= list.length || list[i].done !== list[j].done) return;
-    list.forEach((t, k) => { t.order = k; });
-    [list[i].order, list[j].order] = [list[j].order, list[i].order];
-    save('tasks'); renderTodo();
+  // 長押し（0.4秒）でつかんで、上下に動かす。指を離したところで順番を保存
+  {
+    const listEl = $('list');
+    let timer = null, drag = null, start = null, justDragged = false;
+    const cancel = () => { clearTimeout(timer); timer = null; };
+    listEl.addEventListener('pointerdown', e => {
+      if ($('sort').value !== 'manual' || e.button > 0) return;
+      const li = e.target.closest('li.task'); if (!li || e.target.closest('button, input')) return;
+      start = { x: e.clientX, y: e.clientY };
+      timer = setTimeout(() => {
+        timer = null; drag = { li, dy: 0 }; li.classList.add('dragging');
+        navigator.vibrate?.(20);
+      }, 400);
+    });
+    const moveTo = y => {
+      for (const other of listEl.querySelectorAll('li.task')) {
+        if (other === drag.li) continue;
+        const r = other.getBoundingClientRect();
+        if (y > r.top && y < r.bottom) { listEl.insertBefore(drag.li, y > r.top + r.height / 2 ? other.nextSibling : other); break; }
+      }
+    };
+    listEl.addEventListener('pointermove', e => {
+      if (timer && Math.hypot(e.clientX - start.x, e.clientY - start.y) > 8) cancel();
+      if (drag && e.pointerType === 'mouse') { e.preventDefault(); moveTo(e.clientY); }
+    });
+    // スマホ：つかんでいる間は画面がスクロールしないようにして、指の位置まで動かす
+    document.addEventListener('touchmove', e => {
+      const p = e.touches[0];
+      if (timer && p && Math.hypot(p.clientX - start.x, p.clientY - start.y) > 8) cancel();
+      if (drag && p) { e.preventDefault(); moveTo(p.clientY); }
+    }, { passive: false });
+    const drop = () => {
+      cancel();
+      if (!drag) return;
+      drag.li.classList.remove('dragging'); drag = null; justDragged = true; setTimeout(() => { justDragged = false; }, 300);
+      [...listEl.querySelectorAll('li.task')].forEach((li, k) => { const t = tasks.find(x => x.id === li.dataset.id); if (t) t.order = k; });
+      save('tasks'); renderTodo();
+    };
+    listEl.addEventListener('pointerup', drop);
+    listEl.addEventListener('pointercancel', () => { if (!drag) cancel(); });
+    document.addEventListener('touchend', drop);
+    document.addEventListener('touchcancel', drop);
+    listEl.addEventListener('contextmenu', e => { if ($('sort').value === 'manual' && e.target.closest('li.task')) e.preventDefault(); });
+    listEl.addEventListener('click', e => { if (justDragged) { e.stopPropagation(); e.preventDefault(); } }, true);
   }
   $('show-done').addEventListener('change', renderTodo);
 
@@ -1097,7 +1134,7 @@
           <div class="t-title">${esc(t.title)}</div>
           ${t.memo ? `<div class="t-memo">${esc(t.memo)}</div>` : ''}
         </div>
-        <div class="t-actions">${sort === 'manual' ? '<button data-act="up" aria-label="上へ">↑</button><button data-act="down" aria-label="下へ">↓</button>' : ''}<button data-act="move">移動</button><button data-act="edit">編集</button><button data-act="del">削除</button></div>
+        <div class="t-actions"><button data-act="move">移動</button><button data-act="edit">編集</button><button data-act="del">削除</button></div>
       </li>`).join('') : '<li class="empty">やることはありません</li>';
   }
 
