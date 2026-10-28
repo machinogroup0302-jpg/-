@@ -1,0 +1,22 @@
+# 一度だけ：やることボードの ToDo に、前のアプリと同じ色をつける（firebase-board/recolor.mjs を変えたときだけ動く）
+name: やることボードの ToDo に色をつける
+on:
+  push:
+    branches: [claude/jolly-goldberg-1a7dqb]
+    paths: ['firebase-board/recolor.mjs']
+  workflow_dispatch:
+jobs:
+  recolor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - working-directory: firebase-board
+        run: npm install --no-save --no-audit --no-fund firebase-admin@12
+      - working-directory: firebase-board
+        env:
+          FIREBASE_SA: ${{ secrets.FIREBASE_SA }}
+        run: node recolor.mjs
