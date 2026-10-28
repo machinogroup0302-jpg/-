@@ -1,13 +1,13 @@
 // 公開の前の準備（GitHub Actions から動かす。何度動かしても大丈夫）
 //  1. 新しいサイトの住所で Google ログインができるように「ログインを許すドメイン」に足す
-//  2. メールアドレスとパスワードのログインをオンにして、使う人（OWNER_EMAIL）を登録する
+//  2. Google ログインをこのサイトの住所のままでできるか確かめる（できれば AUTH_SELF=1）
 //  3. Firebase にまだデータがなければ、Render のやることボードから中身を写す
 // 使うもの: GOOGLE_APPLICATION_CREDENTIALS（Firebase の秘密鍵）, PROJECT, SITE
 //           BOARD_URL・BOARD_PASSWORD（Render のやることボード。なければ 2 はしない）
 import admin from 'firebase-admin';
 import { GoogleAuth } from 'google-auth-library';
 
-const { PROJECT, SITE, BOARD_URL, BOARD_PASSWORD, OWNER_EMAIL } = process.env;
+const { PROJECT, SITE, BOARD_URL, BOARD_PASSWORD } = process.env;
 const DOCS = ['tasks', 'schedule', 'fixed', 'checks', 'settings'];
 
 // 1. ログインを許すドメイン
@@ -27,26 +27,30 @@ try {
 
 admin.initializeApp({ projectId: PROJECT });
 
-// 2. メールアドレスとパスワードのログイン
+// 2. Google ログインを、このサイトの住所のままでできるか確かめる
+//    （iPhone の Safari・ホーム画面のアプリは、別の住所を通すログインだと失敗したり、すぐ忘れたりする）
+//    Google Cloud の「OAuth クライアント」に https://SITE.web.app/__/auth/handler が入っていれば、このサイトの住所でログインする
 try {
   const client = await new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/cloud-platform'] }).getClient();
-  const url = `https://identitytoolkit.googleapis.com/admin/v2/projects/${PROJECT}/config`;
-  const { data } = await client.request({ url, headers: { 'x-goog-user-project': PROJECT } });
-  if (!data.signIn?.email?.enabled || !data.signIn?.email?.passwordRequired) {
-    await client.request({ url: `${url}?updateMask=signIn.email.enabled,signIn.email.passwordRequired`, method: 'PATCH', headers: { 'x-goog-user-project': PROJECT }, data: { signIn: { email: { enabled: true, passwordRequired: true } } } });
-    console.log('メールアドレスとパスワードのログインをオンにしました');
+  const { data } = await client.request({ url: `https://identitytoolkit.googleapis.com/admin/v2/projects/${PROJECT}/defaultSupportedIdpConfigs/google.com`, headers: { 'x-goog-user-project': PROJECT } });
+  const probe = async (redirect) => {
+    const u = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+    u.search = new URLSearchParams({ client_id: data.clientId, redirect_uri: redirect, response_type: 'code', scope: 'openid email' });
+    const res = await fetch(u, { redirect: 'manual' });
+    const loc = res.headers.get('location') || '';
+    return { status: res.status, ok: res.status >= 300 && res.status < 400 && !/error|authError/i.test(loc) };
+  };
+  const mine = await probe(`https://${SITE}.web.app/__/auth/handler`);
+  const bad = await probe('https://example.invalid/__/auth/handler');
+  console.log(`ログインの住所の確認: このサイト ${mine.status}${mine.ok ? ' OK' : ''} / でたらめな住所 ${bad.status}${bad.ok ? ' OK' : ''}`);
+  if (mine.ok && !bad.ok) {
+    console.log('このサイトの住所でログインします');
+    if (process.env.GITHUB_ENV) await import('node:fs').then((fs) => fs.appendFileSync(process.env.GITHUB_ENV, 'AUTH_SELF=1\n'));
+  } else {
+    console.log(`::warning::iPhone でログインしやすくするには、Google Cloud の「APIとサービス」→「認証情報」→「Web client (auto created by Google Service)」の「承認済みのリダイレクト URI」に https://${SITE}.web.app/__/auth/handler を足してください`);
   }
 } catch (e) {
-  console.log(`::warning::メールアドレスのログインを自動でオンにできませんでした（${e.message}）。Firebase の Authentication → ログイン方法 で「メール/パスワード」を有効にしてください`);
-}
-if (OWNER_EMAIL) {
-  try { await admin.auth().getUserByEmail(OWNER_EMAIL); console.log('使う人は登録済みです'); }
-  catch (e) {
-    if (e.code !== 'auth/user-not-found') throw e;
-    // パスワードはまだ決めない（画面の「メールで設定」から本人が決める）
-    await admin.auth().createUser({ email: OWNER_EMAIL, emailVerified: true });
-    console.log(`使う人を登録しました: ${OWNER_EMAIL}`);
-  }
+  console.log(`::warning::ログインの住所を確かめられませんでした（${e.message}）`);
 }
 
 // 3. Render から写す（Firebase にまだない種類だけ。あるものは上書きしない）

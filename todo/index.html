@@ -290,6 +290,7 @@
   .linkbtn { border: 0; background: none; font: inherit; cursor: pointer; color: var(--text); text-align: left; padding: 0; }
   .linkbtn:hover { text-decoration: underline; }
   dialog { border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: var(--radius); padding: 20px; width: min(380px, calc(100vw - 32px)); }
+  #login-dialog { margin: auto; }
   dialog::backdrop { background: var(--backdrop); }
   dialog h3 { margin-bottom: 10px; }
   dialog .row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; font-size: .85rem; }
@@ -673,15 +674,8 @@
 <dialog id="login-dialog">
   <div id="google-login" hidden>
     <h3>やることボード</h3>
-    <p class="note" style="margin-bottom:14px">mochizuki_wataru@machino-group.com でログインしてください。</p>
+    <p class="note" style="margin-bottom:14px">mochizuki_wataru@machino-group.com の Google アカウントでログインしてください。一度ログインすれば、ログアウトするまでそのまま使えます。</p>
     <button class="btn primary teal" id="google-btn" style="width:100%;padding:12px;font-size:1rem">Google でログイン</button>
-    <p class="note" style="text-align:center;margin:14px 0 8px">または メールアドレスとパスワード</p>
-    <form id="mail-login" class="add" style="margin:0">
-      <input id="ml-email" class="full" type="email" autocomplete="username" value="mochizuki_wataru@machino-group.com" required>
-      <input id="ml-pass" class="full" type="password" autocomplete="current-password" placeholder="パスワード" required>
-      <div class="actions"><button type="submit">ログイン</button></div>
-    </form>
-    <button type="button" class="linkbtn note" id="ml-reset" style="margin-top:8px;color:var(--wait)">はじめての方・パスワードを忘れたとき（メールで設定）</button>
   </div>
   <form id="login-form">
     <h3>やることボード</h3>
@@ -894,6 +888,9 @@
   if (window.BOARD_FIREBASE && window.firebase?.apps?.length) {
     const auth = firebase.auth(), fdb = firebase.firestore();
     const provider = new firebase.auth.GoogleAuthProvider();
+    provider.setCustomParameters({ login_hint: OWNER_EMAILS[0] });
+    // ログインはこの端末に覚えておく（ログアウトするまで、毎回のログインはいらない）
+    auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(() => {});
     const ref = name => fdb.doc('yarukoto/' + name);
     sync.realtime = true;
     sync.remote = {
@@ -936,18 +933,6 @@
     };
     $('login-form').hidden = true; $('google-login').hidden = false;
     $('google-btn').onclick = signIn;
-    // メールアドレスとパスワード（Google アカウントでないアドレスのため）
-    $('mail-login').addEventListener('submit', async e => {
-      e.preventDefault(); $('login-err').textContent = '';
-      try { await auth.signInWithEmailAndPassword($('ml-email').value.trim(), $('ml-pass').value); $('ml-pass').value = ''; }
-      catch { $('login-err').textContent = 'メールアドレスかパスワードが違います。はじめての方は下の「メールで設定」を押してください'; }
-    });
-    $('ml-reset').onclick = async () => {
-      const email = $('ml-email').value.trim().toLowerCase();
-      if (!OWNER_EMAILS.includes(email)) { $('login-err').textContent = 'このアドレスでは使えません'; return; }
-      try { await auth.sendPasswordResetEmail(email); $('login-err').textContent = ''; toast(`${email} にパスワード設定のメールを送りました`); }
-      catch { $('login-err').textContent = 'メールを送れませんでした。少し待ってからもう一度押してください'; }
-    };
     $('logout-btn').hidden = false;
     $('logout-btn').onclick = async () => { if (await ask('ログアウトしますか？', 'ログアウト')) { unsubs.forEach(u => u()); unsubs = []; await auth.signOut(); } };
     auth.getRedirectResult().catch(() => {});

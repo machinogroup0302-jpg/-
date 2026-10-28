@@ -51,10 +51,6 @@ jobs:
         working-directory: firebase-board
         run: npm install --no-save --no-audit --no-fund firebase-tools@13 firebase-admin@12 google-auth-library@9
 
-      - name: ページを組み立てる
-        if: env.HAS_SA == 'true'
-        run: node firebase-board/build.mjs
-
       - name: はじめてのときの準備（公開先のサイトを作る）
         if: env.HAS_SA == 'true'
         working-directory: firebase-board
@@ -71,6 +67,10 @@ jobs:
           BOARD_URL: ${{ secrets.BOARD_URL }}
           BOARD_PASSWORD: ${{ secrets.BOARD_PASSWORD }}
         run: node setup.mjs
+
+      - name: ページを組み立てる
+        if: env.HAS_SA == 'true'
+        run: node firebase-board/build.mjs
 
       - name: 公開する
         if: env.HAS_SA == 'true'
