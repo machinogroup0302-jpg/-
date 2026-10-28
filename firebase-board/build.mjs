@@ -10,7 +10,7 @@ const body = await fs.readFile(path.join(here, '..', 'todo', 'index.html'), 'utf
 const ICONS = ['icon.svg', 'icon-180.png', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png'];
 const manifest = {
   name: 'やることボード', short_name: 'やること', start_url: '/', display: 'standalone',
-  background_color: '#0d1b2a', theme_color: '#3fae9f',
+  background_color: '#0d1b2a', theme_color: '#0d1b2a',
   icons: [
     { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
     { src: '/icon-512.png', sizes: '512x512', type: 'image/png' },
