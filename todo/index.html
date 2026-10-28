@@ -28,6 +28,8 @@
     --share: #2f9e6e;
     --private: #c2255c;
     --teal: #4bb5a6;
+    --pri-high-bg: #dcecff; --pri-high-line: #9cc3f5;
+    --pri-mid-bg: #ddf5df; --pri-mid-line: #9fd9a6;
     --corp: #6741d9;
     --personal: #d9480f;
     --corp-ink: #6741d9;
@@ -46,7 +48,7 @@
     :root:not([data-theme="light"]) {
       --bg: #0f1620; --card: #17212d; --field: #1d2937; --soft: #1a2430; --text: #e6ebf1; --muted: #9aa8b8; --faint: #5d6b7b;
       --line: #2a3747; --bar: #0a1018; --bar-text: #b8c4d2; --bar-line: #2a3a4e; --primary: #e6ebf1; --on-primary: #0f1620;
-      --hl: #3a3415; --now: #ff6b6f; --wait: #6d9bff; --share: #3fbf89; --private: #f06595; --corp-ink: #b3a1ff; --personal-ink: #ff9a63;
+      --hl: #3a3415; --now: #ff6b6f; --wait: #6d9bff; --share: #3fbf89; --private: #f06595; --corp-ink: #b3a1ff; --personal-ink: #ff9a63; --pri-high-bg: #1a2c44; --pri-high-line: #35557d; --pri-mid-bg: #1b3322; --pri-mid-line: #36603f;
       --late: #e0a400; --todo: #3b3518; --ok-bg: #12352b; --bad-bg: #4a1f22; --backdrop: rgba(0, 0, 0, .6);
       color-scheme: dark;
     }
@@ -54,7 +56,7 @@
   :root[data-theme="dark"] {
     --bg: #0f1620; --card: #17212d; --field: #1d2937; --soft: #1a2430; --text: #e6ebf1; --muted: #9aa8b8; --faint: #5d6b7b;
     --line: #2a3747; --bar: #0a1018; --bar-text: #b8c4d2; --bar-line: #2a3a4e; --primary: #e6ebf1; --on-primary: #0f1620;
-    --hl: #3a3415; --now: #ff6b6f; --wait: #6d9bff; --share: #3fbf89; --private: #f06595; --corp-ink: #b3a1ff; --personal-ink: #ff9a63;
+    --hl: #3a3415; --now: #ff6b6f; --wait: #6d9bff; --share: #3fbf89; --private: #f06595; --corp-ink: #b3a1ff; --personal-ink: #ff9a63; --pri-high-bg: #1a2c44; --pri-high-line: #35557d; --pri-mid-bg: #1b3322; --pri-mid-line: #36603f;
     --late: #e0a400; --todo: #3b3518; --ok-bg: #12352b; --bad-bg: #4a1f22; --backdrop: rgba(0, 0, 0, .6);
     color-scheme: dark;
   }
@@ -180,6 +182,11 @@
   .t-actions { display: flex; gap: 4px; }
   .t-actions button { border: 0; background: transparent; cursor: pointer; color: var(--muted); font-size: .8rem; padding: 2px 4px; }
   .t-actions button:hover { color: var(--text); }
+  /* 優先度で色分け：高＝青、中＝緑、低＝白 */
+  .task { background: var(--card); }
+  .task.p-high { background: var(--pri-high-bg); border-color: var(--pri-high-line); }
+  .task.p-mid { background: var(--pri-mid-bg); border-color: var(--pri-mid-line); }
+  .task.p-low { border-left-color: var(--line); }
   #list .task { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
   #list .task.dragging { position: relative; z-index: 5; box-shadow: 0 8px 24px rgba(0,0,0,.25); transform: scale(1.02); opacity: .95; }
   .empty { color: var(--muted); font-size: .9rem; text-align: center; padding: 20px 0; }
@@ -1128,7 +1135,7 @@
     const showDone = $('show-done').checked, sort = $('sort').value;
     const list = tasks.filter(t => t.category === cat && (showDone || !t.done));
     list.sort((a, b) => (a.done - b.done) || (sort === 'priority' ? PRI[a.priority] - PRI[b.priority] : 0) || (sort === 'manual' ? orderOf(a) - orderOf(b) : 0) || a.created - b.created);
-    $('list').innerHTML = list.length ? list.map(t => `<li class="task ${t.category} ${t.done ? 'done' : ''}" data-id="${t.id}">
+    $('list').innerHTML = list.length ? list.map(t => `<li class="task ${t.category} ${{ '高': 'p-high', '中': 'p-mid' }[t.priority] || 'p-low'} ${t.done ? 'done' : ''}" data-id="${t.id}">
         <input type="checkbox" ${t.done ? 'checked' : ''} aria-label="終わった">
         <div>
           <div class="t-title">${esc(t.title)}</div>
