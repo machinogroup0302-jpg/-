@@ -364,7 +364,8 @@ test('予想の答え合わせ：最近の予想は「答え合わせ待ち」�
   const done = e.rows.find((r) => r.actual != null);
   const i = c.findIndex((x) => x.time === done.time);
   assert.equal(done.actual, c[i + 5].close);
-  assert.ok(e.stats.dirHit >= 0 && e.stats.dirHit <= 1);
+  assert.ok(e.stats.dirHit == null || (e.stats.dirHit >= 0 && e.stats.dirHit <= 1));
+  assert.ok(e.rows.every((r) => r.dirHit == null || r.predUp != null));
   // 同じデータなら毎回同じ予想になる（あとから出し直しても変わらない）
   const again = evaluateForecasts(c, { horizon: 5, days: 60, paths: 200 });
   assert.deepEqual(again.rows.map((r) => r.center), e.rows.map((r) => r.center));

@@ -58,12 +58,12 @@ function renderForecast() {
   $('lab-h-seg').innerHTML = HORIZONS.map(([h, l]) => `<button data-h="${h}" aria-pressed="${h === horizon}">${l}</button>`).join('');
   $('lab-fc-stats').innerHTML = `
     <div class="grid2">
-      <div class="stat"><div class="label">上がる・下がるの的中率</div><div class="value ${s.dirHit >= 0.55 ? 'plus' : s.dirHit < 0.45 ? 'minus' : ''}">${pct(s.dirHit)}</div></div>
-      <div class="stat"><div class="label">予想の幅（90%）に入った割合</div><div class="value">${pct(s.in90)}</div></div>
-      <div class="stat"><div class="label">${term('signal', 'テクニカル判定')}の的中率</div><div class="value">${pct(s.techHit)}<span class="small muted">（${s.techCount}回）</span></div></div>
-      <div class="stat"><div class="label">予想の中心とのずれ（平均）</div><div class="value">${s.avgError == null ? '—' : `${(s.avgError * 100).toFixed(2)}%`}</div></div>
+      <div class="stat"><div class="label">上がる・下がるの的中率</div><div class="value ${s.dirHit >= 0.55 ? 'plus' : s.dirHit < 0.45 ? 'minus' : ''}">${pct(s.dirHit)}</div><div class="small muted">サインが出た${s.calls}日のうち</div></div>
+      <div class="stat"><div class="label">強いサインの日だけ</div><div class="value ${s.strongHit >= 0.55 ? 'plus' : s.strongHit < 0.45 ? 'minus' : ''}">${pct(s.strongHit)}</div><div class="small muted">${s.strongCount}日のうち</div></div>
+      <div class="stat"><div class="label">値動きが予想の幅（90%）に入った割合</div><div class="value">${pct(s.in90)}</div><div class="small muted">90%に近いほど、幅が正しい</div></div>
+      <div class="stat"><div class="label">比べる目安</div><div class="value">${pct(s.alwaysUp)}</div><div class="small muted">毎日「上がる」と言い続けた場合</div></div>
     </div>
-    <p class="small muted" style="margin:8px 0 0">${s.count}日分を答え合わせ（${HORIZONS.find(([h]) => h === horizon)[1]}の値段で判定）。比べる目安：「毎日“上がる”と言い続けた場合」の的中率は ${pct(s.alwaysUp)}。<br>90%の幅に入った割合が90%に近いほど、予想の幅が正しく作れています。</p>`;
+    <p class="small muted" style="margin:8px 0 0">${s.count}日分を答え合わせ（${HORIZONS.find(([h]) => h === horizon)[1]}の値段で判定）。上がる・下がるの予想は、「あなた専用」のプランと同じテクニカルのサインで出しています。サインがはっきりしない日は「どちらとも言えない」として、当たり外れに数えていません。<br>チャートの<b>▲▼の色が当たり外れ</b>です（緑＝当たり・赤＝外れ）。点線は「値段がこの間に入りそう」という幅です。</p>`;
 
   // チャート：実際の値段と、その日に出していた予想（予想した日の${horizon}本先の位置に表示）
   const chart = makeChart('lab-fc-chart');
@@ -78,19 +78,30 @@ function renderForecast() {
   const placed = res.rows.map((r) => ({ ...r, at: r.targetTime ? shift(r.targetTime) : fut[idxOf.get(r.time) + horizon - n] }));
   const pointsFor = (key) => placed.filter((r) => r.at).map((r) => ({ time: r.at, value: r[key] })).sort((a, b) => a.time - b.time)
     .filter((p, i, arr) => i === 0 || p.time !== arr[i - 1].time);
-  chart.addLineSeries({ color: '#f2c94c', lineWidth: 2, lineStyle: LC.LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false, title: '予想' }).setData(pointsFor('center'));
+  // 「予想の中心」の線は前の日の値段とほぼ同じになり、実際の線と重なって「当たっている」ように見えてしまうので出さない。
+  // 代わりに、サインが出た日の予想の向きを▲▼で、当たり外れを色で出す
+  const ok = cssVar('--ok') || '#3fb950', ng = cssVar('--up') || '#e0645f';
+  actual.setMarkers(placed.filter((r) => r.at && r.predUp != null && r.targetTime).map((r) => ({
+    time: r.at, position: r.predUp ? 'belowBar' : 'aboveBar', shape: r.predUp ? 'arrowUp' : 'arrowDown',
+    color: r.dirHit ? ok : ng, size: r.strong ? 1.2 : 0.7,
+  })).sort((a, b) => a.time - b.time).filter((p, i, arr) => i === 0 || p.time !== arr[i - 1].time));
   chart.addLineSeries({ color: '#a0aec088', lineWidth: 1, lineStyle: LC.LineStyle.Dotted, priceLineVisible: false, lastValueVisible: false }).setData(pointsFor('high90'));
   chart.addLineSeries({ color: '#a0aec088', lineWidth: 1, lineStyle: LC.LineStyle.Dotted, priceLineVisible: false, lastValueVisible: false }).setData(pointsFor('low90'));
-  chart.timeScale().fitContent();
+  // 答え合わせした期間だけを表示する（右に寄って小さくならないように）
+  const lastT = ctx.candles[ctx.candles.length - 1].time;
+  const fit = () => { try { chart.timeScale().setVisibleRange({ from: shift(first), to: shift(lastT) }); } catch { chart.timeScale().fitContent(); } };
+  fit();
+  // 画面の幅が決まってから、もう一度合わせる
+  requestAnimationFrame(() => setTimeout(fit, 50));
 
   // 1日ずつの表（新しい順）
   $('lab-fc-table').innerHTML = `<table class="tbl"><thead><tr><th>予想した日</th><th>予想</th><th class="r">予想の中心<br><span class="muted" style="font-weight:400">90%の幅</span></th><th class="r">実際</th><th>結果</th></tr></thead><tbody>
     ${res.rows.slice().reverse().map((r) => `<tr>
       <td class="small">${esc(r.date.slice(5).replace('-', '/'))}${r.targetDate ? `<div class="muted" style="font-size:11px">→${esc(r.targetDate.slice(5).replace('-', '/'))}</div>` : ''}</td>
-      <td class="small"><span class="badge ${r.predUp ? 'buy' : 'sell'}">${r.predUp ? '上がる' : '下がる'}</span><div class="muted" style="font-size:11px">上がる確率${Math.round(r.upProb * 100)}%</div></td>
+      <td class="small">${r.predUp == null ? '<span class="badge neutral">どちらとも</span>' : `<span class="badge ${r.predUp ? 'buy' : 'sell'}">${r.predUp ? '上がる' : '下がる'}</span>`}<div class="muted" style="font-size:11px">${esc(r.tech)}${r.strong ? '（強い）' : ''}</div></td>
       <td class="r small num">${fmtPrice(r.center, d)}<div class="muted" style="font-size:11px">${fmtPrice(r.low90, d)}〜${fmtPrice(r.high90, d)}</div></td>
       <td class="r small num">${r.actual == null ? '<span class="muted">—</span>' : `<span class="${r.actual >= r.base ? 'plus' : 'minus'}">${fmtPrice(r.actual, d)}</span>`}</td>
-      <td class="small">${r.actual == null ? '<span class="badge warn">答え合わせ待ち</span>' : `${r.dirHit ? '<span class="badge ok">○ 方向</span>' : '<span class="badge bad">× 方向</span>'}${r.in90 ? '' : '<div class="muted" style="font-size:11px">幅の外</div>'}`}</td>
+      <td class="small">${r.actual == null ? '<span class="badge warn">答え合わせ待ち</span>' : `${r.dirHit == null ? '<span class="muted">—</span>' : r.dirHit ? '<span class="badge ok">○ 方向</span>' : '<span class="badge bad">× 方向</span>'}${r.in90 ? '' : '<div class="muted" style="font-size:11px">幅の外</div>'}`}</td>
     </tr>`).join('')}</tbody></table>`;
   return res;
 }

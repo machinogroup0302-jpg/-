@@ -18,8 +18,11 @@ export function evaluateForecasts(candles, { horizon = 1, days = 120, paths = 50
     if (!fc) continue;
     const band = fc.bands[horizon - 1];
     const base = candles[i].close;
-    const predUp = fc.upProb >= 0.5;
     const tech = technicalSummary(past.slice(-200));
+    // 上がる・下がるの予想は、テクニカルのサイン（「あなた専用」のプランと同じ考え方）で出す。
+    // サインがはっきりしない日は「どちらとも言えない」として、当たり外れに数えない（コインを投げるのと同じになるため）
+    const predUp = tech.ratio >= 0.15 ? true : tech.ratio <= -0.15 ? false : null;
+    const strong = Math.abs(tech.ratio || 0) >= 0.5;
     const row = {
       date: dayKey(candles[i].time),
       time: candles[i].time,
@@ -27,6 +30,7 @@ export function evaluateForecasts(candles, { horizon = 1, days = 120, paths = 50
       center: band.p50, low90: band.p05, high90: band.p95, low50: band.p25, high50: band.p75,
       upProb: fc.upProb,
       predUp,
+      strong,
       tech: tech.label,
       targetTime: candles[i + horizon]?.time ?? null,
       actual: null,
@@ -35,7 +39,7 @@ export function evaluateForecasts(candles, { horizon = 1, days = 120, paths = 50
     if (target) {
       row.actual = target.close;
       row.targetDate = dayKey(target.time);
-      row.dirHit = (target.close >= base) === predUp;
+      row.dirHit = predUp == null ? null : (target.close >= base) === predUp;
       row.in90 = target.close >= band.p05 && target.close <= band.p95;
       row.in50 = target.close >= band.p25 && target.close <= band.p75;
       row.error = (target.close - band.p50) / base;
@@ -47,13 +51,19 @@ export function evaluateForecasts(candles, { horizon = 1, days = 120, paths = 50
   const done = rows.filter((r) => r.actual != null);
   const rate = (list, key) => (list.length ? list.filter((r) => r[key]).length / list.length : null);
   const techRows = done.filter((r) => r.techHit != null);
+  const called = done.filter((r) => r.dirHit != null);
+  const strongRows = called.filter((r) => r.strong);
   return {
     horizon,
     rows,
     stats: {
       count: done.length,
       pending: rows.length - done.length,
-      dirHit: rate(done, 'dirHit'),
+      // サインが出た日だけの的中率（何日サインが出たか）と、強いサインの日だけの的中率
+      dirHit: rate(called, 'dirHit'),
+      calls: called.length,
+      strongHit: rate(strongRows, 'dirHit'),
+      strongCount: strongRows.length,
       in90: rate(done, 'in90'),
       in50: rate(done, 'in50'),
       avgError: done.length ? done.reduce((s, r) => s + Math.abs(r.error), 0) / done.length : null,
