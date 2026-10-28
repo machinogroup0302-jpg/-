@@ -42,7 +42,8 @@ try {
   };
   const mine = await probe(`https://${SITE}.web.app/__/auth/handler`);
   const bad = await probe('https://example.invalid/__/auth/handler');
-  console.log(`ログインの住所の確認: このサイト ${mine.status}${mine.ok ? ' OK' : ''} / でたらめな住所 ${bad.status}${bad.ok ? ' OK' : ''}`);
+  const base = await probe(`https://${PROJECT}.firebaseapp.com/__/auth/handler`);
+  console.log(`ログインの住所の確認: このサイト ${mine.ok ? 'OK' : 'まだ'} / いつもの住所 ${base.ok ? 'OK' : 'まだ'} / でたらめな住所 ${bad.ok ? 'OK' : 'まだ'}`);
   if (mine.ok && !bad.ok) {
     console.log('このサイトの住所でログインします');
     if (process.env.GITHUB_ENV) await import('node:fs').then((fs) => fs.appendFileSync(process.env.GITHUB_ENV, 'AUTH_SELF=1\n'));
