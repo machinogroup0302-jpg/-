@@ -172,6 +172,8 @@ async function handleApi(req, res, url) {
   if (route === 'POST /api/report') {
     const b = await readBody(req);
     const s = (x, n) => String(x ?? '').slice(0, n);
+    // 中身の分からない「Script error.」（サイトの外で起きたもの）は記録しない（古い画面から届いた分も）
+    if (/^Script error\.?$/i.test(s(b.message, 300).trim()) && !b.stack) return json(res, 200, { ok: true, ignored: true });
     await addError({ uid, where: s(b.where, 60), message: s(b.message, 300), stack: s(b.stack, 1200), version: s(b.version, 12), page: s(b.page, 80), ua: s(b.ua, 120) });
     return json(res, 200, { ok: true });
   }
