@@ -928,14 +928,14 @@
       try { await auth.signInWithPopup(provider); }
       catch (err) {
         if (['auth/popup-blocked', 'auth/operation-not-supported-in-this-environment', 'auth/cancelled-popup-request'].includes(err?.code)) auth.signInWithRedirect(provider);
-        else if (err?.code !== 'auth/popup-closed-by-user') $('login-err').textContent = 'ログインできませんでした。もう一度押してください';
+        else if (err?.code !== 'auth/popup-closed-by-user') $('login-err').textContent = `ログインできませんでした。もう一度押してください（${err?.code || err?.message || '不明'}）`;
       }
     };
     $('login-form').hidden = true; $('google-login').hidden = false;
     $('google-btn').onclick = signIn;
     $('logout-btn').hidden = false;
     $('logout-btn').onclick = async () => { if (await ask('ログアウトしますか？', 'ログアウト')) { unsubs.forEach(u => u()); unsubs = []; await auth.signOut(); } };
-    auth.getRedirectResult().catch(() => {});
+    auth.getRedirectResult().catch(err => { $('login-err').textContent = `ログインできませんでした（${err?.code || err?.message || '不明'}）`; });
     // ログインの期限：最後に使った日から90日。開くたび・画面に戻るたびに延びる
     const KEEP_DAYS = 90, LAST_KEY = 'yarukoto-last-used';
     const lastUsed = () => { try { return +localStorage.getItem(LAST_KEY) || 0; } catch { return 0; } };

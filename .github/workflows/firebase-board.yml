@@ -79,3 +79,12 @@ jobs:
           npx firebase deploy --only "hosting:$SITE" --project "$PROJECT" --non-interactive
           echo "### 公開しました: https://$SITE.web.app" >> "$GITHUB_STEP_SUMMARY"
           echo "公開しました: https://$SITE.web.app"
+
+      - name: 公開したサイトを開いて確かめる（iPhone のふり）
+        if: env.HAS_SA == 'true'
+        working-directory: firebase-board
+        continue-on-error: true
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1.49.1
+          npx playwright install --with-deps chromium > /dev/null
+          node check.mjs
