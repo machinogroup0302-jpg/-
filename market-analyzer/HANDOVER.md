@@ -14,6 +14,7 @@
 | サイト本体 | GitHub `machinogroup0302-jpg/-` の `market-analyzer/`（ブランチ `claude/trusting-planck-dsasvf`） | Node 22。`server.js` が入口。ライブラリなし（`npm install` は試験用だけ） |
 | 公開先 | Render（無料プラン）`https://wataru-lupe.onrender.com` | Root Directory `market-analyzer` / Build `npm install` / Start `npm start` |
 | 自動の仕事 | GitHub Actions（`.github/workflows/`）。控えは `ops/workflows/` | 売買サインのメール・見張り・Render への反映 |
+| 自分のドライブの控え | Google Apps Script（`ops/drive-backup.gs`）。1時間ごとにこのブランチの ZIP をドライブの「相場分析サイト_控え」に保存（新しい3つ） | パソコン版 Google ドライブでパソコンにも自動で入る |
 | 寝かせない | cron-job.org（5分ごとにサイトを開く） | 無料。アカウントは自分で作ったもの |
 | 利用者のデータ | サーバーの中 ＋ 同じブランチの `alerts/prefs.json`（**暗号化した控え**。Actions の keepalive がサイトから受け取って保存） | 持っている株・予算・取引の記録など。サーバーは起動時にこれを読み戻す |
 
