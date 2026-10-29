@@ -381,3 +381,47 @@ h3 .sub { font-weight: 400; font-size: 12px; color: var(--muted); margin-left: 8
 .plan-buy-check { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
 .plan-buy-check input { width: 22px; height: 22px; margin-top: 2px; flex: none; accent-color: var(--accent); }
 .plan-buy-item .plan-bought { margin: 8px 0 0 32px; }
+
+/* ---------- パソコン表示（ヘッダーのボタンで切り替え） ---------- */
+#toggle-desktop[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
+/* スマホの幅では出さない（パソコン表示中だけは戻せるように出す） */
+@media (max-width: 719px) { body:not(.desktop) #toggle-desktop { display: none; } }
+/* タブを上（ヘッダーのすぐ下）に出すため、並び順を入れ替える */
+body.desktop #app:not([hidden]) { display: flex; flex-direction: column; min-height: 100vh; }
+body.desktop #app > * { order: 2; }
+body.desktop #app > .topbar { order: 0; }
+body.desktop #app > .tabbar { order: 1; }
+body.desktop .topbar { height: 64px; box-sizing: border-box; padding: 0 28px; }
+body.desktop .topbar h1 { font-size: 19px; }
+/* 下のタブを上へ。横に並べて、いつでも見える */
+body.desktop .tabbar {
+  position: sticky; top: 64px; bottom: auto; z-index: 19;
+  height: 48px; padding: 0 28px;
+  display: flex; justify-content: flex-start; gap: 4px;
+  border-top: 0; border-bottom: 1px solid var(--border);
+}
+body.desktop .tabbar button { flex-direction: row; gap: 8px; font-size: 14px; padding: 0 16px; }
+body.desktop .tabbar svg { width: 18px; height: 18px; }
+body.desktop .tabbar button[aria-selected="true"]::before { top: auto; bottom: 0; left: 12px; right: 12px; }
+body.desktop main { width: 100%; box-sizing: border-box; max-width: 1440px; padding: 18px 28px 40px; }
+body.desktop { font-size: 15px; }
+/* チャートとニュースはカードを2列に（いちばん上のチャートなどは横いっぱい）。
+   ほかの画面は中で切り替わるので、横いっぱいの1列のまま中身を広げる */
+body.desktop :is(#view-chart, #view-news):not([hidden]) {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start;
+}
+body.desktop :is(#view-chart, #view-news) > * { margin: 0; min-width: 0; }
+body.desktop :is(#view-chart, #view-news) > :is(:first-child, .two-col) { grid-column: 1 / -1; }
+body.desktop #view-news > :nth-child(2) { grid-column: 1 / -1; }
+body.desktop .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+body.desktop .two-col > .card { margin-bottom: 0; }
+body.desktop .card { padding: 18px; }
+body.desktop .chart-box { height: 66vh; max-height: 820px; margin: 0; }
+body.desktop .sub-chart, body.desktop .canvas-wrap, body.desktop .lab-chart { margin-left: 0; margin-right: 0; }
+body.desktop .lab-chart { height: 320px; }
+body.desktop .lab-chart.tall { height: 400px; }
+body.desktop .grid2 { grid-template-columns: repeat(4, 1fr); }
+body.desktop table.tbl { font-size: 14px; }
+@media (max-width: 900px) {
+  body.desktop :is(#view-chart, #view-news):not([hidden]) { grid-template-columns: minmax(0, 1fr); }
+}

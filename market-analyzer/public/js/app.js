@@ -403,6 +403,31 @@ async function renderErrors() {
   $('err-clear')?.addEventListener('click', async () => { await api('/api/my/errors/clear', { method: 'POST', body: {} }).catch(() => {}); renderErrors(); });
 }
 
+// パソコン表示（端末ごとに覚える。ログイン前から効くよう、ここで先に当てる）
+const DESKTOP_KEY = 'ma-desktop';
+function applyDesktop(on) {
+  document.body.classList.toggle('desktop', on);
+  const b = document.getElementById('toggle-desktop');
+  if (!b) return;
+  const label = on ? 'スマホ表示に戻す' : 'パソコン表示に切り替え';
+  b.title = label;
+  b.setAttribute('aria-label', label);
+  b.setAttribute('aria-pressed', on ? 'true' : 'false');
+}
+function initDesktop() {
+  let on = false;
+  try { on = localStorage.getItem(DESKTOP_KEY) === '1'; } catch { /* 保存できない端末はスマホ表示のまま */ }
+  applyDesktop(on);
+  document.getElementById('toggle-desktop')?.addEventListener('click', () => {
+    on = !document.body.classList.contains('desktop');
+    applyDesktop(on);
+    try { localStorage.setItem(DESKTOP_KEY, on ? '1' : '0'); } catch { /* 無視 */ }
+    toast(on ? 'パソコン表示にしました（もう一度押すとスマホ表示）' : 'スマホ表示に戻しました');
+    window.scrollTo(0, 0);
+  });
+}
+initDesktop();
+
 async function boot() {
   let st = { loginRequired: false, loggedIn: true };
   try {
