@@ -369,8 +369,8 @@
         </select>
         <select name="priority" id="task-pri">
           <option value="高">優先度：高</option>
-          <option value="中" selected>優先度：中</option>
-          <option value="低">優先度：低</option>
+          <option value="中">優先度：中</option>
+          <option value="低" selected>優先度：低</option>
         </select>
         <input type="hidden" name="memo" id="task-memo">
         <div class="actions">
@@ -1057,7 +1057,7 @@
   let cat = 'now', editingTask = null;
   const taskForm = $('add-form');
   function resetTaskForm() {
-    taskForm.reset(); taskForm.priority.value = '中';
+    taskForm.reset(); taskForm.priority.value = '低';
     taskForm.category.value = cat;
     editingTask = null; formMode(taskForm, false, $('task-form-title'), 'やることを追加', 'やることを編集');
   }
