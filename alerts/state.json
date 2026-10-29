@@ -93,6 +93,39 @@
      "signalPrice": 4430,
      "sentAt": "2026-10-13T07:58:42.655Z",
      "how": "現物で買う：100株＋信用で買う：200株（合計300株）"
+    },
+    "swing|4502.T": {
+     "kind": "swing",
+     "mode": "stock",
+     "symbol": "4502.T",
+     "name": "武田薬品",
+     "side": 1,
+     "signalTime": 1793232000,
+     "signalPrice": 6471,
+     "sentAt": "2026-10-29T08:26:30.874Z",
+     "how": "信用で買う：100株"
+    },
+    "swing|4544.T": {
+     "kind": "swing",
+     "mode": "stock",
+     "symbol": "4544.T",
+     "name": "H.U.グループホールディングス",
+     "side": 1,
+     "signalTime": 1793232000,
+     "signalPrice": 3822,
+     "sentAt": "2026-10-29T08:26:30.874Z",
+     "how": "現物で買う：100株＋信用で買う：100株（合計200株）"
+    },
+    "swing|4616.T": {
+     "kind": "swing",
+     "mode": "stock",
+     "symbol": "4616.T",
+     "name": "川上塗料",
+     "side": 1,
+     "signalTime": 1793232000,
+     "signalPrice": 3860,
+     "sentAt": "2026-10-29T08:26:30.874Z",
+     "how": "現物で買う：100株"
     }
    },
    "log": [
