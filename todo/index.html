@@ -169,6 +169,26 @@
   .task.personal { border-left-color: var(--personal); }
   .task.no-check { grid-template-columns: 1fr auto; }
   .trash { margin-top: 14px; }
+  /* PC表示（ヘッダーのボタンで切り替え。この端末に覚えておく） */
+  .layout-btn { background: transparent; color: var(--bar-text); border: 1px solid var(--bar-line); border-radius: 999px; padding: 5px 12px; font: inherit; font-size: .8rem; cursor: pointer; margin-right: auto; }
+  .layout-btn.on { background: #fff; color: var(--bar); border-color: #fff; font-weight: 700; }
+  .board { display: none; }
+  :root[data-layout="pc"] main { max-width: 1600px; }
+  :root[data-layout="pc"] #view-todo { grid-template-columns: 1fr; }
+  :root[data-layout="pc"] #view-todo .add-card { order: -1; }
+  :root[data-layout="pc"] #add-form { grid-template-columns: 1fr 170px 170px auto; align-items: center; margin-bottom: 0; }
+  :root[data-layout="pc"] #add-form .full { grid-column: auto; }
+  :root[data-layout="pc"] #add-form .actions { margin: 0; grid-column: auto; }
+  :root[data-layout="pc"] #add-form .actions button { padding-inline: 28px; }
+  :root[data-layout="pc"] #tabs, :root[data-layout="pc"] #list { display: none; }
+  :root[data-layout="pc"] .board { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; align-items: start; }
+  .board .col { background: var(--soft); border: 1px solid var(--line); border-radius: 10px; padding: 10px; min-height: 120px; }
+  .board .col h3 { font-size: .9rem; margin: 0 0 8px; display: flex; justify-content: space-between; }
+  .board .col h3 span { color: var(--muted); font-weight: 500; }
+  .board .col .tasks { min-height: 60px; }
+  .board .task { grid-template-columns: 1fr; gap: 4px; padding: 8px 10px; }
+  .board .t-actions { justify-content: flex-end; }
+  @media (max-width: 700px) { .layout-btn { display: none; } }
   .trash summary { cursor: pointer; font-size: .85rem; color: var(--muted); }
   .trash .task { opacity: .8; }
   .task.done .t-title { text-decoration: line-through; color: var(--muted); }
@@ -190,8 +210,9 @@
   .task.p-high { background: var(--pri-high-bg); border-color: var(--pri-high-line); }
   .task.p-mid { background: var(--pri-mid-bg); border-color: var(--pri-mid-line); }
   .task.p-low { border-left-color: var(--line); }
-  #list .task { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
-  #list .task.dragging { position: relative; z-index: 5; box-shadow: 0 8px 24px rgba(0,0,0,.25); transform: scale(1.02); opacity: .95; }
+  #board .task.p-low { background: var(--card); }
+  #todo-area .task { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  #todo-area .task.dragging { position: relative; z-index: 5; box-shadow: 0 8px 24px rgba(0,0,0,.25); transform: scale(1.02); opacity: .95; }
   .empty { color: var(--muted); font-size: .9rem; text-align: center; padding: 20px 0; }
 
   /* 固定費 */
@@ -300,6 +321,7 @@
 </style>
 <header>
   <h1>やることボード <span class="sync" id="sync"></span></h1>
+  <button type="button" class="layout-btn" id="layout-btn" title="パソコン向けの画面に切り替え">🖥 PC表示</button>
   <nav>
     <button data-view="todo" class="active"><span class="lg">ToDoリスト</span><span class="sm">ToDo</span></button>
     <button data-view="sched"><span class="lg">スケジュール</span><span class="sm">予定</span></button>
@@ -325,14 +347,17 @@
           </select>
         </label>
       </div>
-      <ul class="tasks" id="list"></ul>
+      <div id="todo-area">
+        <ul class="tasks" id="list"></ul>
+        <div class="board" id="board"></div>
+      </div>
       <details class="trash" id="trash">
         <summary>削除したもの（<span id="trash-n">0</span>件）</summary>
         <p class="note" style="margin:6px 0">削除してから1か月たつと、ここからも自動で消えます。</p>
         <ul class="tasks" id="trash-list"></ul>
       </details>
     </div>
-    <div class="card">
+    <div class="card add-card">
       <h2 id="task-form-title">やることを追加</h2>
       <form class="add" id="add-form">
         <input name="title" id="task-title" class="full" placeholder="やることを入力" required>
@@ -1046,7 +1071,7 @@
     save('tasks'); resetTaskForm(); renderTodo();
   });
   taskForm.querySelector('.cancel').onclick = resetTaskForm;
-  $('list').addEventListener('click', async e => {
+  $('todo-area').addEventListener('click', async e => {
     const li = e.target.closest('.task'); if (!li) return;
     const t = tasks.find(x => x.id === li.dataset.id);
     if (e.target.dataset.act === 'del') {
@@ -1080,51 +1105,66 @@
   $('sort').addEventListener('change', () => { try { localStorage.setItem('yarukoto-sort', $('sort').value); } catch {} renderTodo(); });
   // 自分で並べる：表示している順に番号をふり直してから、となりと入れ替える
   const orderOf = t => t.order ?? t.created;
-  // 長押し（0.4秒）でつかんで、上下に動かす。指を離したところで順番を保存
+  // 長押しでつかんで動かす（スマホ0.4秒・マウス0.2秒）。PC表示では、ほかの分類の列にも移せる
   {
-    const listEl = $('list');
+    const area = $('todo-area');
     let timer = null, drag = null, start = null, justDragged = false;
     const cancel = () => { clearTimeout(timer); timer = null; };
-    listEl.addEventListener('pointerdown', e => {
+    area.addEventListener('pointerdown', e => {
       if ($('sort').value !== 'manual' || e.button > 0) return;
       const li = e.target.closest('li.task'); if (!li || e.target.closest('button, input')) return;
       start = { x: e.clientX, y: e.clientY };
       timer = setTimeout(() => {
-        timer = null; drag = { li, dy: 0 }; li.classList.add('dragging');
+        timer = null; drag = { li }; li.classList.add('dragging');
         navigator.vibrate?.(20);
-      }, 400);
+      }, e.pointerType === 'mouse' ? 200 : 400);
     });
-    const moveTo = y => {
-      for (const other of listEl.querySelectorAll('li.task')) {
-        if (other === drag.li) continue;
-        const r = other.getBoundingClientRect();
-        if (y > r.top && y < r.bottom) { listEl.insertBefore(drag.li, y > r.top + r.height / 2 ? other.nextSibling : other); break; }
-      }
+    const moveTo = (x, y) => {
+      const under = document.elementFromPoint(x, y)?.closest('#todo-area ul.tasks');
+      const ul = under || drag.li.parentElement;
+      ul.querySelector('.empty')?.remove();
+      const next = [...ul.querySelectorAll('li.task')].find(o => o !== drag.li && y < o.getBoundingClientRect().top + o.offsetHeight / 2);
+      if (next) { if (drag.li.nextSibling !== next) ul.insertBefore(drag.li, next); }
+      else if (ul.lastElementChild !== drag.li) ul.appendChild(drag.li);
     };
-    listEl.addEventListener('pointermove', e => {
+    area.addEventListener('pointermove', e => {
       if (timer && Math.hypot(e.clientX - start.x, e.clientY - start.y) > 8) cancel();
-      if (drag && e.pointerType === 'mouse') { e.preventDefault(); moveTo(e.clientY); }
+      if (drag && e.pointerType === 'mouse') { e.preventDefault(); moveTo(e.clientX, e.clientY); }
     });
     // スマホ：つかんでいる間は画面がスクロールしないようにして、指の位置まで動かす
     document.addEventListener('touchmove', e => {
       const p = e.touches[0];
       if (timer && p && Math.hypot(p.clientX - start.x, p.clientY - start.y) > 8) cancel();
-      if (drag && p) { e.preventDefault(); moveTo(p.clientY); }
+      if (drag && p) { e.preventDefault(); moveTo(p.clientX, p.clientY); }
     }, { passive: false });
     const drop = () => {
       cancel();
       if (!drag) return;
       drag.li.classList.remove('dragging'); drag = null; justDragged = true; setTimeout(() => { justDragged = false; }, 300);
-      [...listEl.querySelectorAll('li.task')].forEach((li, k) => { const t = tasks.find(x => x.id === li.dataset.id); if (t) t.order = k; });
+      area.querySelectorAll('ul.tasks').forEach(ul => [...ul.querySelectorAll('li.task')].forEach((li, k) => {
+        const t = tasks.find(x => x.id === li.dataset.id); if (!t) return;
+        t.order = k; if (ul.dataset.cat) t.category = ul.dataset.cat;
+      }));
       save('tasks'); renderTodo();
     };
-    listEl.addEventListener('pointerup', drop);
-    listEl.addEventListener('pointercancel', () => { if (!drag) cancel(); });
+    document.addEventListener('pointerup', drop);
+    area.addEventListener('pointercancel', () => { if (!drag) cancel(); });
     document.addEventListener('touchend', drop);
     document.addEventListener('touchcancel', drop);
-    listEl.addEventListener('contextmenu', e => { if ($('sort').value === 'manual' && e.target.closest('li.task')) e.preventDefault(); });
-    listEl.addEventListener('click', e => { if (justDragged) { e.stopPropagation(); e.preventDefault(); } }, true);
+    area.addEventListener('contextmenu', e => { if ($('sort').value === 'manual' && e.target.closest('li.task')) e.preventDefault(); });
+    area.addEventListener('click', e => { if (justDragged) { e.stopPropagation(); e.preventDefault(); } }, true);
   }
+  // PC表示の切り替え（この端末に覚えておく）
+  const isPC = () => document.documentElement.dataset.layout === 'pc';
+  function setLayout(pc, render = true) {
+    if (pc) document.documentElement.dataset.layout = 'pc'; else delete document.documentElement.dataset.layout;
+    $('layout-btn').classList.toggle('on', pc);
+    $('layout-btn').textContent = pc ? '📱 スマホ表示' : '🖥 PC表示';
+    try { localStorage.setItem('yarukoto-layout', pc ? 'pc' : ''); } catch {}
+    if (render) renderTodo();
+  }
+  $('layout-btn').onclick = () => setLayout(!isPC());
+  try { if (localStorage.getItem('yarukoto-layout') === 'pc' && innerWidth > 700) setLayout(true, false); } catch {}
   // 削除したもの：戻す・すぐ消す
   $('trash-list').addEventListener('click', async e => {
     const li = e.target.closest('li[data-id]'); if (!li) return;
@@ -1155,15 +1195,20 @@
       renderTodo();
     });
     const sort = $('sort').value;
-    const list = open.filter(t => t.category === cat);
-    list.sort((a, b) => (sort === 'priority' ? PRI[a.priority] - PRI[b.priority] : 0) || (sort === 'manual' ? orderOf(a) - orderOf(b) : 0) || a.created - b.created);
-    $('list').innerHTML = list.length ? list.map(t => `<li class="task no-check ${t.category} ${{ '高': 'p-high', '中': 'p-mid' }[t.priority] || 'p-low'}" data-id="${t.id}">
+    const sorted = arr => arr.sort((a, b) => (sort === 'priority' ? PRI[a.priority] - PRI[b.priority] : 0) || (sort === 'manual' ? orderOf(a) - orderOf(b) : 0) || a.created - b.created);
+    const li = t => `<li class="task no-check ${t.category} ${{ '高': 'p-high', '中': 'p-mid' }[t.priority] || 'p-low'}" data-id="${t.id}">
         <div>
           <div class="t-title">${esc(t.title)}</div>
           ${t.memo ? `<div class="t-memo">${esc(t.memo)}</div>` : ''}
         </div>
         <div class="t-actions"><button data-act="move">移動</button><button data-act="edit">編集</button><button data-act="del">削除</button></div>
-      </li>`).join('') : '<li class="empty">やることはありません</li>';
+      </li>`;
+    $('board').innerHTML = isPC() ? Object.entries(CATS).map(([k, label]) => {
+      const col = sorted(open.filter(t => t.category === k));
+      return `<div class="col"><h3>${label}<span>${col.length}</span></h3><ul class="tasks" data-cat="${k}">${col.map(li).join('')}</ul></div>`;
+    }).join('') : '';
+    const list = sorted(open.filter(t => t.category === cat));
+    $('list').innerHTML = list.length ? list.map(li).join('') : '<li class="empty">やることはありません</li>';
     const trash = tasks.filter(t => t.deletedAt).sort((a, b) => b.deletedAt - a.deletedAt);
     $('trash-n').textContent = trash.length;
     const md = ms => { const d = new Date(ms); return `${d.getMonth() + 1}/${d.getDate()}`; };
