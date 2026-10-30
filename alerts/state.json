@@ -106,7 +106,9 @@
      "signalTime": 1793232000,
      "signalPrice": 6471,
      "sentAt": "2026-10-29T08:26:30.874Z",
-     "how": "信用で買う：100株"
+     "how": "信用で買う：100株",
+     "entryPrice": 6371,
+     "entryTime": 1793318400
     },
     "swing|4544.T": {
      "kind": "swing",
@@ -128,7 +130,9 @@
      "signalTime": 1793232000,
      "signalPrice": 3860,
      "sentAt": "2026-10-29T08:26:30.874Z",
-     "how": "現物で買う：100株"
+     "how": "現物で買う：100株",
+     "entryPrice": 3885,
+     "entryTime": 1793318400
     }
    },
    "log": [
