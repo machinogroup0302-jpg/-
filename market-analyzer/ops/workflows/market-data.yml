@@ -1,0 +1,21 @@
+# 相場分析サイト：信用残・決算発表予定日などの公表データを、毎日（平日の夕方）取り直す
+#   サイトを直さない日でもデータが古くならないように、「Render 自動更新」を毎日動かす
+#   （日本取引所の信用残は毎日夕方に公表される）
+name: 公表データの毎日の更新
+
+on:
+  schedule:
+    - cron: '47 9 * * 1-5' # 日本時間 18:47
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Render 自動更新を動かす
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run render-deploy.yml --repo "$GITHUB_REPOSITORY" --ref claude/trusting-planck-dsasvf
