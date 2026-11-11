@@ -189,24 +189,79 @@ function renderMonths() {
   }));
 }
 
+// 分析する期間（全部だと、最近の取引を足してもほとんど変わらないので、最近だけも見られるように）
+const PERIODS = [['all', '全部'], ['90', '最近3か月'], ['30', '最近1か月']];
+let period = store.get('tradePeriod', 'all');
+const lastTime = (list) => Math.max(0, ...list.map((t) => Date.parse(t.date) || 0));
+function inPeriod(list, days) {
+  if (days === 'all') return list;
+  const end = lastTime(list), from = end - Number(days) * 86400e3;
+  return list.filter((t) => (Date.parse(t.date) || 0) > from);
+}
+
+// 最近1か月と、それより前の比べ（良くなった・悪くなった）
+function changeHtml(all) {
+  const end = lastTime(all);
+  if (!end) return '';
+  const recent = all.filter((t) => Date.parse(t.date) > end - 30 * 86400e3);
+  const before = all.filter((t) => Date.parse(t.date) <= end - 30 * 86400e3);
+  const a = computeStats(recent), b = computeStats(before);
+  if (!a || !b || a.count < 3 || b.count < 3) return '';
+  const pct = (v) => `${Math.round(v * 100)}%`;
+  const per = (st) => st.totalPnl / st.count;
+  const rows = [
+    ['勝率', pct(b.winRate), pct(a.winRate), a.winRate - b.winRate, 0.03],
+    ['1回の平均の勝ち', fmtYen(b.avgWin), fmtYen(a.avgWin), a.avgWin - b.avgWin, b.avgWin * 0.1],
+    ['1回の平均の負け', fmtYen(-b.avgLoss), fmtYen(-a.avgLoss), b.avgLoss - a.avgLoss, b.avgLoss * 0.1],
+    ['損益比（勝ち÷負け）', b.payoff?.toFixed(2) ?? '—', a.payoff?.toFixed(2) ?? '—', (a.payoff ?? 0) - (b.payoff ?? 0), 0.1],
+    ['1回あたりの損益', fmtYen(Math.round(per(b))), fmtYen(Math.round(per(a))), per(a) - per(b), Math.abs(per(b)) * 0.1 + 100],
+  ];
+  const mark = (d, th) => `<span style="white-space:nowrap">${d > th ? '<span class="plus">⬆良</span>' : d < -th ? '<span class="minus">⬇悪</span>' : '<span class="muted">→同じ</span>'}</span>`;
+  const good = rows.filter(([, , , d, th]) => d > th).length, bad = rows.filter(([, , , d, th]) => d < -th).length;
+  const head = good > bad ? '前より良くなっています 👍' : bad > good ? '前より悪くなっています。下の「まず直したいこと」を見直しましょう' : '前とあまり変わっていません';
+  return `<div class="card">
+    <h2>最近の変化<span class="sub">最近1か月（${a.count}回）と、それより前（${b.count}回）</span></h2>
+    <p style="margin:0 0 8px"><b>${head}</b></p>
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th></th><th class="r">前</th><th class="r">最近1か月</th><th class="r"></th></tr></thead><tbody>
+    ${rows.map(([k, x, y, d, th]) => `<tr><td class="small">${k}</td><td class="r small">${x}</td><td class="r small"><b>${y}</b></td><td class="r small">${mark(d, th)}</td></tr>`).join('')}
+    </tbody></table></div>
+  </div>`;
+}
+
 function render() {
   renderMonths();
   const out = $('trade-result');
-  const s = computeStats(trades);
+  const all = trades;
+  // ここから下の分析は、選んだ期間の取引だけで行う
+  const trades0 = inPeriod(all, period);
+  const s = computeStats(trades0);
+  const seg = `<div class="seg" id="trade-period" style="margin-bottom:10px">${PERIODS.map(([k, v]) => `<button data-p="${k}" aria-pressed="${k === period}">${v}</button>`).join('')}</div>`;
+  const bindPeriod = () => {
+    $('trade-period').onclick = (e) => {
+      const b = e.target.closest('button[data-p]');
+      if (!b) return;
+      period = b.dataset.p;
+      store.set('tradePeriod', period);
+      render();
+    };
+  };
   if (!s) {
-    out.innerHTML = trades.length
-      ? '<div class="card"><p class="empty">損益が入った取引（決済済み）が見つかりませんでした。CSVの列の割り当てを確認してください。</p></div>'
-      : '';
+    out.innerHTML = !all.length ? ''
+      : period !== 'all' ? `${seg}<div class="card"><p class="empty">この期間に決済した取引はありません。</p></div>`
+      : '<div class="card"><p class="empty">損益が入った取引（決済済み）が見つかりませんでした。CSVの列の割り当てを確認してください。</p></div>';
+    if (all.length && period !== 'all') bindPeriod();
     return;
   }
   const pct = (v) => `${Math.round(v * 100)}%`;
   const bw = getProfile().bestWay?.[tradeMode];
   const pf = forMode(getProfile(), tradeMode);
-  const c = coach(trades, tradeMode, { siteBest: bw ? wayOf(tradeMode, bw).label : '', budget: pf.budget || 0, riskPct: pf.riskPct || 2 });
-  const period = s.from ? `${new Date(s.from).toLocaleDateString('ja-JP')} 〜 ${new Date(s.to).toLocaleDateString('ja-JP')}` : '';
+  const c = coach(trades0, tradeMode, { siteBest: bw ? wayOf(tradeMode, bw).label : '', budget: pf.budget || 0, riskPct: pf.riskPct || 2 });
+  const range = s.from ? `${new Date(s.from).toLocaleDateString('ja-JP')} 〜 ${new Date(s.to).toLocaleDateString('ja-JP')}` : '';
   out.innerHTML = `
+    ${seg}
+    ${changeHtml(all)}
     <div class="card">
-      <h2>成績のまとめ<span class="sub">${esc(period)}</span></h2>
+      <h2>成績のまとめ<span class="sub">${esc(range)}</span></h2>
       <div class="grid2">
         <div class="stat"><div class="label">合計損益</div><div class="value ${s.totalPnl >= 0 ? 'plus' : 'minus'}">${fmtYen(s.totalPnl)}</div></div>
         <div class="stat"><div class="label">${term('winRate', '勝率')}（${s.count}回）</div><div class="value">${pct(s.winRate)}</div></div>
@@ -237,6 +292,7 @@ function render() {
     </div>`;
 
   if (c) runExcursions(c);
+  bindPeriod();
   $('trades-clear').onclick = () => {
     if (!confirm('読み込んだ取引をすべて消しますか？')) return;
     trades = [];
