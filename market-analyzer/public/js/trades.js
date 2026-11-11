@@ -251,14 +251,17 @@ export function execToTrades(rows, headerIndex) {
     openDate: col(/^建約定日/), entry: col(/^建単価/), acct: col(/^口座区分/, /^口座$/),
     // 受け渡した円の金額（米国株：手数料・為替まで入った、実際に払った・受け取った円）
     yen: h.findIndex((c) => /^受渡金額/.test(c) && /円/.test(c) && !/ドル|USD/i.test(c)) };
-  const costCols = h.map((c, i) => [c, i]).filter(([c]) => /^(手数料|諸費用|建手数料|建手数料消費税|金利\(支払\)|逆日歩.*\(支払\)|貸株料|事務管理費|名義書換料)/.test(c)).map(([, i]) => i);
-  const gainCols = h.map((c, i) => [c, i]).filter(([c]) => /^(金利\(受取\)|逆日歩\(受取\))/.test(c)).map(([, i]) => i);
+  // 「諸費用」は金利・貸株料などの合計なので、あるときは内訳の列は足さない（2回引いてしまう）
+  const hasTotal = h.some((c) => /^諸費用/.test(c));
+  const costCols = h.map((c, i) => [c, i]).filter(([c]) => (hasTotal ? /^(手数料|諸費用)/ : /^(手数料|建手数料|建手数料消費税|金利\(支払\)|逆日歩.*\(支払\)|貸株料|事務管理費|名義書換料)/).test(c)).map(([, i]) => i);
+  const gainCols = hasTotal ? [] : h.map((c, i) => [c, i]).filter(([c]) => /^(金利\(受取\)|逆日歩\(受取\))/.test(c)).map(([, i]) => i);
   const num = (x) => { const v = toNumber(x); return Number.isNaN(v) ? 0 : v; };
   const list = rows.slice(headerIndex + 1).filter((r) => r && parseDate(r[C.date]))
-    .map((r, i) => ({ r, i, d: parseDate(r[C.date]), buy: /現物/.test(r[C.kind] || '') && /買/.test(r[C.side] || '') }))
-    // 同じ日の中では、現物の買いを先に（現物は買う前に売れないので）
+    .map((r, i) => ({ r, i, d: parseDate(r[C.date]), buy: (/現物/.test(r[C.kind] || '') && /買/.test(r[C.side] || '')) || /信用新規/.test(r[C.kind] || '') }))
+    // 同じ日の中では、現物の買いと信用の新規を先に（買う前・建てる前に売ったり返したりはできないので）
     .sort((a, b) => a.d - b.d || b.buy - a.buy || a.i - b.i);
   const lots = new Map(); // 現物：銘柄ごとの { qty, cost }
+  const opens = new Map(); // 信用：銘柄と向きごとの、建てた順の { qty, price }
   const out = [];
   const from = list.length ? list[0].d.toISOString() : null; // このファイルの最初の日（前から持っていた株が分かるかの目安）
   let skipped = 0, skippedQty = 0;
@@ -273,12 +276,26 @@ export function execToTrades(rows, headerIndex) {
     // 米国株（ドル建て）は、その日の為替レートで円に直す
     const k = C.fx >= 0 && num(r[C.fx]) > 0 ? num(r[C.fx]) : 1;
     const cost = (costCols.reduce((a, i) => a + Math.abs(num(r[i])), 0) - gainCols.reduce((a, i) => a + Math.abs(num(r[i])), 0)) * k;
-    if (/信用返済/.test(kind)) {
-      const entry = num(r[C.entry]);
-      if (!(entry > 0)) continue;
+    if (/信用新規/.test(kind)) {
+      const key = `${code}|${/買/.test(side) ? 'L' : 'S'}`;
+      opens.set(key, [...(opens.get(key) || []), { qty, price, d }]);
+    } else if (/信用返済/.test(kind)) {
       const long = /売埋|返済売/.test(side);
-      out.push({ src: 'exec', from, kind: long ? 'margin' : 'short', date: d.toISOString(), symbol: name || code, code, side: long ? '買' : '売', qty, price, entry,
-        openDate: parseDate(r[C.openDate])?.toISOString() || null, pnl: Math.round((long ? 1 : -1) * (price - entry) * qty * k - cost) });
+      // 建てたときの値段：その日に返したばかりで「建単価」がまだ入っていないときは、建てた順に合わせる
+      const q0 = opens.get(`${code}|${long ? 'L' : 'S'}`) || [];
+      let left = qty, paid = 0, firstD = null;
+      while (left > 0 && q0.length) {
+        const o = q0[0], take = Math.min(left, o.qty);
+        paid += take * o.price; left -= take; o.qty -= take; firstD ||= o.d;
+        if (o.qty <= 0) q0.shift();
+      }
+      const entry = num(r[C.entry]) > 0 ? num(r[C.entry]) : left === 0 ? paid / qty : 0;
+      if (!(entry > 0)) continue;
+      // 受渡金額は、楽天証券が費用まで引いて出した損益そのもの（まだ決まっていないときは「-」）
+      const settled = C.yen >= 0 && k === 1 ? toNumber(r[C.yen]) : NaN;
+      const pnl = Number.isFinite(settled) ? settled : (long ? 1 : -1) * (price - entry) * qty * k - cost;
+      out.push({ src: 'exec', from, kind: long ? 'margin' : 'short', date: d.toISOString(), symbol: name || code, code, side: long ? '買' : '売', qty, price, entry: Math.round(entry * 100) / 100,
+        openDate: parseDate(r[C.openDate])?.toISOString() || firstD?.toISOString() || null, pnl: Math.round(pnl), ...(Number.isFinite(settled) || C.yen < 0 ? {} : { est: true }) });
     } else if (/現物/.test(kind)) {
       // NISAと特定口座は別々に平均する
       const key = `${code}|${C.acct >= 0 ? String(r[C.acct] || '') : ''}`;

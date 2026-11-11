@@ -264,6 +264,7 @@ function showLoaded(list, format, fileName, moved = [], skipped = 0) {
         <div class="stat"><div class="label">損益の合計</div><div class="value ${total >= 0 ? 'plus' : 'minus'}">${fmtYen(total)}</div></div>
       </div>
       <p class="small" style="margin:0 0 6px">期間：${days.length ? `${new Date(days[0]).toLocaleDateString('ja-JP')} 〜 ${new Date(days[days.length - 1]).toLocaleDateString('ja-JP')}` : '—'}</p>
+      ${list.some((t) => t.est) ? `<p class="small" style="margin:0 0 6px">⏳ 返したばかりで楽天証券の損益がまだ出ていない信用の取引が <b>${list.filter((t) => t.est).length}件</b> あります。建てた順に組み合わせて計算した目安なので、数日後に取引履歴を読み込み直すと楽天証券と同じ数字になります。</p>` : ''}
       ${skipped ? `<p class="small" style="margin:0 0 6px">⚠️ このファイルより前に買った株を売った取引が <b>${skipped}件</b> ありました。買った値段がファイルに入っていないので、<b>損益に入れていません</b>。楽天証券の数字と合わせるには、楽天証券の「実現損益」のCSVも読み込んでください（そちらの損益を優先して使います）。</p>` : ''}
       <p class="small muted" style="margin:0">証券会社・FX会社の画面に出ている「損益の合計」と同じになっているか確認してください。違う場合は、下の「うまく読めないとき」で列を選び直せます。</p>
     </div>`;
