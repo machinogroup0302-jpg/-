@@ -2,6 +2,7 @@
 import { api, $, esc, store, fmtPrice, digitsFor, signalClass, JST, cssVar } from './util.js';
 import { sma, bollinger, rsi, macd, ichimoku, technicalSummary } from './indicators.js';
 import { supportResistance, trendlines, pivots } from './levels.js';
+import { detectPatterns } from './patterns.js';
 import { monteCarlo, futureTimes } from './forecast.js';
 import { vwap } from './volume.js';
 import { term } from './glossary.js';
@@ -14,7 +15,7 @@ const LC = window.LightweightCharts;
 export const TF_LABELS = { '5m': '5分足', '15m': '15分足', '1h': '1時間足', '4h': '4時間足', '1d': '日足', '1wk': '週足' };
 const TF_SPAN = { '5m': '約1時間40分', '15m': '約5時間', '1h': '約1日', '4h': '約3〜4日', '1d': '約1か月', '1wk': '約5か月' };
 const LAYERS = [
-  ['ma', '平均線'], ['bb', 'いつもの範囲'], ['ichi', '雲（一目）'], ['levels', '壁と支え'], ['trend', '流れの線'], ['pivot', '今日の目安'], ['forecast', '動く幅の目安'], ['vol', '売買の量', 'equity'],
+  ['ma', '平均線'], ['bb', 'いつもの範囲'], ['ichi', '雲（一目）'], ['levels', '壁と支え'], ['trend', '流れの線'], ['pattern', '形（パターン）'], ['pivot', '今日の目安'], ['forecast', '動く幅の目安'], ['vol', '売買の量', 'equity'],
 ];
 const SUBS = [['rsi', '買われすぎ度（RSI）'], ['macd', '勢い（MACD）'], ['none', 'なし']];
 
@@ -31,7 +32,7 @@ export const state = {
   symbol: saved('symbol'),
   name: saved('name'),
   tf: saved('tf'),
-  layers: { ma: true, bb: false, ichi: false, levels: true, trend: true, pivot: false, forecast: true, ai: true, vol: true, ...store.get('layers', {}) },
+  layers: { ma: true, bb: false, ichi: false, levels: true, trend: true, pattern: true, pivot: false, forecast: true, ai: true, vol: true, ...store.get('layers', {}) },
   sub: store.get('sub', 'rsi'),
   data: null,
 };
@@ -161,11 +162,36 @@ function render() {
     legend.push(['#ff9f43', '上値の壁'], ['#00c2a8', '下値の支え']);
   }
   const tls = trendlines(raw);
-  if (L.trend) {
+  // チャートの形（ダブルトップ・三角保ち合いなど）。三角保ち合いなどの線が出ているときは、
+  // 同じ山と谷を結んだ流れの線と重なるので、流れの線は出さない
+  const pats = detectPatterns(raw);
+  const patEdges = L.pattern && pats.some((p) => p.family === 'cont');
+  if (L.trend && !patEdges) {
     for (const t of tls) {
       addLine(main, overlay, [{ time: t.from.time + JST, value: t.from.price }, { time: t.to.time + JST, value: t.to.price }], t.kind === 'up' ? '#00c2a8' : '#ff9f43', { lineWidth: 2 });
     }
     if (tls.length) legend.push(['#ffffff99', '流れの線']);
+  }
+
+  // チャートの形の線・目標・印
+  if (L.pattern && pats.length) {
+    const PC = { res: '#ff9f43', sup: '#00c2a8', neck: '#e0b84f', shape: '#c084fc' };
+    const marks = [];
+    for (const p of pats) {
+      for (const ln of p.lines) {
+        const pts = ln.pts.map((q) => ({ time: q.time + JST, value: q.price })).filter((q, k, arr) => !k || q.time > arr[k - 1].time);
+        if (pts.length < 2) continue;
+        addLine(main, overlay, pts, PC[ln.role], { lineWidth: 2, lineStyle: ln.role === 'neck' ? LC.LineStyle.Dashed : LC.LineStyle.Solid });
+      }
+      if (p.target != null) {
+        priceLines.push(candleSeries.createPriceLine({ price: p.target, color: '#e0b84f', lineWidth: 1, lineStyle: LC.LineStyle.SparseDotted, axisLabelVisible: true, title: '形の目標' }));
+      }
+      for (const m of p.marks) {
+        marks.push({ time: m.time + JST, position: m.top ? 'aboveBar' : 'belowBar', color: '#e0b84f', shape: m.top ? 'arrowDown' : 'arrowUp', text: m.text });
+      }
+    }
+    candleSeries.setMarkers(marks.sort((a, b) => a.time - b.time));
+    legend.push([PC.res, '上値抵抗線'], [PC.sup, '下値支持線'], [PC.neck, 'ネックライン']);
   }
 
   const pv = pivotFor(raw, tf);
@@ -231,7 +257,7 @@ function render() {
 
   renderQuote(raw, digits);
   renderTech(raw);
-  renderLevels(levels, tls, pv, last.close, digits);
+  renderLevels(levels, tls, pv, last.close, digits, pats);
   renderForecast(fc, digits);
   renderStop(raw, digits);
 }
@@ -315,7 +341,7 @@ function renderTech(candles) {
       <div class="small muted">${esc(r.detail)}</div></li>`).join('')}</ul>`;
 }
 
-function renderLevels(levels, tls, pv, price, digits) {
+function renderLevels(levels, tls, pv, price, digits, pats = []) {
   const rows = levels.map((l) => `
     <li class="lv-row"><span class="badge ${l.kind === 'resistance' ? 'warn' : 'ok'}">${term(l.kind, l.label)}</span>
     <span class="num" style="font-weight:700">${fmtPrice(l.price, digits)}</span>
@@ -325,9 +351,31 @@ function renderLevels(levels, tls, pv, price, digits) {
     ${near ? `<p class="small" style="margin:0 0 8px">いちばん近いのは <b>${esc(near.label)} ${fmtPrice(near.price, digits)}</b>（今の値段から ${fmtPrice(Math.abs(near.price - price), digits)}）</p>` : ''}
     <p class="small muted" style="margin:0 0 6px">${term('strength', '強さの見方')}</p>
     <ul class="list">${rows.join('') || '<li class="empty">見つかりませんでした</li>'}</ul>
+    <h3>チャートの形（パターン）</h3>
+    ${pats.length ? `<ul class="list">${pats.map((p) => patternRow(p, price, digits)).join('')}</ul>
+      <p class="small muted" style="margin:6px 0 0">形は「こうなりやすい」という昔からの目安で、当たる確率が高いという意味ではありません。線を抜けた（割った）のを確かめてから使ってください。</p>`
+      : '<p class="small muted" style="margin:0">今は、はっきりした形は出ていません（ダブルトップ・三尊・三角保ち合い・フラッグなどを自動で探しています）。</p>'}
     ${tls.length ? `<h3>${term('trendline', '流れの線（トレンドライン）')}</h3><ul class="list">${tls.map((t) => `<li class="small">${esc(t.label)}: 今の位置 <b class="num">${fmtPrice(t.to.price, digits)}</b></li>`).join('')}</ul>` : ''}
     ${pv ? `<h3>${term('pivot', '今日の目安（ピボット）')}</h3><div class="small num">${Object.entries(pv).map(([k, v]) => `${k}: ${fmtPrice(v, digits)}`).join('　')}</div>` : ''}
     <p class="notice" style="margin-top:10px">${mode === 'fx' ? 'LION FX' : 'iSPEED'} でも、この値段に横線を引くと同じ線になります。</p>`;
+}
+
+function patternRow(p, price, digits) {
+  const tone = p.dir > 0 ? 'buy' : p.dir < 0 ? 'sell' : '';
+  const way = p.dir > 0 ? '上がりやすい形' : p.dir < 0 ? '下がりやすい形' : '抜けた方へ動きやすい形';
+  let state;
+  if (p.status === 'done') {
+    const d = p.broke ?? p.dir;
+    state = d > 0 ? '✅ 線を上に抜けました' : '✅ 線を下に割りました';
+  } else if (p.neckNow != null) {
+    state = `⏳ まだ途中。ネックライン <b class="num">${fmtPrice(p.neckNow, digits)}</b> を${p.dir > 0 ? '上に抜ける' : '下に割る'}と完成`;
+  } else {
+    state = `⏳ まだ途中。上の線 <b class="num">${fmtPrice(p.upper, digits)}</b>・下の線 <b class="num">${fmtPrice(p.lower, digits)}</b> のどちらを抜けるか`;
+  }
+  const tgt = p.target != null ? `<div class="small">抜けたときの目標の目安：<b class="num">${fmtPrice(p.target, digits)}</b>（形の高さの分だけ動いた値段・今から ${p.target >= price ? '+' : ''}${fmtPrice(p.target - price, digits)}）</div>` : '';
+  return `<li><div class="row" style="flex-wrap:wrap;gap:6px"><b>${esc(p.name)}</b><span class="badge ${tone}">${way}</span></div>
+    <div class="small" style="margin:4px 0">${state}</div>${tgt}
+    <div class="small muted">${esc(p.note)}</div></li>`;
 }
 
 function renderForecast(fc, digits) {

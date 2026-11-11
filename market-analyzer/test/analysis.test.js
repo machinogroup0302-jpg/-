@@ -1155,3 +1155,50 @@ test('日本の業績ページ（エスケープされたJSON）と決算短信�
   assert.ok(o.items.some((x) => /経常利益：前年比 -21.3%/.test(x.text) && x.pts < 0));
   assert.ok(o.items.some((x) => x.name === '直近の決算の中身' && x.pts > 0));
 });
+
+// ---------- チャートの形（パターン） ----------
+import { detectPatterns } from '../public/js/patterns.js';
+function pathCandles(path, seed = 7) {
+  let r = seed;
+  const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647 - 0.5;
+  const out = [];
+  let prev = path[0][1];
+  for (let s = 1; s < path.length; s++) {
+    const [i0, p0] = path[s - 1], [i1, p1] = path[s];
+    for (let i = i0; i < i1; i++) {
+      const c = p0 + ((p1 - p0) * (i - i0)) / (i1 - i0) + rnd() * 0.15;
+      out.push({ time: 1e9 + out.length * 86400, open: prev, high: Math.max(prev, c) + 0.2, low: Math.min(prev, c) - 0.2, close: c, volume: 1 });
+      prev = c;
+    }
+  }
+  return out;
+}
+const PATS = {
+  'double-top': [[0, 100], [60, 100.5], [80, 90], [100, 110], [115, 102], [130, 110.2], [145, 101]],
+  'hs-top': [[0, 95], [60, 96], [80, 92], [95, 108], [105, 101], [120, 114], [132, 101.5], [145, 108.3], [158, 103]],
+  'hs-bottom': [[0, 125], [60, 124], [80, 128], [95, 112], [105, 119], [120, 106], [132, 118.5], [145, 111.7], [158, 117]],
+  'triple-bottom': [[0, 120], [60, 119], [80, 115], [95, 100], [107, 110], [120, 100.3], [132, 110.4], [145, 99.8], [156, 108]],
+  'asc-tri': [[0, 90], [60, 91], [80, 92], [92, 110], [102, 98], [112, 110], [122, 102], [132, 110.1], [142, 105], [150, 109]],
+  'desc-tri': [[0, 110], [60, 109], [80, 108], [92, 90], [102, 102], [112, 90], [122, 98], [132, 89.9], [142, 95], [150, 91]],
+  'sym-tri': [[0, 100], [60, 100], [72, 115], [84, 92], [96, 112], [108, 96], [118, 109], [128, 99], [136, 106]],
+  flag: [[0, 100], [80, 100.5], [92, 125], [100, 121], [106, 124], [114, 119], [120, 122.5], [128, 117.5], [132, 120]],
+  pennant: [[0, 100], [80, 100.5], [92, 126], [98, 119], [104, 124.5], [110, 120], [115, 123.5], [120, 121], [124, 122.5]],
+  'fall-wedge': [[0, 100], [60, 100.5], [70, 120], [80, 104], [88, 115], [98, 100], [106, 109], [114, 98], [122, 104], [128, 96.5], [134, 100]],
+  'v-bottom': [[0, 100], [100, 100.4], [108, 82], [118, 99], [124, 99]],
+};
+for (const [key, path] of Object.entries(PATS)) {
+  test(`チャートの形: ${key} を見つけて線を返す`, () => {
+    const found = detectPatterns(pathCandles(path));
+    const p = found.find((x) => x.key === key);
+    assert.ok(p, `${key} が見つからない: ${found.map((x) => x.key).join(',')}`);
+    assert.ok(p.lines.length >= 1 && p.lines.every((l) => l.pts.length >= 2 && l.pts.every((q) => Number.isFinite(q.price))));
+  });
+}
+test('チャートの形: まっすぐ上がるだけなら何も出さない', () => {
+  assert.equal(detectPatterns(pathCandles([[0, 100], [160, 140]])).length, 0);
+});
+test('チャートの形: ダブルトップはネックラインを割ったら完成、目標は下', () => {
+  const p = detectPatterns(pathCandles(PATS['double-top'])).find((x) => x.key === 'double-top');
+  assert.equal(p.status, 'done');
+  assert.ok(p.target < p.neckNow);
+});
