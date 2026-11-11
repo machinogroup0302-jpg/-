@@ -20,7 +20,7 @@ import { updateFundamentals, resetFundamentals } from './fundview.js';
 import { initLab, updateLab, resetLab, refreshLab } from './labview.js';
 import { updateEarningsCard } from './earningsview.js';
 import { updateOpening } from './openingview.js';
-import { initMine, updateMine, showWaysCard } from './mineview.js';
+import { initMine, updateMine, showWaysCard, fillLabJournal, goJournal } from './mineview.js';
 
 const MODE_NAMES = { fx: '為替', stock: '日本株', us: '米国株' };
 function applyMode(mode) {
@@ -56,7 +56,7 @@ function showTab(id) {
   setReportPage(`${id}・${getMode()}`);
   if (id === 'news') { newsOnSymbol(chartState); updateThemes(getMode()); updateCrowd(chartState, getMode()); renderEconCard(); }
   if (id === 'screener' && getMode() === 'stock') showStockScreener();
-  if (id === 'lab') { updateLab(chartState, getMode()); showWaysCard($('lab-ways'), getMode()); }
+  if (id === 'lab') { fillLabJournal(getMode()); updateLab(chartState, getMode()); showWaysCard($('lab-ways'), getMode()); }
   if (id === 'mine') updateMine(getMode());
   window.scrollTo({ top: 0 });
 }
@@ -167,7 +167,7 @@ function saveSettings() {
   applyTheme();
   $('settings').close();
   toast('保存しました');
-  if (currentTab === 'lab') { updateLab(chartState, getMode()); showWaysCard($('lab-ways'), getMode()); }
+  if (currentTab === 'lab') { fillLabJournal(getMode()); updateLab(chartState, getMode()); showWaysCard($('lab-ways'), getMode()); }
   if (currentTab === 'mine') updateMine(getMode());
 }
 
@@ -278,6 +278,7 @@ function startApp() {
     showTab(currentTab);
   });
   $('open-settings').addEventListener('click', openSettings);
+  $('lab-jr-go').addEventListener('click', () => { goJournal(); showTab('mine'); });
   // 自分のデータの控え
   $('data-export').addEventListener('click', () => {
     const d = exportData();

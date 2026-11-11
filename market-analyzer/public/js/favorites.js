@@ -38,7 +38,7 @@ export function setFavs(mode, list) {
 // ---- パソコンとスマホでお気に入り・あなたの設定を共有する ----
 // 端末ごとに「最後にサーバーとそろえた時刻（ts）」と「まだ送っていない変更があるか（dirty）」を覚えておく
 const MODES = ['fx', 'stock', 'us'];
-const KEYS = [...MODES.map((m) => `favs_${m}`), ...MODES.map((m) => `holdings_${m}`), ...MODES.map((m) => `trades_${m}`), 'profile'];
+const KEYS = [...MODES.map((m) => `favs_${m}`), ...MODES.map((m) => `holdings_${m}`), ...MODES.map((m) => `trades_${m}`), ...MODES.map((m) => `journal_${m}`), 'profile'];
 const localValue = (key) => (key.startsWith('favs_') ? getFavs(key.slice(5)) : store.get(key, null));
 let pushTimer = null;
 let syncing = null;

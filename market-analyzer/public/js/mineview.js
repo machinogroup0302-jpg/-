@@ -15,6 +15,7 @@ import { tradeSymbol } from './tradecoach.js';
 import { parseHoldingsCsv } from './holdimport.js';
 import { decodeFile } from './trades.js';
 import { errText, report } from './report.js';
+import { recordPicks, markBought, markSold, setStatus, getJournal, journalStats, summaryHtml, listHtml } from './journal.js';
 
 const pct = (v) => (v == null ? '—' : `${Math.round(v * 100)}%`);
 // 銘柄名を押すと、その銘柄のチャートを開く
@@ -358,11 +359,14 @@ function renderPlan(r0, mode) {
   const good = opens.filter((x) => x.odds && x.odds.p >= minOdds && x.odds.expect > 0);
   const picks = good.filter((x) => !x.mine.length && x.size?.qty > 0).slice(0, left.slots);
   const rest = opens.filter((x) => !picks.includes(x));
+  // プランの「買うもの」を記録する（あとで「プランどおりなら」「実際は」を比べるため。スイングだけ）
+  if (r0.style !== 'day') recordPicks(mode, picks, pf.swingDays || 30);
   const allCloses = r.next.filter((x) => x.type === 'close');
   // 決済のサインのうち、あなたが実際に持っているもの
   const closeOf = (h) => allCloses.find((c) => c.symbol.toUpperCase() === symbolOf(mode, h.code).toUpperCase() && (!c.open || c.open.side === h.side));
   $('lab-plan').innerHTML = `
     ${wayBar(r, mode)}
+    <div id="plan-jr-mini" class="notice" style="margin:0 0 8px"><span class="spinner"></span> 📒 プランの結果を計算しています…</div>
     ${pf.budget ? '' : `<p class="notice" style="margin:0 0 8px">${mode === 'fx' ? '<b>為替の予算</b>' : mode === 'us' ? '<b>米国株の予算</b>' : '予算'}がまだ入っていないので、仮に100万円で計算しています。右上の⚙（設定）で${mode === 'fx' ? '「為替の予算」（FXの口座に入れているお金）' : mode === 'us' ? '「米国株の予算」' : '「日本株：現物の予算」'}を入れてください。${mode !== 'stock' ? '日本株の予算とは別です。' : ''}</p>`}
     <div class="plan-rule small">${mode === 'fx' ? `予算 <b>${yen0(budget)}</b>` : budgets(pf).sep ? `現物の予算 <b>${yen0(budgets(pf).cash)}</b>・信用・空売りの予算 <b>${yen0(budgets(pf).margin)}</b>` : `予算 <b>${yen0(budget)}</b>（現物・信用で共通）`}　／　1回で減ってもいい額 <b>${yen0(budget * pf.riskPct / 100)}</b>（${pf.riskPct}%）　／　同時に <b>${pf.maxPos}銘柄</b>まで（1銘柄 ${mode === 'fx' ? '' : '現物で'}${yen0(cashB / pf.maxPos)}まで）　／　取引のしかた <b>${esc(kindText(pf, mode))}</b></div>
     <button class="btn block" id="plan-settings" style="margin:8px 0 4px">予算・ルールを変える</button>
@@ -424,14 +428,26 @@ function renderPlan(r0, mode) {
       for (const [acct, qty] of parts) if (qty > 0) todo.push({ code: codeFor(mode, x.symbol), name: x.name, side: x.side, price, qty, date, acct });
     }
     for (const t of todo) addHolding(mode, t);
+    // プランの記録にも「買った」を付ける（現物＋信用に分けたものは、合計の数量で）
+    const byKey = new Map();
+    for (const t of todo) { const k = `${t.code}|${t.side}`; const o = byKey.get(k); byKey.set(k, o ? { ...o, qty: o.qty + t.qty } : t); }
+    for (const t of byKey.values()) markBought(mode, symbolOf(mode, t.code), t.side, { price: t.price, qty: t.qty, date: t.date });
     renderPlan(r0, mode);
   };
   // 決済した → 持っている株から消す
   box.querySelectorAll('.plan-sold').forEach((b) => { b.onclick = () => {
-    if (!confirm('決済した（売った・買い戻した）ので、持っている株から消しますか？')) return;
-    setHoldings(mode, getHoldings(mode).filter((h) => h.id !== b.dataset.id));
+    const h = getHoldings(mode).find((x) => x.id === b.dataset.id);
+    if (!h) return;
+    // 決済した値段を聞いて、プランの記録（実際にやった分の損益）に残す
+    const now = priceOf(r, mode, h);
+    const ans = prompt(`${h.name}を決済した値段を入れてください（持っている株から消して、プランの記録に残します）`, now ? String(Math.round(now * 10 ** d) / 10 ** d) : '');
+    if (ans == null) return;
+    const px = Number(String(ans).normalize('NFKC').replace(/[,，円\s]/g, ''));
+    if (px > 0) markSold(mode, h.code, h.side, px, todayStr());
+    setHoldings(mode, getHoldings(mode).filter((x) => x.id !== b.dataset.id));
     renderPlan(r0, mode);
   }; });
+  fillJournalMini(mode);
   const cs = $('cal-save');
   if (cs) cs.onclick = () => {
     const t = String($('cal-rate').value).normalize('NFKC').replace(/[%％\s]/g, '');
@@ -1228,7 +1244,7 @@ function applyMineSub() {
   document.querySelectorAll('#mine-sub button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.sub === mineSub)));
   document.querySelectorAll('[data-minepanel]').forEach((el) => { el.hidden = el.dataset.minepanel !== mineSub; });
   document.querySelectorAll('#style-seg button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.style === style)));
-  const showStyle = mineSub !== 'hold';
+  const showStyle = mineSub !== 'hold' && mineSub !== 'result';
   $('style-seg').hidden = !showStyle;
   $('style-note').hidden = !showStyle;
   $('style-note').textContent = STYLE_NOTE[style];
@@ -1240,9 +1256,86 @@ function applyMineSub() {
   $('swing-days-chips').innerHTML = days.map((d) => `<button type="button" class="chip" data-d="${d}" aria-pressed="${d === sd}">${d}日${d === rec ? ' ★おすすめ' : ''}</button>`).join('');
 }
 
+// ---------------- 📒 プランの結果（プランどおりなら・実際は） ----------------
+let jrCache = null;
+async function jrStats(mode, force = false) {
+  const sig = JSON.stringify([mode, getJournal(mode)]);
+  if (!force && jrCache?.sig === sig && Date.now() - jrCache.at < 60e3) return jrCache.st;
+  const st = await journalStats(mode, await loadRegime().catch(() => null));
+  jrCache = { sig, at: Date.now(), st };
+  return st;
+}
+async function fillJournalMini(mode) {
+  const el = $('plan-jr-mini');
+  if (!el) return;
+  try {
+    const st = await jrStats(mode);
+    if (!$('plan-jr-mini')) return;
+    const w = st.sum;
+    el.innerHTML = st.count
+      ? `📒 <b>プランの結果</b>　プランどおりなら 今日 <b class="${w.plan.today >= 0 ? 'plus' : 'minus'}">${fmtYen(Math.round(w.plan.today))}</b>・1週間 <b class="${w.plan.week >= 0 ? 'plus' : 'minus'}">${fmtYen(Math.round(w.plan.week))}</b>・1か月 <b class="${w.plan.month >= 0 ? 'plus' : 'minus'}">${fmtYen(Math.round(w.plan.month))}</b>／実際 今日 <b class="${w.real.today >= 0 ? 'plus' : 'minus'}">${fmtYen(Math.round(w.real.today))}</b>・1週間 <b>${fmtYen(Math.round(w.real.week))}</b>・1か月 <b>${fmtYen(Math.round(w.real.month))}</b>${st.open ? `<br>⚠ まだ「買った・見送った」を記入していないものが ${st.open}件あります` : ''}　<button class="btn small" id="plan-jr-go">くわしく見る</button>`
+      : '📒 <b>プランの結果</b>：これから「これを買ってください」と出たものを自動で記録して、「プランどおりなら」と「実際は」の損益を毎日出します。';
+    const go = $('plan-jr-go');
+    if (go) go.onclick = () => { mineSub = 'result'; store.set('mine_sub', mineSub); updateMine(mode); };
+  } catch { el.hidden = true; }
+}
+// 成績のタブのいちばん上：本番（あなたのプランの記録）の成績
+export async function fillLabJournal(mode) {
+  const el = $('lab-jr-box');
+  if (!el) return;
+  try {
+    const st = await jrStats(mode);
+    el.innerHTML = st.count ? `${summaryHtml(st)}${st.open ? `<p class="small" style="margin:6px 0 0">⚠ まだ「買った・見送った」を記入していないものが <b>${st.open}件</b> あります。</p>` : ''}`
+      : '<p class="small muted">まだ記録がありません。「あなた専用」→「あなたのプラン」で「これを買ってください」と出たものを自動で記録して、ここに「プランどおりなら」と「実際は」の損益を今日・1週間・1か月で出します。下の「この銘柄の売買」などは、過去のデータでの練習（計算）です。</p>';
+  } catch (e) { el.innerHTML = `<p class="error small">${esc(errText('プランの結果', e))}</p>`; }
+}
+export function goJournal() { mineSub = 'result'; store.set('mine_sub', mineSub); }
+
+async function showJournal(mode, force = false) {
+  const out = $('jr-box');
+  out.innerHTML = '<p class="small muted"><span class="spinner"></span> 値段を取ってきて計算しています…</p>';
+  try {
+    const st = await jrStats(mode, force);
+    if (getModeFn() !== mode || mineSub !== 'result') return;
+    const d = digitsOf(mode);
+    out.innerHTML = `${summaryHtml(st)}<h3>記録（新しい順）</h3>${listHtml(st, (v) => fmtPrice(v, d))}`;
+    const num = (v) => Number(String(v ?? '').normalize('NFKC').replace(/[,，円\s]/g, ''));
+    const find = (id) => getJournal(mode).find((e) => e.id === id);
+    out.querySelectorAll('.jr-buy').forEach((b) => { b.onclick = () => {
+      const e = find(b.dataset.id);
+      const px = num(prompt(`${e.name}を${e.side > 0 ? '買った' : '売った'}値段`, String(e.price)));
+      if (!(px > 0)) return;
+      const q = num(prompt('数量', String(e.qty)));
+      if (!(q > 0)) return;
+      setStatus(mode, e.id, 'bought', { price: px, qty: q, date: todayStr(), exitPrice: null, exitDate: '' });
+      addHolding(mode, { code: codeFor(mode, e.symbol), name: e.name, side: e.side, price: px, qty: q, date: todayStr(), acct: mode === 'fx' ? 'cash' : e.side < 0 || e.acct === 'margin' ? 'margin' : 'cash' });
+      showJournal(mode, true);
+    }; });
+    out.querySelectorAll('.jr-skip').forEach((b) => { b.onclick = () => { setStatus(mode, b.dataset.id, 'skipped'); showJournal(mode, true); }; });
+    out.querySelectorAll('.jr-undo').forEach((b) => { b.onclick = () => { setStatus(mode, b.dataset.id, 'open'); showJournal(mode, true); }; });
+    out.querySelectorAll('.jr-sell').forEach((b) => { b.onclick = () => {
+      const e = find(b.dataset.id);
+      const row = st.rows.find((x) => x.e.id === e.id);
+      const px = num(prompt(`${e.name}を決済した値段`, row?.now ? String(Math.round(row.now * 10 ** d) / 10 ** d) : ''));
+      if (!(px > 0)) return;
+      setStatus(mode, e.id, 'bought', { exitPrice: px, exitDate: todayStr() });
+      // 持っている株からも、その分を減らす（なくなれば消す）
+      const code = codeFor(mode, e.symbol).toUpperCase();
+      let left = e.a?.qty || e.qty;
+      setHoldings(mode, getHoldings(mode).map((h) => {
+        if (left <= 0 || String(h.code).toUpperCase() !== code || h.side !== e.side) return h;
+        const take = Math.min(left, h.qty); left -= take;
+        return { ...h, qty: h.qty - take };
+      }).filter((h) => h.qty > 0));
+      showJournal(mode, true);
+    }; });
+  } catch (e) { out.innerHTML = `<p class="error">${esc(errText('プランの結果', e))}</p>`; }
+}
+
 export function updateMine(mode, { force = false } = {}) {
   if ($('view-mine').hidden) return;
   applyMineSub();
+  if (mineSub === 'result') return showJournal(mode, force);
   if (mineSub === 'hold') return showHoldings(mode);
   if (mineSub === 'plan') return showPlan(mode, force);
   if (mineSub === 'now') return showNow(mode, force);

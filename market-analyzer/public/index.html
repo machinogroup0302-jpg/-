@@ -243,6 +243,7 @@
           <button data-sub="hold">持っている株</button>
           <button data-sub="now">今のサイン</button>
           <button data-sub="list">売買の一覧</button>
+          <button data-sub="result">📒 プランの結果</button>
         </div>
         <div class="seg" id="style-seg" style="margin-bottom:10px">
           <button data-style="swing">スイング（数日〜）</button>
@@ -300,6 +301,13 @@
           </div>
         </div>
 
+        <div data-minepanel="result" hidden>
+          <div class="card">
+            <h2>📒 プランの結果<span class="sub">プランどおりなら・実際は</span></h2>
+            <p class="small muted" style="margin-top:-4px">「あなたのプラン」で「これを買ってください」と出たものを自動で記録しています。買ったら「買った」、やらなかったら「見送った」、決済したら「決済した」を押すと、プランどおりに全部やっていた場合と、実際にやった分の損益を、今日・1週間・1か月で比べられます（「あなたのプラン」の🛒のチェックと「決済した」ボタンでも自動で記録されます）。</p>
+            <div id="jr-box"></div>
+          </div>
+        </div>
         <div data-minepanel="list" hidden>
           <div class="card">
             <h2>売買の一覧<span class="sub">いつ・なぜ買った／売ったか</span></h2>
@@ -335,6 +343,11 @@
 
       <!-- ===== 成績（答え合わせ・自動売買） ===== -->
       <section class="view" id="view-lab" hidden>
+        <div class="card" id="lab-jr">
+          <h2>📒 あなたのプランの本番の成績<span class="sub">プランどおりなら・実際は</span></h2>
+          <div id="lab-jr-box"><p class="small muted">読み込み中…</p></div>
+          <button class="btn block" id="lab-jr-go" style="margin-top:8px">1件ずつ見る・買った／見送ったを記入する（あなた専用）</button>
+        </div>
         <div class="lab-subnav" id="lab-sub" role="tablist">
           <button data-sub="trade">この銘柄の売買</button>
           <button data-sub="fc">予想の答え合わせ</button>

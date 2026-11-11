@@ -1279,3 +1279,14 @@ test('チャートの形：カップ・ウィズ・ハンドル、上昇チャ�
   assert.ok(keys(isl).includes('gap-up'));
   assert.ok(keys([...isl, { time: u(3), open: F, high: F + 0.5, low: F - 0.5, close: F - 0.2 }]).includes('island-top'));
 });
+
+test('プランの記録：サインの次の日に入った取引だけを、そのサインの結果にする', async () => {
+  const { planPosition, actualPosition } = await import('../public/js/journal.js');
+  const cs = Array.from({ length: 30 }, (_, i) => ({ time: 1e9 + i * 86400, open: 100 + i, high: 101 + i, low: 99 + i, close: 100.5 + i, volume: 1 }));
+  // サインの後に次の足がなければ「これから入る」
+  assert.equal(planPosition({ mode: 'stock', symbol: '7203.T', side: 1, t: cs[29].time, perPrice: 100 }, cs, null).wait, true);
+  // 実際：買った値段と数量から
+  const a = actualPosition({ status: 'bought', side: 1, qty: 100, perPrice: 100, a: { price: 1000, qty: 50, date: '2026-11-02', exitPrice: 1100, exitDate: '2026-11-05' } });
+  assert.equal(a.per, 50);
+  assert.equal(a.exit, 1100);
+});

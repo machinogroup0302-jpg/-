@@ -13,7 +13,7 @@ const BRANCH = process.env.PREFS_BRANCH || 'claude/trusting-planck-dsasvf';
 const BACKUP_PATH = 'alerts/prefs.json';
 const LOCAL = path.join(os.tmpdir(), 'ma-prefs.json');
 const SECRET = process.env.PREFS_KEY || process.env.SITE_PASSWORD || '';
-export const SYNC_KEY = /^(favs_(fx|stock|us)|holdings_(fx|stock|us)|trades_(fx|stock|us)|profile|push)$/;
+export const SYNC_KEY = /^(favs_(fx|stock|us)|holdings_(fx|stock|us)|trades_(fx|stock|us)|journal_(fx|stock|us)|profile|push)$/;
 const USERS = '__users';
 const MAX_SIZE = 200 * 1024;
 const MAX_TRADES_SIZE = 4 * 1024 * 1024;
@@ -186,9 +186,21 @@ function cleanValue(key, value) {
     return value.slice(0, 20000).map((t) => ({
       date: str(t?.date, 30), symbol: str(t?.symbol, 60), side: str(t?.side, 4), qty: numOrNull(t?.qty) ?? 0, price: numOrNull(t?.price) ?? 0,
       entry: numOrNull(t?.entry), pnl: numOrNull(t?.pnl), openDate: t?.openDate ? str(t.openDate, 30) : null, code: str(t?.code, 20), file: str(t?.file, 20), kind: ['cash', 'margin', 'short'].includes(t?.kind) ? t.kind : '',
+      ...(['pl', 'exec'].includes(t?.src) ? { src: t.src } : {}), ...(t?.from ? { from: str(t.from, 30) } : {}), ...(t?.est ? { est: true } : {}),
     }));
   }
   if (size > MAX_SIZE) throw bad('保存する内容が正しくありません');
+  if (key.startsWith('journal_')) {
+    // あなたのプランの記録：プランで出た「買うもの」と、買った・見送り・売った値段
+    const n = (v) => (Number.isFinite(Number(v)) ? Number(v) : null);
+    const d = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(v || '') ? v : '');
+    return value.slice(-300).map((x) => ({
+      id: str(x?.id, 60), date: d(x?.date), t: n(x?.t) || 0, symbol: str(x?.symbol, 20), code: str(x?.code, 20), name: str(x?.name, 60),
+      side: x?.side < 0 ? -1 : 1, acct: str(x?.acct, 10), qty: n(x?.qty) || 0, price: n(x?.price) || 0, perPrice: n(x?.perPrice) || 0, maxHold: n(x?.maxHold) || 30,
+      status: ['open', 'bought', 'skipped'].includes(x?.status) ? x.status : 'open',
+      ...(x?.a ? { a: { price: n(x.a.price) || 0, qty: n(x.a.qty) || 0, date: d(x.a.date), exitPrice: n(x.a.exitPrice), exitDate: d(x.a.exitDate) } } : {}),
+    })).filter((x) => x.id && x.symbol);
+  }
   if (key.startsWith('holdings_')) {
     return value.slice(0, 100).map((x) => ({
       code: str(x?.code, 20), name: str(x?.name, 60), side: Number(x?.side) < 0 ? -1 : 1,
