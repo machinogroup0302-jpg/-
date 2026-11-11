@@ -1247,3 +1247,17 @@ test('取引履歴：信用の損益は楽天の受渡金額を使い、諸費�
   assert.equal(t[1].entry, 8811);
   assert.equal(t[1].pnl, 77390);
 });
+
+test('日本株のリアルタイムの値段を読んで、最後の足を直す', async () => {
+  const { parseRealtime, applyRealtime } = await import('../lib/jprt.js');
+  const html = '{\\"codeWithMarketExtension\\":\\"7203.T\\",\\"label\\":\\"東証PRM\\",\\"price\\":{\\"value\\":\\"3,435\\"},\\"priceChange\\":{\\"value\\":\\"21\\"},\\"japanUpdateTime\\":\\"10:42\\",\\"delayMinutes\\":0}';
+  const p = parseRealtime(html, '7203');
+  assert.deepEqual(p, { price: 3435, h: 10, m: 42, delay: 0 });
+  const c = [{ time: 1000, open: 1, high: 2, low: 1, close: 2, volume: 5 }];
+  // 同じ足の中：終値・高値を直す
+  assert.deepEqual(applyRealtime(c, { price: 3, time: 1100 }, 300).at(-1), { time: 1000, open: 1, high: 3, low: 1, close: 3, volume: 5 });
+  // 次の足の時間：新しい足を足す
+  const n = applyRealtime(c, { price: 3, time: 1700 }, 300);
+  assert.equal(n.length, 2);
+  assert.equal(n[1].time, 1600);
+});

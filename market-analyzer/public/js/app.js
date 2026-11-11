@@ -171,7 +171,7 @@ function saveSettings() {
   if (currentTab === 'mine') updateMine(getMode());
 }
 
-// ---- 画面ごとの自動更新（チャートの値段は chartview.js で1分ごと） ----
+// ---- 画面ごとの自動更新（チャートの値段は chartview.js で30秒ごと） ----
 // 何分ごとに最新にするか
 const EVERY = { chartCards: 5, ratings: 30, news: 5, screener: 5, lab: 15, mine: 15, hold: 5 };
 const lastRun = {};

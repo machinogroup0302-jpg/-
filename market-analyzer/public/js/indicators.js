@@ -46,20 +46,16 @@ export function bollinger(values, n = 20, mult = 2) {
   return { mid, upper, lower };
 }
 
+// RSI：楽天証券など日本の証券会社と同じ計算（n本の上げ幅の合計 ÷（上げ幅の合計＋下げ幅の合計）× 100）
 export function rsi(values, n = 14) {
   const out = new Array(values.length).fill(null);
-  let gain = 0, loss = 0;
-  for (let i = 1; i < values.length; i++) {
-    const d = values[i] - values[i - 1];
-    const g = Math.max(d, 0), l = Math.max(-d, 0);
-    if (i <= n) {
-      gain += g; loss += l;
-      if (i === n) { gain /= n; loss /= n; out[i] = loss === 0 ? 100 : 100 - 100 / (1 + gain / loss); }
-    } else {
-      gain = (gain * (n - 1) + g) / n;
-      loss = (loss * (n - 1) + l) / n;
-      out[i] = loss === 0 ? 100 : 100 - 100 / (1 + gain / loss);
+  for (let i = n; i < values.length; i++) {
+    let up = 0, down = 0;
+    for (let j = i - n + 1; j <= i; j++) {
+      const d = values[j] - values[j - 1];
+      if (d > 0) up += d; else down -= d;
     }
+    out[i] = up + down <= 0 ? 50 : (100 * up) / (up + down);
   }
   return out;
 }

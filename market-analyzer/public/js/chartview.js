@@ -417,7 +417,8 @@ export async function loadChart(symbol = state.symbol, name, tf = state.tf, { si
     render();
     keepRange = null;
     lastLoaded = Date.now();
-    $('q-updated').textContent = `${new Date().toLocaleTimeString('ja-JP')} 時点${store.get('autoRefresh', 'on') === 'on' ? '（1分ごとに自動で更新）' : ''}`;
+    const rt = state.data.realtime ? '・リアルタイムの値段' : '';
+    $('q-updated').textContent = `${new Date().toLocaleTimeString('ja-JP')} 時点${rt}${store.get('autoRefresh', 'on') === 'on' ? '（30秒ごとに自動で更新）' : ''}`;
     if (!silent) listeners.forEach((fn) => fn(state));
   } catch (e) {
     if (silent) return; // 自動更新の失敗は表示しない（次の更新で取り直す）
@@ -426,14 +427,14 @@ export async function loadChart(symbol = state.symbol, name, tf = state.tf, { si
   }
 }
 
-// 1分ごと・アプリに戻ったときに、最新の値段に入れ替える
+// 30秒ごと・アプリに戻ったときに、最新の値段に入れ替える
 export function startAutoRefresh() {
   const tick = () => {
     if (store.get('autoRefresh', 'on') !== 'on' || document.visibilityState !== 'visible') return;
-    if ($('view-chart').hidden || !state.data || Date.now() - lastLoaded < 50 * 1000) return;
+    if ($('view-chart').hidden || !state.data || Date.now() - lastLoaded < 25 * 1000) return;
     loadChart(state.symbol, state.name, state.tf, { silent: true });
   };
-  setInterval(tick, 60 * 1000);
+  setInterval(tick, 30 * 1000);
   document.addEventListener('visibilitychange', tick);
 }
 

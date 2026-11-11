@@ -55,7 +55,7 @@ export function renderFlow(f) {
         { label: '大口の売り', value: f.size.bigSell, color: SELL }, { label: '中口の売り', value: f.size.midSell, color: 'color-mix(in srgb, var(--sell) 55%, transparent)' },
         { label: '小口（ふつうの量）', value: f.size.small, color: GRAY }], [`大口${Math.round(bigTotal * 100)}%`, v3])}
     </div>
-    <p class="notice" style="margin-top:8px">証券会社の板や歩み値（1件ごとの売買の記録）は無料では手に入らないため、5分ごとの値動きと売買の量から推定しています。正確な数字ではなく「傾向」として見てください。</p>`;
+    <p class="notice" style="margin-top:8px">楽天証券の「約定分析」は1件ごとの売買の記録（歩み値）から数えていますが、その記録は無料では手に入りません。ここでは5分ごとの値動きと売買の量から<b>推定</b>しているので、<b>楽天の数字とは一致しません</b>。「買いが多めか、売りが多めか」の傾向として見てください。</p>`;
 }
 
 const shares = (v) => (v >= 1e8 ? `${(v / 1e8).toFixed(2)}億株` : v >= 1e4 ? `${(v / 1e4).toFixed(1)}万株` : `${Math.round(v).toLocaleString()}株`);
@@ -69,6 +69,9 @@ export function renderMargin(m, date, todayVolume) {
   const total = m.buy + m.sell || 1;
   const days = todayVolume > 0 ? m.buy / todayVolume : null;
   const d = date ? `${date.slice(4, 6)}/${date.slice(6, 8)}` : '';
+  // 公表日から1週間以上たっていたら、古いことをはっきり出す
+  const age = date ? (Date.now() - Date.UTC(+date.slice(0, 4), +date.slice(4, 6) - 1, +date.slice(6, 8))) / 86400e3 : 0;
+  const stale = age > 7 ? `<p class="notice" style="margin:6px 0 0">⚠️ この残高は${d}時点の古いデータです。</p>` : '';
   return `
     <div class="flow-item"><div class="flow-row">${donut([{ label: '信用買い残', value: m.buy / total, color: BUY }, { label: '信用売り残', value: m.sell / total, color: SELL }], [ratio == null ? '—' : `${ratio.toFixed(1)}倍`, '信用倍率'])}
       <div class="small" style="display:grid;gap:4px">
@@ -77,7 +80,7 @@ export function renderMargin(m, date, todayVolume) {
         <div><b>${term('marginRatio', '信用倍率')}</b> ${ratio == null ? '売り残なし' : `${ratio.toFixed(2)}倍`}</div>
         ${days != null ? `<div class="muted">信用買い残は、今日の売買量の${days.toFixed(1)}日分</div>` : ''}
       </div></div></div>
-    <p class="small muted" style="margin:6px 0 0">${d ? `${d}時点・` : ''}日本取引所の公表データ（${esc(m.type || '')}）。信用買い残が多いほど「あとで売られる株」が多く、上値が重くなりやすいと言われます。</p>
+    <p class="small muted" style="margin:6px 0 0">${d ? `<b>${d}時点</b>・` : ''}日本取引所が毎日公表している残高（${esc(m.type || '')}）。楽天証券のアプリに出る信用残は<b>週に1回（金曜日時点）</b>の数字なので、日によって違います。信用買い残が多いほど「あとで売られる株」が多く、上値が重くなりやすいと言われます。</p>${stale}
     <p class="notice" style="margin-top:6px">「今日の売買のうち、信用買いと現物買いがそれぞれ何%か」は、どこからも公表されていないため出せません。代わりに、信用取引で買われてまだ残っている株数を表示しています。</p>`;
 }
 

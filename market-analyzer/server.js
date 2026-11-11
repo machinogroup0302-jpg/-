@@ -6,6 +6,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { getChart, getHistory } from './lib/market.js';
+import { jpRealtime, applyRealtime } from './lib/jprt.js';
 import { getNews } from './lib/news.js';
 import { getEarningsOutlook } from './lib/earnoutlook.js';
 import { getThemes } from './lib/themes.js';
@@ -220,7 +221,22 @@ async function handleApi(req, res, url) {
 
   if (route === 'GET /api/chart') {
     try {
-      const data = await getChart(url.searchParams.get('symbol'), url.searchParams.get('tf') || '1h');
+      let data = await getChart(url.searchParams.get('symbol'), url.searchParams.get('tf') || '1h');
+      // 日本株の取引時間中は、約20分遅れのデータの最後を、今の値段（リアルタイム）で直す
+      if (/^[0-9][0-9A-Z]{3}\.T$/.test(data.symbol)) {
+        const rt = await jpRealtime(data.symbol.replace(/\.T$/, ''));
+        const BAR = { '5m': 300, '15m': 900, '1h': 3600, '4h': 14400, '1d': 86400, '1wk': 7 * 86400 };
+        if (rt && BAR[data.timeframe] && data.timeframe !== '1wk') {
+          let candles;
+          if (data.timeframe === '1d') {
+            // 日足：最後の足が今日なら直し、まだ今日の足がなければ今日の足を足す
+            const day = (t) => new Date(t * 1000 + 9 * 3600e3).toISOString().slice(0, 10);
+            const lastT = data.candles[data.candles.length - 1].time;
+            candles = applyRealtime(data.candles, { ...rt, time: day(lastT) === day(rt.time) ? lastT : rt.time }, day(lastT) === day(rt.time) ? 86400 : 1);
+          } else candles = applyRealtime(data.candles, rt, BAR[data.timeframe]);
+          data = { ...data, candles, realtime: rt };
+        }
+      }
       // 会社名を日本語（米国株はカタカナ）にする
       const jpName = /\.T$/.test(data.symbol) ? nameFromCache(data.symbol.replace(/\.T$/, '')) : null;
       return json(res, 200, { ...data, name: INDEX_NAMES[data.symbol] || fxName(data.symbol) || jpName || usName(data.symbol) || data.name });
