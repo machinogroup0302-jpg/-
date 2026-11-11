@@ -354,7 +354,7 @@ function renderLevels(levels, tls, pv, price, digits, pats = []) {
     <h3>チャートの形（パターン）</h3>
     ${pats.length ? `<ul class="list">${pats.map((p) => patternRow(p, price, digits)).join('')}</ul>
       <p class="small muted" style="margin:6px 0 0">形は「こうなりやすい」という昔からの目安で、当たる確率が高いという意味ではありません。線を抜けた（割った）のを確かめてから使ってください。</p>`
-      : '<p class="small muted" style="margin:0">今は、はっきりした形は出ていません（ダブルトップ・三尊・三角保ち合い・フラッグなどを自動で探しています）。</p>'}
+      : '<p class="small muted" style="margin:0">今は、はっきりした形は出ていません（ダブルトップ・三尊・三角保ち合い・カップ・窓・包み線・明けの明星などを自動で探しています）。</p>'}
     ${tls.length ? `<h3>${term('trendline', '流れの線（トレンドライン）')}</h3><ul class="list">${tls.map((t) => `<li class="small">${esc(t.label)}: 今の位置 <b class="num">${fmtPrice(t.to.price, digits)}</b></li>`).join('')}</ul>` : ''}
     ${pv ? `<h3>${term('pivot', '今日の目安（ピボット）')}</h3><div class="small num">${Object.entries(pv).map(([k, v]) => `${k}: ${fmtPrice(v, digits)}`).join('　')}</div>` : ''}
     <p class="notice" style="margin-top:10px">${mode === 'fx' ? 'LION FX' : 'iSPEED'} でも、この値段に横線を引くと同じ線になります。</p>`;
@@ -362,9 +362,10 @@ function renderLevels(levels, tls, pv, price, digits, pats = []) {
 
 function patternRow(p, price, digits) {
   const tone = p.dir > 0 ? 'buy' : p.dir < 0 ? 'sell' : '';
-  const way = p.dir > 0 ? '上がりやすい形' : p.dir < 0 ? '下がりやすい形' : '抜けた方へ動きやすい形';
+  const way = p.dir > 0 ? '上がりやすい形' : p.dir < 0 ? '下がりやすい形' : p.family === 'gap' ? '窓' : p.family === 'candle' ? '迷い・様子見' : '抜けた方へ動きやすい形';
   let state;
-  if (p.status === 'done') {
+  if (p.stateText) state = esc(p.stateText);
+  else if (p.status === 'done') {
     const d = p.broke ?? p.dir;
     state = d > 0 ? '✅ 線を上に抜けました' : '✅ 線を下に割りました';
   } else if (p.neckNow != null) {

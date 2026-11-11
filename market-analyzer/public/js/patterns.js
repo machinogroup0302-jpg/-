@@ -229,6 +229,15 @@ function consolidation(candles, P, A) {
     } else if (conv && su <= -1 && sl <= -1 && su < sl) {
       key = 'fall-wedge'; dir = 1; name = '下降ウェッジ';
       note = '下がってはいるけれど、下げ幅がだんだん小さくなっている形。上の線を抜けると上がりやすい（底になりやすい）形です。';
+    } else if (w1 > w0 * 1.33 && su >= 1 && sl <= -1) {
+      key = 'broadening'; name = '拡大型（メガホン）';
+      note = '高値は切り上がり、安値は切り下がって、値動きがだんだん大きく荒れている形。迷っている人が多い状態で、天井の近くで出やすいと言われます。下の線を割ると下がりやすくなります。';
+    } else if (parallel && su >= 1.5 && sl >= 1.5) {
+      key = 'channel-up'; dir = 1; name = '上昇チャネル';
+      note = '平行な2本の線の間で、上がり続けている形。下の線の近くは買い場、上の線の近くは利益確定の目安になりやすく、下の線を割ると流れが変わったサインです。';
+    } else if (parallel && su <= -1.5 && sl <= -1.5) {
+      key = 'channel-down'; dir = -1; name = '下降チャネル';
+      note = '平行な2本の線の間で、下がり続けている形。上の線の近くは戻り売りの目安になりやすく、上の線を抜けると流れが変わったサインです。';
     }
     if (!key) continue;
 
@@ -347,6 +356,144 @@ function rounding(candles, A) {
   return out;
 }
 
+// ---------- カップ・ウィズ・ハンドル（おわん型の底のあと、小さく下げて取っ手を作る） ----------
+function cupHandle(candles, P, A) {
+  const n = candles.length;
+  for (let m = P.length - 1; m >= 3; m--) {
+    const [h1, lo, h2, hd] = P.slice(m - 3, m + 1);
+    if (h1.t !== 'H' || hd.t !== 'L') continue;
+    if (n - 1 - hd.i > FRESH) break;
+    const depth = Math.min(h1.price, h2.price) - lo.price;
+    if (depth < A * 4 || Math.abs(h1.price - h2.price) > Math.max(A * 1.5, depth * 0.15)) continue;
+    if (h2.i - h1.i < 20 || lo.i - h1.i < 8 || h2.i - lo.i < 8) continue;
+    const handle = h2.price - hd.price;
+    if (handle > depth * 0.5 || handle < A * 0.8 || n - 1 - h2.i > (h2.i - h1.i) / 2) continue;
+    // V字ではなく、底で何本かもみ合っている（丸い底）
+    let low = 0;
+    for (let i = h1.i; i <= h2.i; i++) if (candles[i].close <= lo.price + depth * 0.25) low++;
+    if (low < 4) continue;
+    const rim = Math.max(h1.price, h2.price);
+    const b = breakAt(candles, flat(rim), hd.i, 1, A);
+    if (b >= 0 && n - 1 - b > BROKE_FRESH) continue;
+    if (candles.slice(hd.i + 1).some((c) => c.close < hd.price - A * 0.5)) continue; // 取っ手の底を割ったら崩れた
+    return [{
+      key: 'cup-handle', name: 'カップ・ウィズ・ハンドル', dir: 1, family: 'rev', status: b >= 0 ? 'done' : 'forming',
+      endI: b >= 0 ? b : hd.i, pivI: hd.i, neckNow: rim, target: rim + depth,
+      lines: [
+        { role: 'neck', label: 'ネックライン（カップのふち）', pts: seg(candles, flat(rim), h1.i, n - 1) },
+        { role: 'shape', label: 'カップ', pts: [{ time: h1.time, price: h1.price }, { time: lo.time, price: lo.price }, { time: h2.time, price: h2.price }] },
+        { role: 'shape', label: 'ハンドル', pts: [{ time: h2.time, price: h2.price }, { time: hd.time, price: hd.price }] },
+      ],
+      marks: [{ time: lo.time, text: 'カップ', top: false }, { time: hd.time, text: 'ハンドル', top: false }],
+      note: 'ゆっくり下がって丸く戻した「カップ」のあと、少しだけ下げた「取っ手（ハンドル）」がついた形。カップのふち（ネックライン）を上に抜けると、上がりやすいと言われる強い形です。',
+    }];
+  }
+  return [];
+}
+
+// ---------- 窓（ギャップ）とアイランド・リバーサル ----------
+function gaps(candles, A) {
+  const n = candles.length;
+  const list = [];
+  for (let i = Math.max(1, n - 25); i < n; i++) {
+    const p = candles[i - 1], c = candles[i];
+    if (c.low > p.high + A * 0.3) list.push({ i, dir: 1, top: c.low, bottom: p.high });
+    else if (c.high < p.low - A * 0.3) list.push({ i, dir: -1, top: p.low, bottom: c.high });
+  }
+  const md = (t) => { const d = new Date(t * 1000 + 9 * 3600e3); return `${d.getUTCMonth() + 1}/${d.getUTCDate()}`; };
+  // アイランド：窓を開けて上がり（下がり）、数本のうちに反対向きの窓を開けて、島のように取り残された形
+  for (let a = list.length - 1; a >= 0; a--) {
+    for (let b = a + 1; b < list.length; b++) {
+      const g1 = list[a], g2 = list[b];
+      if (g1.dir === g2.dir || g2.i - g1.i > 12) continue;
+      const top = g1.dir > 0;
+      const island = candles.slice(g1.i, g2.i);
+      if (top ? Math.min(...island.map((c) => c.low)) <= Math.max(g1.bottom, g2.bottom) : Math.max(...island.map((c) => c.high)) >= Math.min(g1.top, g2.top)) continue;
+      return [{
+        key: top ? 'island-top' : 'island-bottom', name: top ? 'アイランド・リバーサル（天井）' : 'アイランド・リバーサル（底）', dir: top ? -1 : 1, family: 'gap', status: 'done',
+        endI: g2.i, stateText: `✅ ${md(candles[g2.i].time)}に反対向きの窓を開けて、形ができました`,
+        lines: [{ role: top ? 'res' : 'sup', label: '島の外側の窓', pts: seg(candles, flat(top ? g2.top : g2.bottom), g1.i - 1, n - 1) }],
+        marks: [{ time: candles[g1.i].time, text: '島', top }],
+        note: top
+          ? '窓を開けて上がったあと、すぐに下に窓を開けて下がり、上に取り残された「島」のようになった形。強い天井のサインと言われます。'
+          : '窓を開けて下がったあと、すぐに上に窓を開けて上がり、下に取り残された「島」のようになった形。強い底のサインと言われます。',
+      }];
+    }
+  }
+  // まだ埋まっていない、いちばん新しい窓
+  for (let k = list.length - 1; k >= 0; k--) {
+    const g = list[k];
+    const filled = candles.slice(g.i + 1).some((c) => (g.dir > 0 ? c.low <= g.bottom : c.high >= g.top));
+    if (filled) continue;
+    const up = g.dir > 0;
+    return [{
+      key: up ? 'gap-up' : 'gap-down', name: up ? '窓（上に開いた窓）' : '窓（下に開いた窓）', dir: 0, family: 'gap', status: 'forming', endI: g.i,
+      stateText: `📍 ${md(candles[g.i].time)}に開いた窓（${up ? `${g.bottom.toFixed(1)}〜${g.top.toFixed(1)}` : `${g.bottom.toFixed(1)}〜${g.top.toFixed(1)}`}）がまだ埋まっていません`,
+      lines: [
+        { role: up ? 'sup' : 'res', label: '窓の上', pts: seg(candles, flat(g.top), g.i - 1, n - 1) },
+        { role: up ? 'sup' : 'res', label: '窓の下', pts: seg(candles, flat(g.bottom), g.i - 1, n - 1) },
+      ],
+      marks: [{ time: candles[g.i].time, text: '窓', top: !up }],
+      note: up
+        ? '前の足の高値より上から始まって、間が空いた（窓が開いた）ところ。勢いの強さを表しますが、「窓は埋まる」と言われ、あとでこの値段まで戻ってくることも多いです。戻ってきたら下値の支えになりやすいです。'
+        : '前の足の安値より下から始まって、間が空いた（窓が開いた）ところ。売りの勢いの強さを表しますが、あとでこの値段まで戻ってくることも多く、戻ってきたら上値の壁になりやすいです。',
+    }];
+  }
+  return [];
+}
+
+// ---------- ローソク足の形（酒田五法など。いちばん新しい1〜3本で見る） ----------
+function candleShapes(candles, A) {
+  const n = candles.length;
+  if (n < 12) return [];
+  const c = candles[n - 1], p = candles[n - 2], q = candles[n - 3];
+  const body = (x) => Math.abs(x.close - x.open);
+  const bull = (x) => x.close > x.open, bear = (x) => x.close < x.open;
+  const up = (x) => x.high - Math.max(x.open, x.close), dn = (x) => Math.min(x.open, x.close) - x.low;
+  // その前の流れ（形の前の8本で、上がっていたか下がっていたか）
+  const move = candles[n - 2].close - candles[n - 10].close;
+  const wasDown = move < -A * 1.5, wasUp = move > A * 1.5;
+  const out = [];
+  const add = (key, name, dir, note, bars = 1) => out.push({ key, name, dir, family: 'candle', status: 'done', endI: n - 1, bars, note,
+    stateText: `🕯 いちばん新しい足${bars > 1 ? `（と、その前の${bars - 1}本）` : ''}で出ました。次の足で同じ向きに動くか確かめるのが基本です`,
+    lines: [], marks: [{ time: c.time, text: name.replace(/（.*）/, ''), top: dir < 0 }] });
+
+  // 3本の形
+  if (wasDown && bear(q) && body(q) >= A && body(p) <= body(q) * 0.35 && Math.max(p.open, p.close) <= q.close + A * 0.2 && bull(c) && c.close >= (q.open + q.close) / 2) add('morning-star', '明けの明星', 1, '大きく下げた足のあと、小さな足（迷い）が出て、次に大きく上げた形。下げ止まって上がり始めるサインと言われます。', 3);
+  if (wasUp && bull(q) && body(q) >= A && body(p) <= body(q) * 0.35 && Math.min(p.open, p.close) >= q.close - A * 0.2 && bear(c) && c.close <= (q.open + q.close) / 2) add('evening-star', '宵の明星', -1, '大きく上げた足のあと、小さな足（迷い）が出て、次に大きく下げた形。天井をつけて下がり始めるサインと言われます。', 3);
+  const three = [q, p, c];
+  if (three.every(bull) && three.every((x) => body(x) >= A * 0.5) && p.close > q.close && c.close > p.close && p.open >= q.open && c.open >= p.open && !wasUp) add('three-white', '赤三兵', 1, '陽線（上げた足）が3本続けて、少しずつ高く終わった形。上がり始めの力強いサインと言われます。', 3);
+  if (three.every(bear) && three.every((x) => body(x) >= A * 0.5) && p.close < q.close && c.close < p.close && p.open <= q.open && c.open <= p.open && !wasDown) add('three-black', '黒三兵（三羽烏）', -1, '陰線（下げた足）が3本続けて、少しずつ安く終わった形。下がり始めのサインと言われます。', 3);
+  // 三空：窓を3回続けて開けた
+  const gapUp = (i) => candles[i].low > candles[i - 1].high, gapDn = (i) => candles[i].high < candles[i - 1].low;
+  for (let e = n - 1; e >= n - 3; e--) {
+    if (gapUp(e) && gapUp(e - 1) && gapUp(e - 2)) { add('three-gaps-up', '三空踏み上げ', -1, '窓を開けて3回続けて上がった形。勢いはありますが、買われすぎで「そろそろ売り時」と言われます。', 4); break; }
+    if (gapDn(e) && gapDn(e - 1) && gapDn(e - 2)) { add('three-gaps-down', '三空叩き込み', 1, '窓を開けて3回続けて下がった形。売られすぎで「そろそろ買い時」と言われます。', 4); break; }
+  }
+  // 2本の形
+  if (!out.length) {
+    if (bear(p) && bull(c) && c.open <= p.close && c.close >= p.open && body(c) > body(p) && wasDown) add('bull-engulf', '陽の包み線（抱き線）', 1, '前の陰線を、次の陽線がすっぽり包んだ形。下げの流れが変わって上がり始めるサインと言われます。', 2);
+    else if (bull(p) && bear(c) && c.open >= p.close && c.close <= p.open && body(c) > body(p) && wasUp) add('bear-engulf', '陰の包み線（抱き線）', -1, '前の陽線を、次の陰線がすっぽり包んだ形。上げの流れが変わって下がり始めるサインと言われます。', 2);
+    else if (body(p) >= A && body(c) <= body(p) * 0.5 && Math.max(c.open, c.close) <= Math.max(p.open, p.close) && Math.min(c.open, c.close) >= Math.min(p.open, p.close) && (wasDown || wasUp)) {
+      add(wasDown ? 'harami-bull' : 'harami-bear', 'はらみ線', wasDown ? 1 : -1, `大きな足の中に、次の小さな足がおさまった形。${wasDown ? '下げ' : '上げ'}の勢いが止まって、流れが変わるかもしれないサインです。`, 2);
+    }
+  }
+  // 1本の形
+  if (!out.length) {
+    const r = c.high - c.low;
+    if (r >= A * 0.8 && dn(c) >= body(c) * 2 && up(c) <= Math.max(body(c), r * 0.1)) {
+      if (wasDown) add('hammer', 'たくり線（下ひげの長い足）', 1, '大きく下げたところから買い戻されて、長い下ひげを残した足。下げ止まりのサインと言われます。');
+      else if (wasUp) add('hanging', '首吊り線', -1, '上がってきたところで、長い下ひげを残した足。売りたい人が増えてきたサインで、天井になることがあります。');
+    } else if (r >= A * 0.8 && up(c) >= body(c) * 2 && dn(c) <= Math.max(body(c), r * 0.1)) {
+      if (wasUp) add('shooting', '流れ星（上ひげの長い足）', -1, '上がってきたところで上に伸びたのに押し戻され、長い上ひげを残した足。天井のサインと言われます。');
+      else if (wasDown) add('inv-hammer', 'トンカチ（上ひげの長い足）', 1, '下がってきたところで、上に伸びようとした足。下げ止まりのきざしで、次の足が上がれば確かめられます。');
+    } else if (r >= A * 0.8 && body(c) <= r * 0.1 && (wasUp || wasDown)) {
+      add('doji', '十字線（寄引同時線）', 0, `始まりと終わりの値段がほぼ同じで、十字の形になった足。買いと売りが引き分けで、${wasUp ? '上げ' : '下げ'}の流れが変わるかもしれない「迷い」のサインです。`);
+    }
+  }
+  return out.slice(0, 2);
+}
+
 // まとめ：見つかった形を、新しいもの・はっきりしたものから最大3つ
 export function detectPatterns(candles) {
   if (!candles || candles.length < 60) return [];
@@ -354,7 +501,7 @@ export function detectPatterns(candles) {
   const a = atr(all).filter((v) => v != null).slice(-50).sort((x, y) => x - y);
   const A = a[Math.floor(a.length / 2)] || all[all.length - 1].close * 0.01;
   const P = zigzag(all, A).filter((p) => p.i >= all.length - LOOK);
-  const found = [...reversals(all, P, A), ...consolidation(all, P, A), ...rounding(all, A)];
+  const found = [...reversals(all, P, A), ...cupHandle(all, P, A), ...consolidation(all, P, A), ...rounding(all, A)];
   // 同じ種類（天井・底の形／続く形）は、いちばん新しいものだけ
   // ボックスがあるときの「まだ形の途中」の天井・底は、ボックスの上下の線と同じなので出さない
   const box = found.some((p) => p.key === 'box');
@@ -363,7 +510,7 @@ export function detectPatterns(candles) {
   const superseded = (p) => p.pivI != null && found.some((q) => q !== p && q.pivI != null && q.dir !== p.dir && q.pivI > p.pivI);
   // 同じ山と谷が2つの形に見えるときは、よりはっきりした方だけ出す
   //  三尊があれば三角形・ウェッジは出さない／上昇・下降三角形や旗・ペナントがあればダブル・トリプルは出さない
-  const hs = found.some((p) => p.key.startsWith('hs-'));
+  const hs = found.some((p) => p.key.startsWith('hs-') || p.key === 'cup-handle');
   const flatTri = found.some((p) => /^(asc-tri|desc-tri|flag|pennant)$/.test(p.key));
   const rank = (p) => (p.key.startsWith('v-') ? 1 : 0); // V字は目安が弱いので後回し
   const seen = new Set();
@@ -382,5 +529,7 @@ export function detectPatterns(candles) {
       return true;
     })
     .slice(0, 3)
+    // チャートの形（最大3つ）のあとに、窓（1つ）とローソク足の形（最大2つ）
+    .concat(gaps(all, A), candleShapes(all, A))
     .map(({ endI, pivI, ...p }) => ({ ...p, endTime: all[endI].time }));
 }

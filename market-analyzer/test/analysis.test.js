@@ -1261,3 +1261,21 @@ test('日本株のリアルタイムの値段を読んで、最後の足を直�
   assert.equal(n.length, 2);
   assert.equal(n[1].time, 1600);
 });
+
+test('チャートの形：カップ・ウィズ・ハンドル、上昇チャネル、窓、ローソク足の形', async () => {
+  const keys = (cs) => detectPatterns(cs).map((x) => x.key);
+  const cup = [[0, 100], [60, 101], [80, 120]];
+  for (let k = 1; k <= 12; k++) cup.push([80 + k * 4, 120 - 20 * Math.sin((Math.PI * k) / 12)]);
+  cup.push([134, 116], [142, 118]);
+  assert.ok(keys(pathCandles(cup)).includes('cup-handle'));
+  assert.ok(keys(pathCandles([[0, 100], [60, 100], [70, 110], [78, 104], [88, 116], [96, 110], [106, 122], [114, 116], [124, 128], [132, 122], [136, 125]])).includes('channel-up'));
+  const down = pathCandles([[0, 120], [100, 119], [130, 100]]);
+  const L = down.at(-1).close, t = (k) => down.at(-1).time + k * 86400;
+  assert.ok(keys([...down, { time: t(1), open: L, high: L + 0.3, low: L - 1.5, close: L - 1.2 }, { time: t(2), open: L - 1.6, high: L + 1.2, low: L - 1.8, close: L + 1 }]).includes('bull-engulf'));
+  assert.ok(keys([...down, { time: t(1), open: L - 0.2, high: L, low: L - 4, close: L - 0.05 }]).includes('hammer'));
+  const flat = pathCandles([[0, 100], [130, 101]]);
+  const F = flat.at(-1).close, u = (k) => flat.at(-1).time + k * 86400;
+  const isl = [...flat, { time: u(1), open: F + 3, high: F + 4, low: F + 2.8, close: F + 3.6 }, { time: u(2), open: F + 3.6, high: F + 4.2, low: F + 3.2, close: F + 3.9 }];
+  assert.ok(keys(isl).includes('gap-up'));
+  assert.ok(keys([...isl, { time: u(3), open: F, high: F + 0.5, low: F - 0.5, close: F - 0.2 }]).includes('island-top'));
+});
