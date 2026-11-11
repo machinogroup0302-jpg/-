@@ -168,6 +168,35 @@ async function main() {
     console.log(`記録されているエラー：${r.body?.items?.length ?? '読めません'}種類`);
     return;
   }
+  if (MODE === 'rt') {
+    // 値段の遅れを調べる（公開されている値段だけ。ログに出すのは市場のデータだけ）
+    const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36';
+    const now = Date.now();
+    const jst = (t) => new Date(t).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
+    console.log('今:', jst(now));
+    for (const sym of ['7203.T', '285A.T', 'USDJPY=X']) {
+      try {
+        const r = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${sym}?interval=1m&range=1d`, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(20000) });
+        const j = await r.json();
+        const m = j.chart.result[0].meta;
+        const ts = j.chart.result[0].timestamp || [];
+        console.log(`== Yahoo(米) ${sym}: 遅れ設定 ${m.exchangeDataDelayedBy}分・最後の値段の時刻 ${jst(m.regularMarketTime * 1000)}・最後の足 ${ts.length ? jst(ts[ts.length - 1] * 1000) : '—'}・値段 ${m.regularMarketPrice}`);
+      } catch (e) { console.log(`== Yahoo(米) ${sym} → エラー ${e.message}`); }
+    }
+    for (const url of ['https://finance.yahoo.co.jp/quote/7203.T', 'https://finance.yahoo.co.jp/quote/7203.T/chart']) {
+      try {
+        const r = await fetch(url, { headers: { 'User-Agent': UA, 'Accept-Language': 'ja' }, signal: AbortSignal.timeout(20000) });
+        const t = await r.text();
+        console.log(`== ${url} → ${r.status}・${t.length}文字`);
+        for (const w of ['"price"', 'priceDateTime', 'realTime', 'isRealTime', 'updateDateTime', '"time"', 'リアルタイム', 'ajax', '/api/', 'chart']) {
+          let j = -1, n = 0;
+          while ((j = t.indexOf(w, j + 1)) >= 0 && n < 2) { console.log(`[${w}]`, t.slice(Math.max(0, j - 100), j + 220).replace(/\s+/g, ' ')); n++; }
+        }
+        console.log('API候補:', [...new Set([...t.matchAll(/https?:\/\/[a-z0-9.-]+yahoo[a-z0-9.-]*\/[^"' ]{0,120}/gi)].map((m) => m[0]))].slice(0, 30).join(' | '));
+      } catch (e) { console.log(`== ${url} → エラー ${e.message}`); }
+    }
+    return;
+  }
   if (MODE === 'probe') {
     // 業績の数字をどこから取れるか調べる（公開されているページだけ。結果はログに出す）
     const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36';
