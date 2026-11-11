@@ -16,6 +16,7 @@ import { US_LIST } from '../lib/usstocks.js';
 import { startScan, scanStatus } from '../lib/scanner.js';
 import { openMarkets } from '../lib/markethours.js';
 import { fmtTime, judgedText, execText } from '../public/js/sessiontime.js';
+import { jpRealtime, applyRealtime } from '../lib/jprt.js';
 
 const SITE = 'https://wataru-lupe.onrender.com';
 const STATE = new URL('../../alerts/state.json', import.meta.url);
@@ -34,7 +35,21 @@ const md = (d) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
 const price = (v, mode) => Number(v).toLocaleString('ja-JP', { maximumFractionDigits: mode === 'stock' ? 1 : mode === 'us' ? 2 : 3, minimumFractionDigits: mode === 'stock' ? 0 : 2 });
 
 async function candles(code, tf = '1d') {
-  try { return (await getChart(code, tf)).candles; } catch (e) { console.log(`  ${code}: 取得できません（${e.message}）`); return null; }
+  try {
+    const cs = (await getChart(code, tf)).candles;
+    // 日本株の取引時間中は、約20分遅れのデータの最後を今の値段で直す（決済のサインにすぐ気づけるように）
+    const c = String(code).replace(/\.T$/i, '');
+    if (/^[0-9][0-9A-Z]{3}$/i.test(c) && cs?.length && (tf === '1d' || tf === '15m')) {
+      const rt = await jpRealtime(c.toUpperCase());
+      if (rt) {
+        if (tf === '15m') return applyRealtime(cs, rt, 900);
+        const day = (t) => new Date((t + 9 * 3600) * 1000).toISOString().slice(0, 10);
+        const lastT = cs[cs.length - 1].time;
+        return day(lastT) === day(rt.time) ? applyRealtime(cs, { ...rt, time: lastT }, 86400) : applyRealtime(cs, rt, 1);
+      }
+    }
+    return cs;
+  } catch (e) { console.log(`  ${code}: 取得できません（${e.message}）`); return null; }
 }
 
 // サイトの「あなたの設定」を読む（サーバーが寝ていると起きるまで1分ほどかかる）
@@ -54,6 +69,7 @@ async function siteProfile() {
 
 let site = null;
 const prices = {};
+let REGIME = null;
 
 // 銘柄の日足を集める（使う人全員のお気に入り・持っている株も入れる）
 async function loadMode(mode, users, { holdingsOnly = false } = {}) {
@@ -129,6 +145,15 @@ function holdingSignals(mode, list, u) {
     if (!x) continue;
     const hh = { ...h, symbol: x.symbol };
     const adv = adviseHolding(hh, x.candles, { mode, prices, usdjpy: prices['USDJPY=X'], profile: forMode(u.profile, mode) });
+    // あなたのプラン（サイトの「あなた専用」と同じ計算）で、今の値段だと決済のサインになったか。
+    // 取引時間中にサインに変わったら、次の朝まで待たずにその時点で知らせる
+    const side = h.side < 0 ? -1 : 1;
+    const r = runStrategy(x.candles, 'combo', { kind: mode, pair: x.code, regime: REGIME, maxHold: u.profile?.swingDays || 30, sides: side > 0 ? 'long' : 'short' });
+    const flip = r.next && ((r.next.type === 'close' && (!r.open || r.open.side === side)) || (r.next.type === 'open' && r.next.side !== side));
+    if (flip && adv) {
+      const last = x.candles[x.candles.length - 1];
+      out.push({ type: 'hold', mode, name: h.name, symbol: x.symbol, side: h.side, key: 'planexit', planExit: { reason: r.next.reason || '反対向きのサイン', at: last.time, now: last.close, why: r.next.why || [] }, adv, date: adv.date, h });
+    }
     if (!adv || adv.key === 'hold') continue;
     const timing = exitTiming(hh, x.candles, adv, { mode, prices, usdjpy: prices['USDJPY=X'] });
     const longView = longTermView(hh, x.candles, adv, { mode, prices, usdjpy: prices['USDJPY=X'] });
@@ -178,6 +203,18 @@ function dayCompute(mode, list, regime, sides) {
 const hm = (t) => new Date((t + 9 * 3600) * 1000).toISOString().slice(11, 16);
 
 function describe(s, pf) {
+  if (s.type === 'hold' && s.planExit) {
+    const a = s.adv, e = s.planExit;
+    return {
+      title: `⏰【今、決済のサイン】${s.name}（${hm(e.at)}時点）`,
+      lines: [
+        `あなたのプランで、${hm(e.at)}の値段（${price(e.now, s.mode)}）だと「決済」のサインに変わりました：${e.reason}`,
+        DAY ? '明日の朝まで待たずに、今のうちに決済すると、損を小さくできる（利益を守れる）ことがあります。引けまでに値段が戻ってサインが消えることもあるので、最後はご自身で判断してください' : '次の取引日の始まりに決済するのがプランのやり方です',
+        `${price(s.h.price, s.mode)}で${s.h.side > 0 ? '買い' : '売り'} → 今 ${price(a.now, s.mode)}（${a.plPct >= 0 ? '+' : ''}${(a.plPct * 100).toFixed(1)}%${a.plYen != null ? `・${a.plYen >= 0 ? '+' : '−'}${Math.abs(Math.round(a.plYen)).toLocaleString()}円` : ''}）`,
+        ...e.why.map((w) => `・${w}`),
+      ],
+    };
+  }
   if (s.type === 'hold') {
     const a = s.adv;
     return {
@@ -506,18 +543,20 @@ async function main() {
   const get = async (s) => (await candles(s)) || [];
   const [vix, tnx, nikkei] = await Promise.all([get('^VIX'), get('^TNX'), get('^N225')]);
   const regime = regimeLookup({ vix, tnx, nikkei });
+  REGIME = regime;
   { const u = await candles('USDJPY=X'); if (u) prices['USDJPY=X'] = u[u.length - 1].close; }
   const lists = {}, dayLists = {};
   if (MORNING) return morning(users, state, TEST);
   if (WEEKLY) return weekly(users, state, regime);
   if (DAY) {
     // デイトレ：今開いている市場だけ。デイトレの通知をオンにしている人だけ
-    for (const u of users) u.modes = u.modes.filter((m) => OPEN.includes(m) && u.profile?.notifyDay !== false);
+    // 持っている株の決済のサインは、デイトレの通知をオフにしていても知らせる（デイトレの新しいサインだけオン・オフ）
+    for (const u of users) { u.modes = u.modes.filter((m) => OPEN.includes(m)); u.dayModes = u.profile?.notifyDay !== false ? u.modes : []; }
     users = users.filter((u) => u.modes.length);
-    if (!users.length) { console.log('今デイトレの通知を受け取る人はいません'); return; }
+    if (!users.length) { console.log('今開いている市場の通知を受け取る人はいません'); return; }
     for (const mode of OPEN) {
       if (!users.some((u) => u.modes.includes(mode))) continue;
-      dayLists[mode] = await daySignals(mode, users, regime);
+      if (users.some((u) => u.dayModes.includes(mode))) dayLists[mode] = await daySignals(mode, users, regime);
       lists[mode] = await loadMode(mode, users, { holdingsOnly: true }); // 持っている株は日足で見張る
     }
   } else {
@@ -532,8 +571,8 @@ async function main() {
     const days = u.profile?.swingDays || 30;
     const groups = {};
     // やり方（現物・信用・空売り、為替の向き）は、その人の予算で過去をやり直して一番良かったものを自動で使う
-    for (const m of u.modes) groups[m] = chooseWay(u, m, DAY ? dayLists[m] : null, lists[m], regime, days);
-    const planned = planForUser(u, DAY ? 'day' : 'swing', groups, book, nowSec);
+    for (const m of DAY ? u.dayModes : u.modes) groups[m] = chooseWay(u, m, DAY ? dayLists[m] : null, lists[m], regime, days);
+    const planned = Object.keys(groups).length ? planForUser(u, DAY ? 'day' : 'swing', groups, book, nowSec) : [];
     const holds = u.modes.flatMap((m) => holdingSignals(m, lists[m], u));
     const keyU = (s) => `${u.uid}|${keyOf(s)}`;
     // 持っている株のお知らせは、同じ内容を1日1回まで
