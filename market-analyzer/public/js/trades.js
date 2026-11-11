@@ -248,7 +248,7 @@ export function execToTrades(rows, headerIndex) {
   const col = (...res) => { for (const re of res) { const i = h.findIndex((c) => re.test(c)); if (i >= 0) return i; } return -1; };
   const C = { date: col(/^約定日/, /^国内約定日/, /^現地約定日/, /^(?!建).*約定日/), code: col(/^銘柄コード/, /^ティッカー/, /^コード/, /シンボル/), name: col(/^銘柄名/, /^銘柄$/),
     fx: col(/^為替レート/, /^約定為替/, /為替/), kind: col(/^取引区分/, /^取引種別/, /^取引$/), side: col(/^売買区分/, /^売買$/, /売買/), qty: col(/^数量/, /約定数量/, /数量/), price: col(/^単価/, /^約定単価/, /^約定価格/, /単価/),
-    openDate: col(/^建約定日/), entry: col(/^建単価/), acct: col(/^口座区分/, /^口座$/),
+    settle: col(/^受渡日/), openDate: col(/^建約定日/), entry: col(/^建単価/), acct: col(/^口座区分/, /^口座$/),
     // 受け渡した円の金額（米国株：手数料・為替まで入った、実際に払った・受け取った円）
     yen: h.findIndex((c) => /^受渡金額/.test(c) && /円/.test(c) && !/ドル|USD/i.test(c)) };
   // 「諸費用」は金利・貸株料などの合計なので、あるときは内訳の列は足さない（2回引いてしまう）
@@ -257,9 +257,10 @@ export function execToTrades(rows, headerIndex) {
   const gainCols = hasTotal ? [] : h.map((c, i) => [c, i]).filter(([c]) => /^(金利\(受取\)|逆日歩\(受取\))/.test(c)).map(([, i]) => i);
   const num = (x) => { const v = toNumber(x); return Number.isNaN(v) ? 0 : v; };
   const list = rows.slice(headerIndex + 1).filter((r) => r && parseDate(r[C.date]))
-    .map((r, i) => ({ r, i, d: parseDate(r[C.date]), buy: (/現物/.test(r[C.kind] || '') && /買/.test(r[C.side] || '')) || /信用新規/.test(r[C.kind] || '') }))
+    // 楽天証券の損益は「受渡日」の順で計算している（夜間の取引は次の営業日の扱い）ので、並べる順は受渡日
+    .map((r, i) => ({ r, i, d: parseDate(r[C.date]), sd: (C.settle >= 0 && parseDate(r[C.settle])) || parseDate(r[C.date]), buy: (/現物/.test(r[C.kind] || '') && /買/.test(r[C.side] || '')) || /信用新規/.test(r[C.kind] || '') }))
     // 同じ日の中では、現物の買いと信用の新規を先に（買う前・建てる前に売ったり返したりはできないので）
-    .sort((a, b) => a.d - b.d || b.buy - a.buy || a.i - b.i);
+    .sort((a, b) => a.sd - b.sd || b.buy - a.buy || a.d - b.d || a.i - b.i);
   const lots = new Map(); // 現物：銘柄ごとの { qty, cost }
   const opens = new Map(); // 信用：銘柄と向きごとの、建てた順の { qty, price }
   const out = [];
@@ -283,11 +284,20 @@ export function execToTrades(rows, headerIndex) {
       const long = /売埋|返済売/.test(side);
       // 建てたときの値段：その日に返したばかりで「建単価」がまだ入っていないときは、建てた順に合わせる
       const q0 = opens.get(`${code}|${long ? 'L' : 'S'}`) || [];
+      // 建単価が分かっているときは、その値段（と建てた日）の建玉から返す。分からないときは建てた順
+      const known = num(r[C.entry]);
+      const od = parseDate(r[C.openDate]);
+      const pick = () => {
+        if (!(known > 0)) return 0;
+        const same = (o) => Math.abs(o.price - known) < 0.05;
+        const i = q0.findIndex((o) => same(o) && (!od || +o.d === +od));
+        return i >= 0 ? i : Math.max(0, q0.findIndex(same));
+      };
       let left = qty, paid = 0, firstD = null;
       while (left > 0 && q0.length) {
-        const o = q0[0], take = Math.min(left, o.qty);
+        const j = pick(), o = q0[j], take = Math.min(left, o.qty);
         paid += take * o.price; left -= take; o.qty -= take; firstD ||= o.d;
-        if (o.qty <= 0) q0.shift();
+        if (o.qty <= 0) q0.splice(j, 1);
       }
       const entry = num(r[C.entry]) > 0 ? num(r[C.entry]) : left === 0 ? paid / qty : 0;
       if (!(entry > 0)) continue;
@@ -301,7 +311,12 @@ export function execToTrades(rows, headerIndex) {
       const key = `${code}|${C.acct >= 0 ? String(r[C.acct] || '') : ''}`;
       const yen = C.yen >= 0 && k !== 1 ? num(r[C.yen]) : 0;
       const lot = lots.get(key) || { qty: 0, cost: 0, first: null };
-      if (/買/.test(side)) { lot.qty += qty; lot.cost += yen > 0 ? yen : price * qty * k + cost; lot.first ||= d; lots.set(key, lot); continue; }
+      if (/買/.test(side)) {
+        lot.qty += qty; lot.cost += yen > 0 ? yen : price * qty * k + cost; lot.first ||= d;
+        // 楽天証券（日本株）は、1株あたりの取得単価を買うたびに円未満切り上げにしている
+        if (k === 1) lot.cost = Math.ceil(lot.cost / lot.qty) * lot.qty;
+        lots.set(key, lot); continue;
+      }
       if (!/売/.test(side)) continue;
       const q = Math.min(qty, lot.qty);
       // このファイルより前に買った株を売った分は、買った値段が分からない
