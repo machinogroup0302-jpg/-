@@ -186,9 +186,9 @@ async function main() {
     for (const url of ['https://finance.yahoo.co.jp/quote/7203.T', 'https://finance.yahoo.co.jp/quote/7203.T/chart']) {
       try {
         const r = await fetch(url, { headers: { 'User-Agent': UA, 'Accept-Language': 'ja' }, signal: AbortSignal.timeout(20000) });
-        const t = await r.text();
+        const t = (await r.text()).replace(/\\"/g, '"');
         console.log(`== ${url} → ${r.status}・${t.length}文字`);
-        for (const w of ['"price"', 'priceDateTime', 'realTime', 'isRealTime', 'updateDateTime', '"time"', 'リアルタイム', 'ajax', '/api/', 'chart']) {
+        for (const w of ['"price":', 'PriceBoard"', 'priceBoard', '"changePrice', 'ptsPrice', 'priceDateTime', 'realTime', 'isRealTime', 'updateDateTime', '"time"', 'リアルタイム', 'ajax', '/api/', 'chart']) {
           let j = -1, n = 0;
           while ((j = t.indexOf(w, j + 1)) >= 0 && n < 2) { console.log(`[${w}]`, t.slice(Math.max(0, j - 100), j + 220).replace(/\s+/g, ' ')); n++; }
         }
