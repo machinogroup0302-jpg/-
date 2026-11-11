@@ -260,6 +260,8 @@ export function execToTrades(rows, headerIndex) {
     .sort((a, b) => a.d - b.d || b.buy - a.buy || a.i - b.i);
   const lots = new Map(); // 現物：銘柄ごとの { qty, cost }
   const out = [];
+  const from = list.length ? list[0].d.toISOString() : null; // このファイルの最初の日（前から持っていた株が分かるかの目安）
+  let skipped = 0, skippedQty = 0;
   for (const { r, d } of list) {
     const side = String(r[C.side] || '');
     // 「取引区分」の列がないときは、売買の書き方から（買埋・売埋・買建・売建があれば信用、なければ現物）
@@ -275,7 +277,7 @@ export function execToTrades(rows, headerIndex) {
       const entry = num(r[C.entry]);
       if (!(entry > 0)) continue;
       const long = /売埋|返済売/.test(side);
-      out.push({ kind: long ? 'margin' : 'short', date: d.toISOString(), symbol: name || code, code, side: long ? '買' : '売', qty, price, entry,
+      out.push({ src: 'exec', from, kind: long ? 'margin' : 'short', date: d.toISOString(), symbol: name || code, code, side: long ? '買' : '売', qty, price, entry,
         openDate: parseDate(r[C.openDate])?.toISOString() || null, pnl: Math.round((long ? 1 : -1) * (price - entry) * qty * k - cost) });
     } else if (/現物/.test(kind)) {
       // NISAと特定口座は別々に平均する
@@ -285,14 +287,65 @@ export function execToTrades(rows, headerIndex) {
       if (/買/.test(side)) { lot.qty += qty; lot.cost += yen > 0 ? yen : price * qty * k + cost; lot.first ||= d; lots.set(key, lot); continue; }
       if (!/売/.test(side)) continue;
       const q = Math.min(qty, lot.qty);
+      // このファイルより前に買った株を売った分は、買った値段が分からない
+      if (qty > q) { skipped++; skippedQty += qty - q; }
       if (!(q > 0)) continue;
       const avg = lot.cost / lot.qty;
       const got = yen > 0 ? yen * (q / qty) : price * k * q - cost * (q / qty);
-      out.push({ kind: 'cash', date: d.toISOString(), symbol: name || code, code, side: '買', qty: q, price, entry: Math.round((avg / k) * 100) / 100,
+      out.push({ src: 'exec', from, kind: 'cash', date: d.toISOString(), symbol: name || code, code, side: '買', qty: q, price, entry: Math.round((avg / k) * 100) / 100,
         openDate: lot.first ? lot.first.toISOString() : null, pnl: Math.round(got - avg * q) });
       lot.qty -= q; lot.cost -= avg * q;
       if (lot.qty <= 0) lots.delete(key); else lots.set(key, lot);
     }
   }
+  out.skipped = skipped;
+  out.skippedQty = skippedQty;
   return out;
+}
+
+// 同じ取引かどうか（読み込んだファイルが違っても、日・銘柄・数量・値段が同じなら同じ取引）
+export function tradeKey(t) {
+  const day = String(t.date || '').slice(0, 10);
+  const who = String(t.code || t.symbol || '').normalize('NFKC').trim().toUpperCase();
+  return `${day}|${who}|${Number(t.qty) || 0}|${Math.round((Number(t.price) || 0) * 1e4) / 1e4}`;
+}
+
+// 同じ取引が2つあるとき、どちらを残すか（正しい損益に近い方）
+//  1. 楽天証券の「実現損益」のCSV（証券会社が計算した損益そのもの）
+//  2. 取引履歴から計算したものは、より前の日から入っているファイルの方（買った値段を正しく平均できる）
+//  3. それ以外は、あとから読み込んだ方
+function better(a, b) {
+  const rank = (t) => (t.src === 'pl' ? 2 : t.src === 'exec' ? 1 : 0);
+  if (rank(a) !== rank(b)) return rank(a) > rank(b) ? a : b;
+  if (a.src === 'exec' && b.src === 'exec' && a.from && b.from && a.from !== b.from) return a.from < b.from ? a : b;
+  return b;
+}
+
+// 今ある取引に、新しいファイルの取引を足す。
+// 同じファイルを読み込み直したら入れ替え、別のファイルに同じ取引があれば1つだけ残す（同じ日に同じ値段で
+// 2回売ったような本当に別の取引は、ファイルの中の数だけ残す）
+export function mergeTrades(cur, incoming, fileKey) {
+  const kept = cur.filter((t) => t.file !== fileKey);
+  const slots = new Map(); // key → 今ある取引の位置
+  kept.forEach((t, i) => { const k = tradeKey(t); slots.set(k, [...(slots.get(k) || []), i]); });
+  const out = kept.slice();
+  const add = [];
+  for (const t0 of incoming) {
+    const t = { ...t0, file: fileKey };
+    const list = slots.get(tradeKey(t));
+    if (list && list.length) {
+      const i = list.shift();
+      out[i] = better(out[i], t);
+    } else add.push(t);
+  }
+  return [...out, ...add].sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+}
+
+// 前に2回入ってしまった取引（別のファイルどうしで同じ取引）を1つにする
+export function dedupeTrades(list) {
+  const byFile = new Map();
+  for (const t of list) byFile.set(t.file || '', [...(byFile.get(t.file || '') || []), t]);
+  let out = [];
+  for (const [file, part] of byFile) out = mergeTrades(out, part.map(({ file: _f, ...t }) => t), file);
+  return out.map((t) => (t.file === '' ? (({ file: _f, ...r }) => r)(t) : t));
 }

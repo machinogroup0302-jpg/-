@@ -4,7 +4,7 @@ import { term } from './glossary.js';
 import { saveSynced, getProfile } from './favorites.js';
 import { wayOf, forMode } from './plan.js';
 import { coach, fmtDuration, tradeSymbol, pickInterval, excursion, excursionAdvice } from './tradecoach.js';
-import { parseCsv, findHeader, guessMapping, rowsToTrades, decodeFile, computeStats, FIELD_LABELS, detectFormat, fileId, execToTrades } from './trades.js';
+import { parseCsv, findHeader, guessMapping, rowsToTrades, decodeFile, computeStats, FIELD_LABELS, detectFormat, fileId, execToTrades, mergeTrades, dedupeTrades } from './trades.js';
 
 // 為替と株の取引は別々に保存する
 const isFxTrade = (sym) => /[A-Z]{3}\s*\/?\s*[A-Z]{3}/i.test(sym || '') || /円|ドル|ユーロ|ポンド|ランド|ペソ|リラ|フラン/.test(sym || '');
@@ -19,7 +19,7 @@ let trades = store.get(`trades_${tradeMode}`, []);
 
 export function setTradesMode(mode) {
   tradeMode = mode;
-  trades = store.get(`trades_${tradeMode}`, []);
+  fixDupes(); // サーバーからそろえた後にも、2回入った取引がないか見る
   $('map-box').innerHTML = '';
   $('trade-status').textContent = '';
   render();
@@ -247,7 +247,7 @@ function render() {
 }
 
 // 読み込んだ結果を分かりやすく表示する（最初の数件と、合計の確認）
-function showLoaded(list, format, fileName, moved = []) {
+function showLoaded(list, format, fileName, moved = [], skipped = 0) {
   if (!list.length && moved.length) {
     $('trade-status').innerHTML = `<div class="notice" style="margin-top:4px"><p style="margin:0"><b>✓ 「${esc(fileName)}」を読み込みました</b></p><p class="small" style="margin:4px 0 0">📦 このファイルは${esc(moved.join('・'))}の取引だったので、そちらの画面に自動で入れました。上の切り替えで見られます。</p></div>`;
     return;
@@ -264,6 +264,7 @@ function showLoaded(list, format, fileName, moved = []) {
         <div class="stat"><div class="label">損益の合計</div><div class="value ${total >= 0 ? 'plus' : 'minus'}">${fmtYen(total)}</div></div>
       </div>
       <p class="small" style="margin:0 0 6px">期間：${days.length ? `${new Date(days[0]).toLocaleDateString('ja-JP')} 〜 ${new Date(days[days.length - 1]).toLocaleDateString('ja-JP')}` : '—'}</p>
+      ${skipped ? `<p class="small" style="margin:0 0 6px">⚠️ このファイルより前に買った株を売った取引が <b>${skipped}件</b> ありました。買った値段がファイルに入っていないので、<b>損益に入れていません</b>。楽天証券の数字と合わせるには、楽天証券の「実現損益」のCSVも読み込んでください（そちらの損益を優先して使います）。</p>` : ''}
       <p class="small muted" style="margin:0">証券会社・FX会社の画面に出ている「損益の合計」と同じになっているか確認してください。違う場合は、下の「うまく読めないとき」で列を選び直せます。</p>
     </div>`;
 }
@@ -284,7 +285,7 @@ function marketOf(t) {
   return tradeMode;
 }
 
-function addTrades(list, fileKey, format, fileName) {
+function addTrades(list, fileKey, format, fileName, skipped = 0) {
   // 市場ごとに分けて、それぞれの取引に入れる（日本株のCSVに米国株が入っていても、米国株のほうに入る）
   const groups = { fx: [], stock: [], us: [] };
   for (const t of list) groups[marketOf(t)].push(t);
@@ -292,21 +293,15 @@ function addTrades(list, fileKey, format, fileName) {
   for (const [m, part] of Object.entries(groups)) {
     if (!part.length) continue;
     const cur = m === tradeMode ? trades : store.get(`trades_${m}`, []);
-    // 同じファイルを読み込み直したときは、前回の分を入れ替える（同じ値の取引も別々に数える）
-    // 別のファイル（期間が重なるCSV）にもう入っている取引は、2回数えない
-    const kept = cur.filter((t) => t.file !== fileKey);
-    const sig = (t) => [t.date, t.openDate, t.symbol, t.side, t.qty, t.price, t.entry, t.pnl].map((x) => String(x ?? '')).join('|');
-    const have = new Map();
-    for (const t of kept) have.set(sig(t), (have.get(sig(t)) || 0) + 1);
-    const fresh = [];
-    for (const t of part) { const k = sig(t); if (have.get(k) > 0) have.set(k, have.get(k) - 1); else fresh.push({ ...t, file: fileKey }); }
-    const next = [...kept, ...fresh].sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+    // 同じファイルを読み込み直したときは前回の分を入れ替え、期間が重なる別のファイルにもう入っている取引は
+    // 2回数えない（楽天の「実現損益」のCSVがあれば、その損益を優先する）
+    const next = mergeTrades(cur, part, fileKey);
     if (m === tradeMode) { trades = next; save(); } else {
       if (!saveSynced(`trades_${m}`, next)) toast('保存できませんでした（容量オーバーの可能性があります）');
       moved.push(`${MODE_NAME[m]} ${part.length}件`);
     }
   }
-  showLoaded(groups[tradeMode], format, fileName, moved);
+  showLoaded(groups[tradeMode], format, fileName, moved, skipped);
   render();
 }
 
@@ -328,7 +323,7 @@ function showMapping(rows, headerIndex, map, fileKey, format, fileName, open = f
     const m = {};
     $('map-box').querySelectorAll('select').forEach((x) => { if (x.value !== '') m[x.dataset.field] = Number(x.value); });
     if (m.pnl == null || m.date == null) { toast('「日時」と「損益」の列を選んでください'); return; }
-    addTrades(rowsToTrades(rows, headerIndex, m), fileKey, format, fileName);
+    addTrades(rowsToTrades(rows, headerIndex, m).map((t) => (format.id === 'rakuten' ? { ...t, src: 'pl' } : t)), fileKey, format, fileName);
     showMapping(rows, headerIndex, m, fileKey, format, fileName);
   };
 }
@@ -344,13 +339,14 @@ async function onCsv(file) {
   // 楽天証券の「取引履歴」：買いと売りを組み合わせて損益を出す
   if (format.id === 'rakutenExec') {
     const list = execToTrades(rows, h);
-    if (!list.length) { toast('決済した取引が見つかりませんでした（買っただけの取引は、売るまで数えません）'); return; }
+    if (!list.length) { toast(list.skipped ? `売った取引${list.skipped}件は、買った値段がこのファイルに入っていないので数えられませんでした。楽天証券の「実現損益」のCSVを読み込んでください` : '決済した取引が見つかりませんでした（買っただけの取引は、売るまで数えません）'); return; }
     $('map-box').innerHTML = '';
-    addTrades(list, fileKey, format, file.name);
+    addTrades(list, fileKey, format, file.name, list.skipped);
     return;
   }
   if (map.pnl != null && map.date != null) {
-    const list = rowsToTrades(rows, h, map);
+    // 楽天証券の「実現損益」は証券会社が計算した損益なので、同じ取引がほかのファイルにあってもこちらを使う
+    const list = rowsToTrades(rows, h, map).map((t) => (format.id === 'rakuten' ? { ...t, src: 'pl' } : t));
     if (!list.length) { showMapping(rows, h, map, fileKey, format, file.name, true); return; }
     addTrades(list, fileKey, format, file.name);
     showMapping(rows, h, map, fileKey, format, file.name);
@@ -362,6 +358,16 @@ async function onCsv(file) {
 
 
 // 前に違う市場に入ってしまった取引（米国株が為替に入っていた など）を、正しい市場に戻す
+// 前に、期間が重なるファイルから同じ取引が2回入ってしまったものを1つにする
+function fixDupes() {
+  for (const m of ['fx', 'stock', 'us']) {
+    const cur = store.get(`trades_${m}`, []);
+    const next = dedupeTrades(cur);
+    if (next.length !== cur.length) saveSynced(`trades_${m}`, next);
+  }
+  trades = store.get(`trades_${tradeMode}`, []);
+}
+
 function fixMisfiled() {
   const all = Object.fromEntries(['fx', 'stock', 'us'].map((m) => [m, store.get(`trades_${m}`, [])]));
   const moved = { fx: [], stock: [], us: [] };
@@ -383,6 +389,7 @@ function fixMisfiled() {
 
 export function initTradesView() {
   fixMisfiled();
+  fixDupes();
   $('csv-file').addEventListener('change', (e) => {
     const f = e.target.files[0];
     if (f) onCsv(f).catch((err) => toast(err.message));

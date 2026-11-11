@@ -1202,3 +1202,31 @@ test('チャートの形: ダブルトップはネックラインを割ったら
   assert.equal(p.status, 'done');
   assert.ok(p.target < p.neckNow);
 });
+
+// ---------- 取引の重なり（同じ取引を2回数えない） ----------
+import { mergeTrades, dedupeTrades } from '../public/js/trades.js';
+test('取引：期間が重なる取引履歴は1回だけ数え、前から入っているファイルの損益を使う', () => {
+  const sale = { kind: 'cash', date: '2026-10-10T00:00:00.000Z', code: '4062', symbol: 'イビデン', side: '買', qty: 100, price: 9000 };
+  const long = [{ ...sale, src: 'exec', from: '2026-08-01T00:00:00.000Z', pnl: 50000 }];
+  const short = [{ ...sale, src: 'exec', from: '2026-10-01T00:00:00.000Z', pnl: 20000 }];
+  let t = mergeTrades([], long, 'a');
+  t = mergeTrades(t, short, 'b');
+  assert.equal(t.length, 1);
+  assert.equal(t[0].pnl, 50000);
+});
+test('取引：実現損益のCSVがあれば、その損益を優先する', () => {
+  const sale = { kind: 'cash', date: '2026-10-10T00:00:00.000Z', code: '4062', symbol: 'イビデン', side: '買', qty: 100, price: 9000 };
+  let t = mergeTrades([], [{ ...sale, src: 'exec', from: '2026-08-01', pnl: 50000 }], 'a');
+  t = mergeTrades(t, [{ ...sale, src: 'pl', pnl: 48210 }], 'b');
+  assert.equal(t.length, 1);
+  assert.equal(t[0].pnl, 48210);
+  t = mergeTrades(t, [{ ...sale, src: 'exec', from: '2026-01-01', pnl: 1 }], 'c');
+  assert.equal(t[0].pnl, 48210);
+});
+test('取引：同じファイルの中の同じ値段の取引は別々に数える', () => {
+  const s = { date: '2026-10-10T00:00:00.000Z', code: '7203', qty: 100, price: 3000, pnl: 1000 };
+  assert.equal(mergeTrades([], [s, s], 'a').length, 2);
+  // 前に2回入ってしまったもの（別ファイル）は1つに
+  assert.equal(dedupeTrades([{ ...s, file: 'a' }, { ...s, file: 'b' }]).length, 1);
+  assert.equal(dedupeTrades([{ ...s, file: 'a' }, { ...s, file: 'a' }]).length, 2);
+});
