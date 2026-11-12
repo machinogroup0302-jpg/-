@@ -121,6 +121,17 @@
      "how": "現物で買う：100株",
      "entryPrice": 3885,
      "entryTime": 1793318400
+    },
+    "swing|2579.T": {
+     "kind": "swing",
+     "mode": "stock",
+     "symbol": "2579.T",
+     "name": "コカ・コーラ ボトラーズジャパンホールディングス",
+     "side": 1,
+     "signalTime": 1794355200,
+     "signalPrice": 4466,
+     "sentAt": "2026-11-12T16:13:48.760Z",
+     "how": "信用で買う：100株"
     }
    },
    "log": [
