@@ -130,7 +130,9 @@
      "signalTime": 1794355200,
      "signalPrice": 4466,
      "sentAt": "2026-11-12T16:13:48.760Z",
-     "how": "信用で買う：100株"
+     "how": "信用で買う：100株",
+     "entryPrice": 4396,
+     "entryTime": 1794441600
     }
    },
    "log": [
