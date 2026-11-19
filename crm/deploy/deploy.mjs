@@ -15,7 +15,9 @@ if(live===norm(next)){console.log("公開中の画面はすでに最新です。
 const oks=fs.readdirSync(OKDIR).map(f=>norm(fs.readFileSync(path.join(OKDIR,f),"utf8")));
 if(!oks.includes(live)){fs.writeFileSync(path.join(process.env.RUNNER_TEMP||".","live.html"),live);console.log("::error::公開中の index.html が、このリポジトリのどの版とも違います（ほかの所で直された可能性があります）。上書きしないよう止めました。");process.exit(1)}
 // 2) いま公開中の版のファイルと設定を読む
-const rel=(await call(`sites/${SITE}/releases?pageSize=1`)).releases?.[0];if(!rel?.version?.name)throw new Error("公開中の版が見つかりません");
+{const pid=await auth.getProjectId().catch(()=>"?");console.log("カギのプロジェクト:",pid);
+  try{const d=await call(`projects/${pid}/sites`);console.log("見えるサイト:",(d.sites||[]).map(x=>x.name+" ("+(x.type||"")+")").join(", "))}catch(e){console.log("サイト一覧を読めません:",e.response?.status,e.response?.data?.error?.message)}}
+const rel=(await call(`sites/${SITE}/releases?pageSize=1`).catch(e=>{console.log("::error::公開先 "+SITE+" を読めません（"+(e.response?.status||"")+" "+(e.response?.data?.error?.message||e.message)+"）");process.exit(1)})).releases?.[0];if(!rel?.version?.name)throw new Error("公開中の版が見つかりません");
 const cur=rel.version;const files={};let tok="";
 do{const d=await call(`${cur.name}/files?pageSize=1000${tok?"&pageToken="+tok:""}`);for(const f of d.files||[])files[f.path]=f.hash;tok=d.nextPageToken||""}while(tok);
 console.log("公開中の版:",cur.name,"ファイル:",Object.keys(files).join(", "));
