@@ -57,3 +57,12 @@ jobs:
           name: live-index
           path: ${{ runner.temp }}/live.html
           if-no-files-found: ignore
+      - name: 止まったときは、公開中の画面との違いを表示する
+        if: failure() && env.HAS_SA == 'true'
+        run: |
+          L="$RUNNER_TEMP/live.html"; [ -f "$L" ] || exit 0
+          sp() { tr -d '\r' < "$1" | sed 's/;/;\n/g; s/></>\n</g'; }
+          sp "$L" > "$RUNNER_TEMP/l.txt"; best=""; bn=999999
+          for f in "$RUNNER_TEMP"/ok/*.html; do sp "$f" > "$RUNNER_TEMP/o.txt"; n=$(diff "$RUNNER_TEMP/o.txt" "$RUNNER_TEMP/l.txt" | wc -l); echo "$(basename $f) $n"; if [ "$n" -lt "$bn" ]; then bn=$n; best=$f; fi; done
+          echo "=== 一番近い版: $(basename $best)（違い $bn 行）"
+          sp "$best" > "$RUNNER_TEMP/o.txt"; diff "$RUNNER_TEMP/o.txt" "$RUNNER_TEMP/l.txt" | cut -c1-400 | head -400 || true
