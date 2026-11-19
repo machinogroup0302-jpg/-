@@ -1,0 +1,52 @@
+# まちの顧客台帳（https://machino-crm.web.app）に crm/index.html を公開する
+#   index.html だけを差し替え、manifest.json・icon.png や設定は公開中のものを引き継ぐ
+#   公開中の画面がこのリポジトリのどの版とも違うとき（ほかで直されたとき）は、上書きせずに止まる
+#   カギはやることボードと同じ FIREBASE_SA を使う
+name: 顧客台帳を公開
+
+on:
+  push:
+    branches: [claude/tender-allen-llk9mh]
+    paths: ['crm/index.html', 'crm/deploy/**', '.github/workflows/crm-deploy.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: crm-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      HAS_SA: ${{ secrets.FIREBASE_SA != '' }}
+    steps:
+      - name: Firebase のカギがまだなら、何もしないで終わる
+        if: env.HAS_SA != 'true'
+        run: echo "::notice::FIREBASE_SA（Firebase の秘密鍵）がまだ入っていないので、公開はしませんでした"
+      - uses: actions/checkout@v4
+        if: env.HAS_SA == 'true'
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        if: env.HAS_SA == 'true'
+        with:
+          node-version: 22
+      - name: 公開中と比べてよい過去の版を集める
+        if: env.HAS_SA == 'true'
+        run: |
+          mkdir -p "$RUNNER_TEMP/ok"
+          git fetch -q origin claude/fervent-lamport-u59ti8 || true
+          for c in $(git log --all --format=%H -- crm/index.html); do git show "$c:crm/index.html" > "$RUNNER_TEMP/ok/$c.html" 2>/dev/null || true; done
+          ls "$RUNNER_TEMP/ok" | wc -l
+      - name: 公開する
+        if: env.HAS_SA == 'true'
+        working-directory: crm/deploy
+        env:
+          SA: ${{ secrets.FIREBASE_SA }}
+          MSG: ${{ github.event.head_commit.message }}
+        run: |
+          printf '%s' "$SA" > "$RUNNER_TEMP/sa.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
+          npm install --no-save --no-audit --no-fund google-auth-library@9 > /dev/null
+          node deploy.mjs ../index.html "$RUNNER_TEMP/ok"
