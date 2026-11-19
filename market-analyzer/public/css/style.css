@@ -425,3 +425,7 @@ body.desktop table.tbl { font-size: 14px; }
 @media (max-width: 900px) {
   body.desktop :is(#view-chart, #view-news):not([hidden]) { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* チャートの印の意味 */
+.pat-help { margin-top: 8px; padding: 8px 10px; border-radius: 10px; background: var(--surface-2); line-height: 1.6; }
+.pat-help ul { margin: 4px 0; padding-left: 1.1em; }

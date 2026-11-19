@@ -2,7 +2,9 @@
 import { api, $, esc, store, fmtPrice, digitsFor, signalClass, JST, cssVar } from './util.js';
 import { sma, bollinger, rsi, macd, ichimoku, technicalSummary } from './indicators.js';
 import { supportResistance, trendlines, pivots } from './levels.js';
-import { detectPatterns } from './patterns.js';
+import { detectPatterns, arrowOf } from './patterns.js';
+// 今日の目安（ピボット）の名前
+const PIVOT_NAME = { R2: '上の目安2', R1: '上の目安1', P: '真ん中', S1: '下の目安1', S2: '下の目安2' };
 import { monteCarlo, futureTimes } from './forecast.js';
 import { vwap } from './volume.js';
 import { term } from './glossary.js';
@@ -156,10 +158,10 @@ function render() {
         lineWidth: lv.strength === '強' ? 2 : 1,
         lineStyle: lv.strength === '弱' ? LC.LineStyle.Dotted : LC.LineStyle.Dashed,
         axisLabelVisible: true,
-        title: `${lv.kind === 'resistance' ? '壁' : '支え'}${lv.strength}`,
+        title: `${lv.kind === 'resistance' ? '上の壁' : '下の支え'}（${lv.strength}）`,
       }));
     }
-    legend.push(['#ff9f43', '上値の壁'], ['#00c2a8', '下値の支え']);
+    legend.push(['#ff9f43', '上の壁（上がるのを止められやすい値段）'], ['#00c2a8', '下の支え（下がるのを止められやすい値段）']);
   }
   const tls = trendlines(raw);
   // チャートの形（ダブルトップ・三角保ち合いなど）。三角保ち合いなどの線が出ているときは、
@@ -170,7 +172,7 @@ function render() {
     for (const t of tls) {
       addLine(main, overlay, [{ time: t.from.time + JST, value: t.from.price }, { time: t.to.time + JST, value: t.to.price }], t.kind === 'up' ? '#00c2a8' : '#ff9f43', { lineWidth: 2 });
     }
-    if (tls.length) legend.push(['#ffffff99', '流れの線']);
+    if (tls.length) legend.push(['#ffffff99', '流れの線（山どうし・谷どうしを結んだ線）']);
   }
 
   // チャートの形の線・目標・印
@@ -184,20 +186,20 @@ function render() {
         addLine(main, overlay, pts, PC[ln.role], { lineWidth: 2, lineStyle: ln.role === 'neck' ? LC.LineStyle.Dashed : LC.LineStyle.Solid });
       }
       if (p.target != null) {
-        priceLines.push(candleSeries.createPriceLine({ price: p.target, color: '#e0b84f', lineWidth: 1, lineStyle: LC.LineStyle.SparseDotted, axisLabelVisible: true, title: '形の目標' }));
+        priceLines.push(candleSeries.createPriceLine({ price: p.target, color: '#e0b84f', lineWidth: 1, lineStyle: LC.LineStyle.SparseDotted, axisLabelVisible: true, title: p.target > raw[raw.length - 1].close ? '上がる目安' : '下がる目安' }));
       }
       for (const m of p.marks) {
         marks.push({ time: m.time + JST, position: m.top ? 'aboveBar' : 'belowBar', color: '#e0b84f', shape: m.top ? 'arrowDown' : 'arrowUp', text: m.text });
       }
     }
     candleSeries.setMarkers(marks.sort((a, b) => a.time - b.time));
-    legend.push([PC.res, '上値抵抗線'], [PC.sup, '下値支持線'], [PC.neck, 'ネックライン']);
+    legend.push([PC.res, '形の上の線（上がるのを止めている線）'], [PC.sup, '形の下の線（下がるのを止めている線）'], [PC.neck, '点線＝ここを抜けたら形が完成する線']);
   }
 
   const pv = pivotFor(raw, tf);
   if (L.pivot && pv) {
     for (const [k, v] of Object.entries(pv)) {
-      priceLines.push(candleSeries.createPriceLine({ price: v, color: '#a0aec0', lineWidth: 1, lineStyle: LC.LineStyle.SparseDotted, axisLabelVisible: false, title: k }));
+      priceLines.push(candleSeries.createPriceLine({ price: v, color: '#a0aec0', lineWidth: 1, lineStyle: LC.LineStyle.SparseDotted, axisLabelVisible: false, title: PIVOT_NAME[k] || k }));
     }
   }
 
@@ -251,6 +253,14 @@ function render() {
   }
 
   $('legend').innerHTML = legend.map(([c, l]) => `<span><i style="background:${c}"></i>${esc(l)}</span>`).join('');
+  // チャートの印（形の名前）の意味を、チャートのすぐ下に出す
+  const help = $('pat-help');
+  if (help) {
+    help.hidden = !(L.pattern && pats.length);
+    help.innerHTML = L.pattern && pats.length ? `<b>📐 チャートの印の意味</b>（↑＝上がりやすい ↓＝下がりやすい）
+      <ul>${pats.map((p) => `<li><b>「${esc(p.short)}${arrowOf(p.dir)}」</b> ${esc(p.tip)}${p.status === 'done' && p.family !== 'candle' && p.family !== 'gap' ? '　<span class="plus">✅ もう線を抜けました</span>' : p.family === 'rev' || p.family === 'cont' ? '　<span class="muted">⏳ まだ途中</span>' : ''}</li>`).join('')}</ul>
+      <span class="muted">右の金色の「上がる目安」「下がる目安」は、形が完成したらそこまで動きやすいという値段です。「左肩・頭・右肩」は山が3つの形の、それぞれの山です。くわしくは下の「上値の壁と下値の支え」のカードにあります。形は「こうなりやすい」という目安で、必ずそうなるわけではありません。</span>` : '';
+  }
   const visible = Math.min(candles.length, window.innerWidth < 600 ? 90 : 160);
   if (keepRange) main.timeScale().setVisibleLogicalRange(keepRange);
   else main.timeScale().setVisibleLogicalRange({ from: candles.length - visible, to: candles.length + (L.forecast ? 22 : 4) });
@@ -356,7 +366,7 @@ function renderLevels(levels, tls, pv, price, digits, pats = []) {
       <p class="small muted" style="margin:6px 0 0">形は「こうなりやすい」という昔からの目安で、当たる確率が高いという意味ではありません。線を抜けた（割った）のを確かめてから使ってください。</p>`
       : '<p class="small muted" style="margin:0">今は、はっきりした形は出ていません（ダブルトップ・三尊・三角保ち合い・カップ・窓・包み線・明けの明星などを自動で探しています）。</p>'}
     ${tls.length ? `<h3>${term('trendline', '流れの線（トレンドライン）')}</h3><ul class="list">${tls.map((t) => `<li class="small">${esc(t.label)}: 今の位置 <b class="num">${fmtPrice(t.to.price, digits)}</b></li>`).join('')}</ul>` : ''}
-    ${pv ? `<h3>${term('pivot', '今日の目安（ピボット）')}</h3><div class="small num">${Object.entries(pv).map(([k, v]) => `${k}: ${fmtPrice(v, digits)}`).join('　')}</div>` : ''}
+    ${pv ? `<h3>${term('pivot', '今日の目安（ピボット）')}</h3><div class="small num">${Object.entries(pv).map(([k, v]) => `${PIVOT_NAME[k] || k}: ${fmtPrice(v, digits)}`).join('　')}</div>` : ''}
     <p class="notice" style="margin-top:10px">${mode === 'fx' ? 'LION FX' : 'iSPEED'} でも、この値段に横線を引くと同じ線になります。</p>`;
 }
 
@@ -374,7 +384,7 @@ function patternRow(p, price, digits) {
     state = `⏳ まだ途中。上の線 <b class="num">${fmtPrice(p.upper, digits)}</b>・下の線 <b class="num">${fmtPrice(p.lower, digits)}</b> のどちらを抜けるか`;
   }
   const tgt = p.target != null ? `<div class="small">抜けたときの目標の目安：<b class="num">${fmtPrice(p.target, digits)}</b>（形の高さの分だけ動いた値段・今から ${p.target >= price ? '+' : ''}${fmtPrice(p.target - price, digits)}）</div>` : '';
-  return `<li><div class="row" style="flex-wrap:wrap;gap:6px"><b>${esc(p.name)}</b><span class="badge ${tone}">${way}</span></div>
+  return `<li><div class="row" style="flex-wrap:wrap;gap:6px"><b>${esc(p.short)}${arrowOf(p.dir)}</b><span class="small muted">（${esc(p.name)}）</span><span class="badge ${tone}">${way}</span></div>
     <div class="small" style="margin:4px 0">${state}</div>${tgt}
     <div class="small muted">${esc(p.note)}</div></li>`;
 }
