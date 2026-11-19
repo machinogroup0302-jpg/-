@@ -50,3 +50,10 @@ jobs:
           export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
           npm install --no-save --no-audit --no-fund google-auth-library@9 > /dev/null
           node deploy.mjs ../index.html "$RUNNER_TEMP/ok"
+      - name: 止まったときは、公開中の画面を保存しておく
+        if: failure() && env.HAS_SA == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-index
+          path: ${{ runner.temp }}/live.html
+          if-no-files-found: ignore

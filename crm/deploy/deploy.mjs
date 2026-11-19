@@ -13,7 +13,7 @@ const live=norm(await (await fetch(`https://${SITE}.web.app/index.html?nocache=$
 const next=fs.readFileSync(NEW,"utf8");
 if(live===norm(next)){console.log("公開中の画面はすでに最新です。何もしません。");process.exit(0)}
 const oks=fs.readdirSync(OKDIR).map(f=>norm(fs.readFileSync(path.join(OKDIR,f),"utf8")));
-if(!oks.includes(live)){console.log("::error::公開中の index.html が、このリポジトリのどの版とも違います（ほかの所で直された可能性があります）。上書きしないよう止めました。");process.exit(1)}
+if(!oks.includes(live)){fs.writeFileSync(path.join(process.env.RUNNER_TEMP||".","live.html"),live);console.log("::error::公開中の index.html が、このリポジトリのどの版とも違います（ほかの所で直された可能性があります）。上書きしないよう止めました。");process.exit(1)}
 // 2) いま公開中の版のファイルと設定を読む
 const rel=(await call(`sites/${SITE}/releases?pageSize=1`)).releases?.[0];if(!rel?.version?.name)throw new Error("公開中の版が見つかりません");
 const cur=rel.version;const files={};let tok="";
