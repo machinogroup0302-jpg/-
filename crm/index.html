@@ -1247,7 +1247,20 @@ async function pvSave(cid){const c=pros.find(x=>x.id===cid);if(!c)return;const j
 let noBase=0;
 function nextNo(){return String(Math.max(noBase,...everyone.filter(c=>!c.test&&!String(c.id).startsWith("t-")&&!/テスト/.test(c.name||"")).map(c=>Number(c.no)||0))+1)}
 async function promote(id){const c=everyone.find(x=>x.id===id)||{};if(c.isPros){const st=reqStatus(c);if(st.miss.length){const o=mmBox(`<div class="uka-ic">⚠️</div><h3>まだ確定できません</h3><p>${esc(sama(c.name||c.kana||"このお客様"))}は必須項目が <b>${st.miss.length}件</b> 足りません。<br>すべて入力すると顧客一覧に転記できます。</p><div class="pv-misspick" style="margin:0"><div>${st.miss.map(x=>`<span class="pv-chip">${esc(x[1])}</span>`).join("")}</div></div><div class="uka-btns"><button type="button" class="uka-no" data-close>閉じる</button><button type="button" class="uka-yes" id="pm-go">不足項目を入力する</button></div>`);
-  $("pm-go").onclick=()=>{o.hidden=true;closeSheet();selPros=id;pvMode="edit";setView("pros");setTimeout(pvTop,80)};return false}}if(!confirm(sama(c.name||c.kana||"このお客様")+"を確定して、顧客一覧に転記しますか？"))return false;const no=c.no||nextNo();if(await writeCust(id,{stage:"顧客",prosStatus:"",prosRepeat:false,prosJid:"",no,confirmedAt:new Date().toISOString()})){status("確定しました。顧客No."+no+" で顧客一覧に転記しました。")}}
+  $("pm-go").onclick=()=>{o.hidden=true;closeSheet();selPros=id;pvMode="edit";setView("pros");setTimeout(pvTop,80)};return false}}if(!confirm(sama(c.name||c.kana||"このお客様")+"を確定して、顧客一覧に転記しますか？"))return false;const no=c.no||nextNo();if(await writeCust(id,{stage:"顧客",prosStatus:"",prosRepeat:false,prosJid:"",no,confirmedAt:new Date().toISOString(),confFrom:{repeat:!!c.prosRepeat,jid:prosJob(c).jid||"",prosStatus:c.prosStatus||""}})){status("確定しました。顧客No."+no+" で顧客一覧に転記しました。")}}
+
+/* 確定した人を未確定（見込み）に戻す。はじめての人は顧客No.を消し、次に確定したときに新しい番号を付ける。リピートの人は番号をそのまま残す */
+function confInfo(c){if(!c||c.stage!=="顧客"||c.isPros||c.isHold||c.prosRepeat||!c.confirmedAt)return null;const f=c.confFrom;
+  if(f&&typeof f==="object")return {repeat:!!f.repeat,jid:f.jid||"",prosStatus:f.prosStatus||""};
+  if(c.src==="受付表")return null;const js=c.jobsArr||[];if(!js.length)return null;
+  const last=js.slice().sort((a,b)=>String(b.createdAt||b.date||"").localeCompare(String(a.createdAt||a.date||"")))[0];
+  return {repeat:js.length>1,jid:last.jid||"",prosStatus:""}}
+function unpromoteAsk(id){const c=everyone.find(x=>x.id===id);const f=confInfo(c);if(!f)return;
+  const o=mmBox(`<div class="uka-ic">↩️</div><h3>未確定に戻しますか？</h3><p><b>${esc(sama(c.name||c.kana||"（名前なし）"))}</b> を「未確定」の作業予約一覧に戻します。</p><p class="note">${f.repeat?"リピートのお客様なので、顧客No."+esc(c.no||"")+" と今までの作業履歴はそのまま残ります。":"顧客No."+esc(c.no||"")+" は消えます。もう一度確定したときに、その時点の次の番号が付きます。作業の内容はそのまま残ります。"}</p>
+  <div class="uka-btns"><button type="button" class="uka-no" data-close>キャンセル</button><button type="button" class="uka-yes" id="up-ok">未確定に戻す</button></div>`);
+  $("up-ok").onclick=async()=>{$("up-ok").disabled=true;const now=new Date().toISOString();
+    const patch=f.repeat?{stage:"見込み",prosRepeat:true,prosJid:f.jid,prosStatus:f.prosStatus,confFrom:"",unconfirmedAt:now}:{stage:"見込み",prosRepeat:false,prosJid:f.jid,prosStatus:f.prosStatus,no:"",confirmedAt:"",confFrom:"",unconfirmedAt:now};
+    if(await writeCust(id,patch)){o.hidden=true;closeSheet();status(sama(c.name||c.kana||"お客様")+"を未確定に戻しました。");selPros=id;pvMode="view";setView("pros")}else $("up-ok").disabled=false}}
 
 /* ---------- schedule ---------- */
 let schedMode="month", schedDate=null, travel={};
@@ -1440,6 +1453,7 @@ function renderSheet(){
   const S=$("sheet");
   const tags=[c.motive&&["acc",c.motive],c.change==="あり"&&["warn","買い替え検討"],c.coat==="気になる"&&["warn","コーティングに関心"],c.scratch==="気になる"&&["warn","キズ直しに関心"],c.shaken==="やってみたい"&&["warn","出張車検に関心"],c.line==="済み"&&["good","LINE追加済み"],c.own==="はい"&&["acc","自社販売顧客"]].filter(Boolean);
   let h=`<div class="hd"><div class="t"><span class="note num">${isNew?"新規":c.no?"No. "+esc(c.no):(c.isPros?"見込み":"")}</span><h2>${esc(isNew?"新しいお客様（見込みとして登録）":(c.name||c.kana?sama(c.name||c.kana):"（名前なし）"))}</h2><span class="note">${esc(c.kana||"")}</span></div>${isNew?"":`<button class="btn" data-lineqr="${esc(c.id)}" style="margin-right:6px">📱 LINE</button>`}<button class="btn" id="closeS">閉じる</button></div>`;
+  if(!isNew&&confInfo(c))h+=`<div class="panel" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="pill good">確定済み（${esc(String(c.confirmedAt).slice(0,10).replace(/-/g,"/"))}）</span><span class="note" style="flex:1">間違えて確定したときは、未確定に戻せます。</span><button class="btn" data-unpromote="${esc(c.id)}">未確定に戻す</button></div>`;
   if(c.isHold)h+=`<div class="panel" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="pill bad">保留${c.holdAt?"（"+esc(String(c.holdAt).slice(0,10).replace(/-/g,"/"))+"〜）":""}</span><span class="note" style="flex:1">${c.holdNote?"理由："+esc(c.holdNote):"連絡が取れたら未確定に戻してください。"}</span><button class="btn danger" data-cxl="${esc(c.id)}">キャンセルにする</button><button class="btn primary" data-unhold="${esc(c.id)}">未確定に戻す</button></div>`;
   if(tags.length)h+=`<div class="tags">${tags.map(([k,t])=>`<span class="pill ${k}">${esc(t)}</span>`).join("")}</div>`;
   if(editMode==="cust"||isNew){
@@ -2394,6 +2408,7 @@ document.addEventListener("click",async e=>{
   if(t.dataset.lack){closeSheet();selPros=t.dataset.lack;pvMode="edit";setView("pros");setTimeout(pvTop,50);return}
   const hb=t.closest("[data-hold]");if(hb){holdAsk(hb.dataset.hold);return}
   const uhb=t.closest("[data-unhold]");if(uhb){unholdAsk(uhb.dataset.unhold);return}
+  const upb=t.closest("[data-unpromote]");if(upb){unpromoteAsk(upb.dataset.unpromote);return}
   const cxb=t.closest("[data-cxl]");if(cxb){cancelAsk(cxb.dataset.cxl);return}
   const ucb=t.closest("[data-uncx]");if(ucb){uncancel(ucb.dataset.uncx,ucb.dataset.jid);return}
   const pvb=t.closest("[data-pv]");if(pvb){selPros=pvb.dataset.pv;pvMode="view";renderPros();pvTop();return}
