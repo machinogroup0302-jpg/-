@@ -9,6 +9,13 @@ on:
     branches: [claude/tender-allen-llk9mh]
     paths: ['crm/index.html', 'crm/deploy/**', '.github/workflows/crm-deploy.yml']
   workflow_dispatch:
+    inputs:
+      mode:
+        description: 'deploy（公開する）か pull（公開中の画面をリポジトリに取り込むだけ）'
+        default: deploy
+
+permissions:
+  contents: write
 
 concurrency:
   group: crm-deploy
@@ -32,15 +39,24 @@ jobs:
         if: env.HAS_SA == 'true'
         with:
           node-version: 22
+      - name: 公開中の画面をリポジトリに取り込む（pull のときだけ）
+        if: github.event.inputs.mode == 'pull'
+        run: |
+          curl -fsS "https://machino-crm.web.app/index.html?v=$(date +%s)" -H 'Cache-Control: no-cache' > crm/index.html
+          git config user.name "github-actions[bot]"; git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crm/index.html
+          git diff --cached --quiet && { echo "変わりなし"; exit 0; }
+          git commit -m "顧客台帳：公開中の画面（machino-crm.web.app）をそのまま取り込む"
+          git push origin HEAD:${{ github.ref_name }}
       - name: 公開中と比べてよい過去の版を集める
-        if: env.HAS_SA == 'true'
+        if: env.HAS_SA == 'true' && github.event.inputs.mode != 'pull'
         run: |
           mkdir -p "$RUNNER_TEMP/ok"
           git fetch -q origin claude/fervent-lamport-u59ti8 || true
           for c in $(git log --all --format=%H -- crm/index.html); do git show "$c:crm/index.html" > "$RUNNER_TEMP/ok/$c.html" 2>/dev/null || true; done
           ls "$RUNNER_TEMP/ok" | wc -l
       - name: 公開する
-        if: env.HAS_SA == 'true'
+        if: env.HAS_SA == 'true' && github.event.inputs.mode != 'pull'
         working-directory: crm/deploy
         env:
           SA: ${{ secrets.FIREBASE_SA }}
