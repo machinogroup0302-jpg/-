@@ -22,6 +22,7 @@ jobs:
     timeout-minutes: 20
     env:
       HAS_SA: ${{ secrets.FIREBASE_SA != '' }}
+      HAS_BOARD: ${{ secrets.FIREBASE_SA_BOARD != '' }}  # やることボード専用の Firebase の鍵（あればデータとログインはそちら）
       SITE: machino-yarukoto
       OWNER_EMAIL: mochizuki_wataru@machino-group.com  # ログインできるのはこのアドレスだけ
     steps:
@@ -60,8 +61,16 @@ jobs:
             fb hosting:sites:create "$SITE" || { echo "::error::公開先 $SITE を作れませんでした（名前がほかの人に使われている可能性があります）"; exit 1; }
           fi
 
+      - name: やることボード専用の Firebase の準備（ルール・ログイン・データの引っ越し）
+        if: env.HAS_SA == 'true' && env.HAS_BOARD == 'true'
+        working-directory: firebase-board
+        env:
+          SA_OLD: ${{ secrets.FIREBASE_SA }}
+          SA_NEW: ${{ secrets.FIREBASE_SA_BOARD }}
+        run: node move.mjs
+
       - name: ログインの準備・Render からデータを写す（はじめてのときだけ）
-        if: env.HAS_SA == 'true'
+        if: env.HAS_SA == 'true' && env.HAS_BOARD != 'true'
         working-directory: firebase-board
         env:
           BOARD_URL: ${{ secrets.BOARD_URL }}

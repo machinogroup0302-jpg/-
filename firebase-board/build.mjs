@@ -21,9 +21,14 @@ const manifest = {
     { src: '/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
   ],
 };
-const init = SELF
+// BOARD_CONFIG（move.mjs が取り出した、やることボード専用の Firebase の設定）があれば、そちらを使う
+const BOARD = process.env.BOARD_CONFIG;
+const init = BOARD
+  ? `<script>firebase.initializeApp(${BOARD});</script>`
+  : SELF
   ? `<script>(function(){var x=new XMLHttpRequest();x.open('GET','/__/firebase/init.json',false);x.send();var c=JSON.parse(x.responseText);if(/\\.web\\.app$/.test(location.hostname))c.authDomain=location.host;firebase.initializeApp(c);})();</script>`
   : '<script src="/__/firebase/init.js"></script>';
+console.log(BOARD ? 'データ: やることボード専用の Firebase' : 'データ: machino-crm と同じ Firebase');
 console.log(SELF ? 'ログイン: このサイトの住所' : 'ログイン: いつもの住所');
 const html = `<!doctype html>
 <html lang="ja">
