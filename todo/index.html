@@ -803,11 +803,21 @@
           }
           this.ts[name] = r.ts;
         } while (this.dirty[name]);
-        status('');
+        this.setPending(name, false);
+        status(this.anyPending() ? WAIT_MSG : '');
       } catch (err) {
+        // Firebase が止まっている間に変えた分は、この端末に取っておき、戻ったら自動で保存する
+        if (this.realtime) { this.setPending(name, true); status(WAIT_MSG); return; }
         status(err?.code === 'quota_exceeded' ? '保存容量がいっぱいです' : err?.code === 'login' ? 'ログインしてください' : '保存できませんでした。通信を確認してください');
       } finally { this.writing[name] = false; }
     },
+    pending: (() => { try { return JSON.parse(localStorage.getItem('yarukoto-pending') || '{}'); } catch { return {}; } })(),
+    setPending(name, on) {
+      if (!!this.pending[name] === on) return;
+      if (on) this.pending[name] = true; else delete this.pending[name];
+      try { localStorage.setItem('yarukoto-pending', JSON.stringify(this.pending)); } catch {}
+    },
+    anyPending() { return Object.keys(this.pending).length > 0; },
     apply(name, data) {
       const json = JSON.stringify(data);
       if (json === this.last[name] || json === JSON.stringify(DOCS[name].get())) return false;
@@ -816,6 +826,7 @@
       return true;
     },
   };
+  const WAIT_MSG = '保存待ち（今は保存できない時間です。戻ったら自動で保存します）';
   const save = name => { store(DOCS[name].key, localValue(name)); sync.push(name); };
   function status(msg) { $('sync').textContent = msg; }
 
@@ -893,7 +904,8 @@
       save: (name, body) => fdb.runTransaction(async tx => {
         const snap = await tx.get(ref(name));
         const cur = snap.exists ? snap.data() : null;
-        if (cur && cur.ts > (sync.ts[name] || 0)) return { conflict: true, value: cur.value, ts: cur.ts };
+        // 保存待ちの分（止まっている間に変えた分）は、この端末の内容で上書きする
+        if (cur && cur.ts > (sync.ts[name] || 0) && !sync.pending[name]) return { conflict: true, value: cur.value, ts: cur.ts };
         const ts = Math.max(Date.now(), (cur?.ts || 0) + 1);
         tx.set(ref(name), { value: body, ts });
         return { ts };
@@ -906,6 +918,8 @@
         let first = true;
         return ref(name).onSnapshot(snap => {
           if (snap.metadata.hasPendingWrites) return;
+          listening = true;
+          if (sync.pending[name]) { if (snap.exists) sync.ts[name] = snap.data().ts || 0; sync.push(name); return; }
           if (!snap.exists) {
             if (first && JSON.stringify(DOCS[name].get()) !== JSON.stringify(DOCS[name].empty)) sync.push(name);
           } else if (!sync.writing[name]) {
@@ -914,10 +928,26 @@
             if (sync.apply(name, d.value)) renderAll();
           }
           first = false; sync.lastPull = Date.now(); sync.pullError = '';
-          if (!Object.values(sync.writing).some(Boolean)) status('');
-        }, err => { sync.pullError = err?.code === 'permission-denied' ? 'このアカウントでは開けません' : '読み込めませんでした。通信を確認してください'; status(sync.pullError); });
+          if (!Object.values(sync.writing).some(Boolean)) status(sync.anyPending() ? WAIT_MSG : '');
+        }, err => {
+          listening = false;
+          sync.pullError = err?.code === 'permission-denied' ? 'このアカウントでは開けません'
+            : err?.code === 'resource-exhausted' ? '今は読み込めない時間です（この端末の内容を表示しています。戻ったら自動で最新にします）'
+            : '読み込めませんでした。通信を確認してください';
+          status(sync.pullError);
+        });
       });
     };
+    // 止まっていたら、ときどき（3分ごと・画面に戻ったとき）つなぎ直して、保存待ちを保存する
+    let listening = false;
+    const retry = () => {
+      if (!auth.currentUser || document.hidden) return;
+      if (!listening) startFirestore();
+      Object.keys(sync.pending).forEach(n => sync.push(n));
+    };
+    setInterval(retry, 3 * 60 * 1000);
+    document.addEventListener('visibilitychange', retry);
+    window.addEventListener('online', retry);
     const signIn = async () => {
       $('login-err').textContent = '';
       try { await auth.signInWithPopup(provider); }
