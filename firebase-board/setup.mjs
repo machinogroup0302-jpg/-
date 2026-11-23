@@ -69,7 +69,11 @@ try {
 
 // 3. Render から写す（Firebase にまだない種類だけ。あるものは上書きしない）
 const db = admin.firestore();
-const existing = await db.collection('yarukoto').get();
+// Firebase が1日の回数の上限で止まっていても、公開は続ける（写すのは次の機会に）
+const existing = await db.collection('yarukoto').get().catch((e) => {
+  console.log(`::warning::Firebase のデータを読めなかったので、写すのはやめて公開だけします（${e.details || e.message}）`);
+  process.exit(0);
+});
 const have = new Set(existing.docs.map((d) => d.id));
 console.log('Firebase にあるもの:', [...have].join(', ') || 'なし');
 if (DOCS.every((n) => have.has(n))) {
