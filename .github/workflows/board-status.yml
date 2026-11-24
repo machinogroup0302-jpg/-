@@ -1,0 +1,22 @@
+# やることボードのデータが Firebase に入っているかを見る（件数と最後に保存した時刻だけ。中身は出さない）
+name: やることボードの保存の確認
+on:
+  push:
+    branches: [claude/jolly-goldberg-1a7dqb]
+    paths: ['firebase-board/status.mjs']
+  workflow_dispatch:
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - working-directory: firebase-board
+        run: npm install --no-save --no-audit --no-fund firebase-admin@12
+      - working-directory: firebase-board
+        env:
+          FIREBASE_SA: ${{ secrets.FIREBASE_SA }}
+        run: node status.mjs
